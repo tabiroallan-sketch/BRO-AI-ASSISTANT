@@ -20,6 +20,14 @@ import { filesystemTool } from './filesystem.js';
 import { gmailSearchTool, gmailSendTool } from './gmail.js';
 import { githubCreateIssueTool, githubListReposTool } from './github.js';
 import { notionCreatePageTool, notionSearchPagesTool } from './notion.js';
+import {
+  n8nExecuteWorkflowTool,
+  n8nGetExecutionTool,
+  n8nGetWorkflowTool,
+  n8nListExecutionsTool,
+  n8nListWorkflowsTool,
+  n8nStopExecutionTool,
+} from './n8n.js';
 import { notifyTool } from './notify.js';
 import { pdfReaderTool } from './pdf-reader.js';
 import { registerTool } from './registry.js';
@@ -57,4 +65,10 @@ registerTool(slackSendMessageTool);
 registerTool(discordSendMessageTool);
 registerTool(notionSearchPagesTool);
 registerTool(notionCreatePageTool);
+registerTool(n8nListWorkflowsTool);
+registerTool(n8nGetWorkflowTool);
+registerTool(n8nExecuteWorkflowTool);
+registerTool(n8nGetExecutionTool);
+registerTool(n8nListExecutionsTool);
+registerTool(n8nStopExecutionTool);
 registerTool(whatsappSendMessageTool);

@@ -203,6 +203,12 @@ Built-in tools:
 - `notion_search_pages` — searches the user's Notion workspace
 - `notion_create_page` — creates a Notion page under a parent page
 - `whatsapp_send_message` — sends a WhatsApp Business message
+- `n8n_list_workflows` — lists the workflows in the n8n instance (optionally active only)
+- `n8n_get_workflow` — details of one workflow: active state, triggers, node names
+- `n8n_execute_workflow` — triggers a workflow, optionally passing `variables`; waits for it to finish and returns results, or returns the execution id for async monitoring
+- `n8n_get_execution` — status and results of a single execution (with node output data)
+- `n8n_list_executions` — monitors recent executions and displays their status
+- `n8n_stop_execution` — stops a running execution (cancels it)
 - `browser_open` — opens a URL in the user's browser session
 - `browser_navigate` — goes back, forward, reloads, or navigates to a new URL
 - `browser_read` — reads the visible text of the page (or a specific element)
@@ -298,6 +304,26 @@ variables (see `.env.example`): `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`,
 Providers without credentials show as "Not configured" in Settings and return `503`
 if their connect URL is requested. The Notion integration additionally requires the
 integration to be shared with a page in the workspace so its token has access.
+
+## n8n Integration
+
+The `n8n_*` tools let the assistant drive workflows in a self-hosted n8n instance via
+its public REST API: trigger workflows, pass variables into them, monitor executions,
+receive node results, and stop running workflows. Unlike the per-user OAuth
+integrations above, n8n uses a single shared API key.
+
+Enable it by setting `N8N_BASE_URL` (e.g. `https://n8n.example.com`) and `N8N_API_KEY`
+(created in n8n under **Settings → API**). When either is missing, the tools return a
+message telling the user to configure it.
+
+- `n8n_list_workflows` / `n8n_get_workflow` — discover workflows and their ids
+- `n8n_execute_workflow` — trigger a workflow (`workflowId`) with a JSON `variables`
+  object passed to its first node; with `wait: true` (default) it polls until the
+  workflow finishes and returns each node's output
+- `n8n_get_execution` — status, timestamps, and output data of one execution
+- `n8n_list_executions` — recent executions with statuses (`running`, `success`,
+  `error`, ...) for monitoring
+- `n8n_stop_execution` — cancels a running execution by id
 
 ## Browser Automation
 

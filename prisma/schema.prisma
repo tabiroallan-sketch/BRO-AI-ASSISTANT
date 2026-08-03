@@ -25,6 +25,7 @@ model User {
   memories      Memory[]
   accounts      Account[]
   sessions      Session[]
+  notifications Notification[]
 
   @@map("users")
 }
@@ -106,6 +107,19 @@ model Memory {
 
   @@unique([userId, key])
   @@map("memories")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
 }
 
 enum Role {

@@ -113,7 +113,9 @@ describe('built-in tools', () => {
     const output = await tool?.execute({}, context);
     const after = Date.now();
     expect(output).toBeTruthy();
-    const parsed = Date.parse(output as string);
+    const iso = String(output).match(/ISO 8601 \(UTC\): (.+)$/m)?.[1];
+    expect(iso).toBeTruthy();
+    const parsed = Date.parse(iso as string);
     expect(Number.isNaN(parsed)).toBe(false);
     expect(parsed).toBeGreaterThanOrEqual(before);
     expect(parsed).toBeLessThanOrEqual(after);

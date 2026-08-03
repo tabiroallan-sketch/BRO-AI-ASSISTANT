@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Bot } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { NotificationsMenu } from '@/components/notifications-menu';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -54,6 +55,7 @@ export function Navbar(): React.JSX.Element {
           </nav>
         </div>
         <div className="flex items-center gap-2">
+          {authenticated && <NotificationsMenu />}
           <ThemeToggle />
           {status === 'loading' ? null : authenticated ? (
             <Button variant="outline" size="sm" onClick={() => void handleLogout()}>

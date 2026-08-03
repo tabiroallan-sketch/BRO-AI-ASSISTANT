@@ -174,10 +174,23 @@ request, so tools are available to the model immediately.
 
 Built-in tools:
 
-- `get_current_time` — returns the current UTC time (ISO 8601)
+- `get_current_time` — returns the current time as ISO 8601 (UTC) plus a human-readable
+  local time in an optional IANA timezone (e.g. `America/New_York`)
 - `echo` — echoes the provided `text` back
-- `calculate` — safely evaluates arithmetic expressions (`+ - * / % ^`, parentheses,
-  unary signs) with a hand-written tokenizer/parser; `eval` is never used
+- `calculate` — safely evaluates math expressions (`+ - * / % ^`, parentheses, unary
+  signs, constants `pi`/`e`, and functions like `sqrt`, `abs`, `round`, `floor`, `ceil`,
+  `sin`, `cos`, `tan`, `ln`, `log`, `pow`, `min`, `max`) with a hand-written
+  tokenizer/parser; `eval` is never used
+- `web_search` — searches the web (DuckDuckGo instant answers, Wikipedia fallback) and
+  returns snippets with source URLs
+- `get_weather` — current weather for a city via Open-Meteo (geocoding + conditions,
+  temperature, humidity, precipitation, wind)
+- `filesystem` — read/write/list/delete files inside the user's private sandbox
+  (`data/sandbox/<userId>/`); paths are validated so they cannot escape the sandbox
+- `read_pdf` — extracts text from a PDF stored in the user's sandbox
+- `clipboard` — per-user in-memory clipboard (`copy` / `paste` / `clear`) for holding
+  short snippets across a conversation
+- `notify` — creates an in-app notification for the user (see Notifications below)
 
 When the model requests a tool call, the route streams a `tool_start` event (name +
 parsed arguments), executes the tool, streams a `tool_result` event (`ok` + `output`),
@@ -209,6 +222,22 @@ immutable). Returns `404` for other users' memories.
 
 Memories are surfaced in the chat system prompt as `- key: value` lines under a
 "stored facts about the user" header.
+
+## Notifications
+
+The assistant can create in-app notifications via the `notify` tool (e.g. "your report
+is ready"). Notifications are stored per user in PostgreSQL and appear in the bell menu
+in the site navbar, which polls every 30 seconds and shows an unread badge.
+
+`GET /api/v1/notifications` — List the current user's latest 50 notifications (newest
+first) plus `unreadCount`.
+
+`PATCH /api/v1/notifications/:id/read` — Mark one notification as read. Returns `204`.
+
+`POST /api/v1/notifications/read-all` — Mark all of the current user's notifications as
+read. Returns `204`.
+
+All notification endpoints require `Authorization: Bearer <accessToken>`.
 
 ## Voice
 

@@ -16,6 +16,9 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL:-gemini-3.5-flash}
       - ELEVENLABS_API_KEY=
       - PORT=3000
+      - TOOL_FS_ROOT=/app/data/sandbox
+    volumes:
+      - bro_sandbox_data:/app/data
     depends_on:
       db:
         condition: service_healthy
@@ -58,3 +61,4 @@ services:
 volumes:
   bro_postgres_data:
   bro_redis_data:
+  bro_sandbox_data:

@@ -1,8 +1,20 @@
 import { calculateTool } from './calculate.js';
+import { clipboardTool } from './clipboard.js';
 import { currentTimeTool } from './current-time.js';
 import { echoTool } from './echo.js';
+import { filesystemTool } from './filesystem.js';
+import { notifyTool } from './notify.js';
+import { pdfReaderTool } from './pdf-reader.js';
 import { registerTool } from './registry.js';
+import { weatherTool } from './weather.js';
+import { webSearchTool } from './web-search.js';
 
 registerTool(currentTimeTool);
 registerTool(calculateTool);
 registerTool(echoTool);
+registerTool(webSearchTool);
+registerTool(weatherTool);
+registerTool(filesystemTool);
+registerTool(pdfReaderTool);
+registerTool(clipboardTool);
+registerTool(notifyTool);

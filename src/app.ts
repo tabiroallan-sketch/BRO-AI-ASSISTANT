@@ -4,6 +4,8 @@ import helmet from '@fastify/helmet';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { config } from './config/index.js';
+import { prisma } from './lib/prisma.js';
+import { redis } from './lib/redis.js';
 import { healthRoutes } from './routes/index.js';
 
 export function buildApp(): FastifyInstance {
@@ -59,6 +61,15 @@ export function buildApp(): FastifyInstance {
   });
 
   app.register(healthRoutes);
+
+  app.addHook('onClose', async () => {
+    try {
+      await prisma?.$disconnect();
+    } catch (error) {
+      app.log.warn({ err: error }, 'Failed to disconnect Prisma client');
+    }
+    redis?.disconnect();
+  });
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
     app.log.error({ err: error, req: request }, 'Request error');

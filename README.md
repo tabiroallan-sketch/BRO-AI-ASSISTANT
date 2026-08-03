@@ -93,6 +93,23 @@ Once the server is running, visit:
 
 `GET /health` — Returns the status of the application and its dependencies (database, Redis).
 
+Each check reports `ok`, `error`, or `disabled` (a check is `disabled` when the
+corresponding service is not configured). The endpoint returns `200` when every
+enabled check passes and `503` when any enabled check fails.
+
+```json
+{
+  "status": "ok",
+  "checks": {
+    "application": { "status": "ok" },
+    "database": { "status": "ok", "latencyMs": 4 },
+    "redis": { "status": "ok", "latencyMs": 2 }
+  },
+  "uptime": 12.3,
+  "timestamp": "2026-08-03T00:00:00.000Z"
+}
+```
+
 ## License
 
 MIT

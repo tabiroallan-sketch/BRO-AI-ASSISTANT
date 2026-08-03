@@ -1,4 +1,4 @@
-import process from 'node:process';
+import 'dotenv/config';
 
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',

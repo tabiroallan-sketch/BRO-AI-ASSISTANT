@@ -80,7 +80,8 @@ bro/
 | `npm run format` | Format code with Prettier |
 | `npm run format:check` | Check formatting without modifying |
 | `npm run prisma:generate` | Generate Prisma client |
-| `npm run prisma:migrate` | Run database migrations |
+| `npm run prisma:migrate` | Run database migrations in development |
+| `npm run prisma:migrate:deploy` | Apply pending migrations (deploy/CI) |
 | `npm run prisma:studio` | Open Prisma Studio GUI |
 
 ## API Documentation
@@ -88,6 +89,23 @@ bro/
 Once the server is running, visit:
 - **Swagger UI**: http://localhost:3000/docs
 - **OpenJSON spec**: http://localhost:3000/docs/json
+
+## Authentication
+
+`POST /auth/register` — Create an account with `email`, `password` (min 8 chars), and
+optional `displayName`. Returns short-lived access and refresh tokens.
+
+`POST /auth/login` — Exchange `email` + `password` for a token pair.
+
+`POST /auth/refresh` — Rotate a refresh token; returns a new token pair and revokes
+the presented token.
+
+`POST /auth/logout` — Revoke a refresh token.
+
+`GET /auth/me` — Returns the current user (requires `Authorization: Bearer <accessToken>`).
+
+Access tokens are signed JWTs (HS256) and expire per `JWT_EXPIRES_IN`. Refresh tokens
+are opaque, stored hashed in the `sessions` table, and expire per `JWT_REFRESH_EXPIRES_IN`.
 
 ## Health Check
 

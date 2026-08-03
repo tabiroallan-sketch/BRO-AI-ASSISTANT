@@ -6,7 +6,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import { config } from './config/index.js';
 import { prisma } from './lib/prisma.js';
 import { redis } from './lib/redis.js';
-import { healthRoutes } from './routes/index.js';
+import { appRoutes } from './routes/index.js';
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -60,7 +60,7 @@ export function buildApp(): FastifyInstance {
     },
   });
 
-  app.register(healthRoutes);
+  app.register(appRoutes);
 
   app.addHook('onClose', async () => {
     try {

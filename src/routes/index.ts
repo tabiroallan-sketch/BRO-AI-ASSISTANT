@@ -1,11 +1,15 @@
 import { FastifyInstance } from 'fastify';
+import { analyticsRoutes } from './analytics.js';
 import { authRoutes } from './auth.js';
+import { automationRoutes } from './automations.js';
 import { chatRoutes } from './chat.js';
 import { conversationRoutes } from './conversations.js';
 import { healthRoute } from './health.js';
 import { protectedIntegrationRoutes, publicIntegrationRoutes } from './integrations.js';
+import { logRoutes } from './logs.js';
 import { memoryRoutes } from './memories.js';
 import { notificationRoutes } from './notifications.js';
+import { toolRoutes } from './tools.js';
 
 export async function appRoutes(app: FastifyInstance): Promise<void> {
   await app.register(healthRoute);
@@ -18,6 +22,10 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       await v1.register(chatRoutes);
       await v1.register(notificationRoutes);
       await v1.register(protectedIntegrationRoutes);
+      await v1.register(toolRoutes);
+      await v1.register(automationRoutes);
+      await v1.register(analyticsRoutes);
+      await v1.register(logRoutes);
     },
     { prefix: '/api/v1' },
   );

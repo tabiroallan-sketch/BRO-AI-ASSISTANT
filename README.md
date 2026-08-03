@@ -393,6 +393,26 @@ The frontend talks to the API at `NEXT_PUBLIC_API_URL` (defaults to
 `http://localhost:3000/api/v1`). The backend CORS origin must include the frontend
 origin (`http://localhost:3001`).
 
+## Dashboard & Monitoring
+
+The web app has a dashboard under `/dashboard` with a sidebar of pages: Overview,
+Conversations, Memories, Connected accounts, Installed tools, Automations, Analytics,
+and Logs. Each page is backed by an authenticated endpoint:
+
+- `GET /api/v1/tools` — Lists installed tools (`count` + `[{ name, description }]`).
+- `GET /api/v1/automations` — n8n status: `enabled`, `configured`, `workflows`
+  (id/name/active) and recent `executions` (workflow name, status, timestamps). When
+  n8n is unreachable it returns `error` instead of failing.
+- `GET /api/v1/analytics` — Per-user totals (`conversations`, `memories`,
+  `integrations`, `notifications`, `messages`), a `messagesByRole` breakdown, and a
+  `daily` array of message counts for the last 14 days (for activity charts).
+- `GET /api/v1/logs?limit=N` — The most recent server log entries (default 200, capped
+  at 300). Logs are captured from both the application logger and Fastify request logs
+  into an in-memory ring buffer.
+- `DELETE /api/v1/logs` — Clears the in-memory log buffer. Returns `204`.
+
+All dashboard endpoints require `Authorization: Bearer <accessToken>`.
+
 ## Health Check
 
 `GET /health` — Returns the status of the application and its dependencies (database, Redis).

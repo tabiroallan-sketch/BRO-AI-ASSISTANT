@@ -5,6 +5,7 @@ import helmet from '@fastify/helmet';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { config } from './config/index.js';
+import { createPinoStream } from './config/logging.js';
 import { prisma } from './lib/prisma.js';
 import { redis } from './lib/redis.js';
 import { appRoutes } from './routes/index.js';
@@ -14,17 +15,7 @@ export function buildApp(): FastifyInstance {
   const app = Fastify({
     logger: {
       level: config.logLevel,
-      transport:
-        config.nodeEnv === 'development'
-          ? {
-              target: 'pino-pretty',
-              options: {
-                colorize: true,
-                translateTime: 'SYS:standard',
-                ignore: 'pid,hostname',
-              },
-            }
-          : undefined,
+      stream: createPinoStream(config.logLevel),
     },
     trustProxy: true,
   });

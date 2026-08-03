@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { calculateTool, evaluateExpression } from '../src/tools/calculate.js';
 import { clipboardTool } from '../src/tools/clipboard.js';
 import { currentTimeTool } from '../src/tools/current-time.js';
@@ -220,7 +220,19 @@ describe('web tools (graceful failures only)', () => {
   });
 
   it('weather reports an unknown location gracefully', async () => {
-    const output = await weatherTool.execute({ location: 'zzz-no-such-place-12345' }, context);
-    expect(String(output)).toContain('Could not find any location');
+    const fetchMock = vi.fn(async (): Promise<Response> => {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ results: [] }),
+      } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const output = await weatherTool.execute({ location: 'zzz-no-such-place-12345' }, context);
+      expect(String(output)).toContain('Could not find any location');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

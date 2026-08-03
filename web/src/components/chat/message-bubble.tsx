@@ -1,8 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { Bot, User } from 'lucide-react';
+import { Bot, User, Volume2, VolumeX } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { MessageRole } from '@/lib/chat';
+import { speak, stopSpeaking } from '@/lib/speech';
 import { cn } from '@/lib/utils';
 import { Markdown } from '@/components/chat/markdown';
 
@@ -16,6 +18,26 @@ export function MessageBubble({
   streaming?: boolean;
 }): React.JSX.Element {
   const isUser = role === 'USER';
+  const [speaking, setSpeaking] = React.useState(false);
+
+  React.useEffect(() => {
+    return () => {
+      if (speaking) {
+        stopSpeaking();
+      }
+    };
+  }, [speaking]);
+
+  function toggleSpeak(): void {
+    if (speaking) {
+      stopSpeaking();
+      setSpeaking(false);
+      return;
+    }
+    if (speak(content, () => setSpeaking(false))) {
+      setSpeaking(true);
+    }
+  }
 
   return (
     <div className={cn('flex w-full gap-3', isUser ? 'justify-end' : 'justify-start')}>
@@ -41,6 +63,18 @@ export function MessageBubble({
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-primary">
           <User className="h-4 w-4 text-primary-foreground" />
         </div>
+      )}
+      {!isUser && !streaming && (
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className={cn('h-8 w-8 self-center shrink-0', speaking && 'text-primary')}
+          onClick={toggleSpeak}
+          aria-label={speaking ? 'Stop reading aloud' : 'Read aloud'}
+        >
+          {speaking ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+        </Button>
       )}
     </div>
   );

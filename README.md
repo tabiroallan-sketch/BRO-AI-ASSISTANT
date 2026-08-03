@@ -160,6 +160,21 @@ immutable). Returns `404` for other users' memories.
 Memories are surfaced in the chat system prompt as `- key: value` lines under a
 "stored facts about the user" header.
 
+## Voice
+
+Voice is a client-side feature built on the browser-native Web Speech API, so no API
+keys or backend routes are required. It works in Chrome and Edge.
+
+- **Voice input (STT)** — A mic button in the chat input starts live speech recognition.
+  Interim transcript appears in the textarea as you speak; the final transcript is
+  committed on stop. Click the mic again (or the square button) to stop.
+- **Voice output (TTS)** — Assistant messages have a speaker button that reads the
+  reply aloud. Clicking it again stops playback. Markdown is stripped before speaking
+  so formatting is never read out.
+
+The feature degrades gracefully: buttons are hidden when the browser lacks
+`SpeechRecognition`/`speechSynthesis` support.
+
 ## Frontend
 
 The `web/` directory contains the Next.js frontend (React, Tailwind CSS, shadcn-style

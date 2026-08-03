@@ -9,7 +9,7 @@ function createRedisClient(): Redis | null {
     lazyConnect: true,
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,
-    connectTimeout: 2000,
+    connectTimeout: 5000,
   });
   client.on('error', () => {
     // Connection errors are surfaced through health checks. An unhandled

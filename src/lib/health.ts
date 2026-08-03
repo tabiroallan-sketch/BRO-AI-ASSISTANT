@@ -21,7 +21,7 @@ export type HealthReport = {
   timestamp: string;
 };
 
-const HEALTH_CHECK_TIMEOUT_MS = 2000;
+const HEALTH_CHECK_TIMEOUT_MS = 5000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -67,6 +67,9 @@ export async function checkRedis(): Promise<CheckResult> {
   }
   const start = performance.now();
   try {
+    if (redis.status !== 'ready') {
+      await withTimeout(redis.connect(), HEALTH_CHECK_TIMEOUT_MS);
+    }
     const pong = await withTimeout(redis.ping(), HEALTH_CHECK_TIMEOUT_MS);
     return {
       status: pong === 'PONG' ? 'ok' : 'error',

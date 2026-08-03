@@ -1,12 +1,20 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { HttpError, requireAuth, type AuthUser } from '../lib/auth.js';
+import { config } from '../config/index.js';
+import { HttpError, requireAuth, upsertGoogleUser, type AuthUser } from '../lib/auth.js';
 import {
   generateRefreshToken,
   hashRefreshToken,
   refreshTokenExpiry,
   signAccessToken,
 } from '../lib/jwt.js';
+import {
+  buildGoogleAuthorizationUrl,
+  exchangeGoogleCode,
+  fetchGoogleProfile,
+  googleOAuthEnabled,
+} from '../lib/oauth.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { prisma } from '../lib/prisma.js';
 
@@ -200,6 +208,83 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     await prisma.session.deleteMany({ where: { token: hashRefreshToken(refreshToken) } });
     return reply.status(204).send();
+  });
+
+  app.get('/auth/providers', async () => {
+    return {
+      providers: [
+        { id: 'email', label: 'Email & password' },
+        ...(googleOAuthEnabled() ? [{ id: 'google', label: 'Google' }] : []),
+      ],
+    };
+  });
+
+  app.get('/auth/google', async (_request, reply) => {
+    if (!googleOAuthEnabled()) {
+      throw new HttpError(503, 'Google OAuth is not configured');
+    }
+    const state = randomBytes(16).toString('base64url');
+    reply.setCookie('oauth_state', state, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      secure: config.nodeEnv === 'production',
+      maxAge: 600,
+    });
+    return reply.redirect(buildGoogleAuthorizationUrl(state));
+  });
+
+  app.get('/auth/google/callback', async (request, reply) => {
+    if (!googleOAuthEnabled()) {
+      throw new HttpError(503, 'Google OAuth is not configured');
+    }
+
+    const { code, state } = request.query as { code?: string; state?: string };
+    if (!code) {
+      throw new HttpError(400, 'Missing authorization code');
+    }
+
+    const expectedState = request.cookies?.oauth_state;
+    reply.clearCookie('oauth_state', { path: '/' });
+    if (!expectedState || !state || state !== expectedState) {
+      throw new HttpError(400, 'Invalid OAuth state');
+    }
+
+    let tokens;
+    try {
+      tokens = await exchangeGoogleCode(code);
+    } catch (error) {
+      request.log.error({ err: error }, 'Google token exchange failed');
+      throw new HttpError(502, 'Failed to exchange authorization code');
+    }
+
+    let profile;
+    try {
+      profile = await fetchGoogleProfile(tokens.access_token);
+    } catch (error) {
+      request.log.error({ err: error }, 'Google profile fetch failed');
+      throw new HttpError(502, 'Failed to fetch Google profile');
+    }
+
+    if (!profile.email) {
+      throw new HttpError(400, 'Google account has no email address');
+    }
+
+    const user = await upsertGoogleUser(profile, tokens);
+    if (!user.isActive) {
+      throw new HttpError(403, 'Account disabled');
+    }
+
+    const [accessToken, refreshToken] = await Promise.all([
+      signAccessToken(user.id, user.role),
+      createSession(user.id),
+    ]);
+
+    const webOrigin = config.corsOrigin;
+    return reply.redirect(
+      `${webOrigin}/auth/callback#access_token=${encodeURIComponent(accessToken)}` +
+        `&refresh_token=${encodeURIComponent(refreshToken)}`,
+    );
   });
 
   app.get('/auth/me', { preHandler: requireAuth }, async (request) => {

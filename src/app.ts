@@ -1,5 +1,6 @@
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
@@ -28,6 +29,8 @@ export function buildApp(): FastifyInstance {
   });
 
   app.register(helmet);
+
+  app.register(cookie);
 
   app.register(cors, {
     origin: config.corsOrigin,

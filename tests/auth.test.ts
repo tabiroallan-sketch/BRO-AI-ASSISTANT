@@ -163,7 +163,7 @@ describe('authentication', () => {
   ): Promise<{ status: number; body: { accessToken?: string; refreshToken?: string } }> {
     const response = await app.inject({
       method: 'POST',
-      url: '/auth/register',
+      url: '/api/v1/auth/register',
       payload: body,
     });
     return { status: response.statusCode, body: JSON.parse(response.body) };
@@ -199,7 +199,7 @@ describe('authentication', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/api/v1/auth/login',
       payload: { email: 'login@example.com', password: 'supersecret123' },
     });
     const body = JSON.parse(response.body);
@@ -214,7 +214,7 @@ describe('authentication', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/api/v1/auth/login',
       payload: { email: 'wrong@example.com', password: 'not-the-password' },
     });
 
@@ -225,14 +225,14 @@ describe('authentication', () => {
     await register({ email: 'me@example.com', password: 'supersecret123' });
     const login = await app.inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/api/v1/auth/login',
       payload: { email: 'me@example.com', password: 'supersecret123' },
     });
     const { accessToken } = JSON.parse(login.body);
 
     const response = await app.inject({
       method: 'GET',
-      url: '/auth/me',
+      url: '/api/v1/auth/me',
       headers: { authorization: `Bearer ${accessToken}` },
     });
 
@@ -240,16 +240,16 @@ describe('authentication', () => {
     expect(JSON.parse(response.body).user.email).toBe('me@example.com');
   });
 
-  it('rejects /auth/me without a token', async () => {
-    const response = await app.inject({ method: 'GET', url: '/auth/me' });
+  it('rejects /api/v1/auth/me without a token', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/v1/auth/me' });
 
     expect(response.statusCode).toBe(401);
   });
 
-  it('rejects /auth/me with an invalid token', async () => {
+  it('rejects /api/v1/auth/me with an invalid token', async () => {
     const response = await app.inject({
       method: 'GET',
-      url: '/auth/me',
+      url: '/api/v1/auth/me',
       headers: { authorization: 'Bearer not-a-real-token' },
     });
 
@@ -260,14 +260,14 @@ describe('authentication', () => {
     await register({ email: 'rotate@example.com', password: 'supersecret123' });
     const login = await app.inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/api/v1/auth/login',
       payload: { email: 'rotate@example.com', password: 'supersecret123' },
     });
     const { refreshToken } = JSON.parse(login.body);
 
     const first = await app.inject({
       method: 'POST',
-      url: '/auth/refresh',
+      url: '/api/v1/auth/refresh',
       payload: { refreshToken },
     });
     const firstBody = JSON.parse(first.body);
@@ -276,7 +276,7 @@ describe('authentication', () => {
 
     const second = await app.inject({
       method: 'POST',
-      url: '/auth/refresh',
+      url: '/api/v1/auth/refresh',
       payload: { refreshToken },
     });
     expect(second.statusCode).toBe(401);
@@ -286,21 +286,21 @@ describe('authentication', () => {
     await register({ email: 'logout@example.com', password: 'supersecret123' });
     const login = await app.inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/api/v1/auth/login',
       payload: { email: 'logout@example.com', password: 'supersecret123' },
     });
     const { refreshToken } = JSON.parse(login.body);
 
     const logout = await app.inject({
       method: 'POST',
-      url: '/auth/logout',
+      url: '/api/v1/auth/logout',
       payload: { refreshToken },
     });
     expect(logout.statusCode).toBe(204);
 
     const refresh = await app.inject({
       method: 'POST',
-      url: '/auth/refresh',
+      url: '/api/v1/auth/refresh',
       payload: { refreshToken },
     });
     expect(refresh.statusCode).toBe(401);

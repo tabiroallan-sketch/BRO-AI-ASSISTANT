@@ -44,6 +44,14 @@ export default [
     },
   },
   {
-    ignores: ['node_modules', 'dist', 'coverage', 'src/generated', '*.config.*', '**/*.d.ts'],
+    ignores: [
+      'node_modules',
+      'dist',
+      'coverage',
+      'src/generated',
+      '*.config.*',
+      '**/*.d.ts',
+      'web/**',
+    ],
   },
 ];

@@ -92,20 +92,54 @@ Once the server is running, visit:
 
 ## Authentication
 
-`POST /auth/register` — Create an account with `email`, `password` (min 8 chars), and
+All API routes are versioned under `/api/v1`.
+
+`POST /api/v1/auth/register` — Create an account with `email`, `password` (min 8 chars), and
 optional `displayName`. Returns short-lived access and refresh tokens.
 
-`POST /auth/login` — Exchange `email` + `password` for a token pair.
+`POST /api/v1/auth/login` — Exchange `email` + `password` for a token pair.
 
-`POST /auth/refresh` — Rotate a refresh token; returns a new token pair and revokes
+`POST /api/v1/auth/refresh` — Rotate a refresh token; returns a new token pair and revokes
 the presented token.
 
-`POST /auth/logout` — Revoke a refresh token.
+`POST /api/v1/auth/logout` — Revoke a refresh token.
 
-`GET /auth/me` — Returns the current user (requires `Authorization: Bearer <accessToken>`).
+`GET /api/v1/auth/me` — Returns the current user (requires `Authorization: Bearer <accessToken>`).
+
+`GET /api/v1/auth/providers` — Lists the enabled authentication providers (`email`, and
+`google` when configured).
+
+`GET /api/v1/auth/google` — Starts the Google OAuth flow (redirects to Google).
+
+`GET /api/v1/auth/google/callback` — Google OAuth callback; redirects to the frontend with
+access/refresh tokens in the URL fragment.
 
 Access tokens are signed JWTs (HS256) and expire per `JWT_EXPIRES_IN`. Refresh tokens
 are opaque, stored hashed in the `sessions` table, and expire per `JWT_REFRESH_EXPIRES_IN`.
+
+## Frontend
+
+The `web/` directory contains the Next.js frontend (React, Tailwind CSS, shadcn-style
+components) with a landing page, login, registration, dashboard, settings, and dark mode.
+
+```bash
+cd web
+npm install
+npm run dev   # http://localhost:3001
+```
+
+| Script | Description |
+|---|---|
+| `npm run dev` | Start the dev server on port 3001 |
+| `npm run build` | Production build |
+| `npm run lint` | Lint the frontend |
+| `npm run typecheck` | Type-check the frontend |
+| `npm test` | Run frontend tests (vitest) |
+| `npm run format:check` | Check formatting with Prettier |
+
+The frontend talks to the API at `NEXT_PUBLIC_API_URL` (defaults to
+`http://localhost:3000/api/v1`). The backend CORS origin must include the frontend
+origin (`http://localhost:3001`).
 
 ## Health Check
 

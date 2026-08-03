@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { verifyAccessToken } from './jwt.js';
+import type { GoogleProfile, GoogleTokenResponse } from './oauth.js';
 import { prisma } from './prisma.js';
 
 export class HttpError extends Error {
@@ -21,6 +22,16 @@ export type AuthUser = {
   isActive: boolean;
 };
 
+const AUTH_USER_SELECT = {
+  id: true,
+  email: true,
+  displayName: true,
+  avatarUrl: true,
+  role: true,
+  isActive: true,
+  googleId: true,
+} as const;
+
 export async function requireAuth(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
   const header = request.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
@@ -40,14 +51,7 @@ export async function requireAuth(request: FastifyRequest, _reply: FastifyReply)
 
   const user = await prisma.user.findUnique({
     where: { id: payload.sub },
-    select: {
-      id: true,
-      email: true,
-      displayName: true,
-      avatarUrl: true,
-      role: true,
-      isActive: true,
-    },
+    select: AUTH_USER_SELECT,
   });
 
   if (!user || !user.isActive) {
@@ -55,4 +59,78 @@ export async function requireAuth(request: FastifyRequest, _reply: FastifyReply)
   }
 
   request.user = user;
+}
+
+export async function upsertGoogleUser(
+  profile: GoogleProfile,
+  tokens: GoogleTokenResponse,
+): Promise<AuthUser> {
+  if (!prisma) {
+    throw new HttpError(503, 'Database not configured');
+  }
+
+  const existingAccount = await prisma.account.findUnique({
+    where: {
+      provider_providerAccountId: {
+        provider: 'google',
+        providerAccountId: profile.sub,
+      },
+    },
+  });
+
+  if (existingAccount) {
+    await prisma.account.update({
+      where: { id: existingAccount.id },
+      data: {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+      },
+    });
+    const user = await prisma.user.findUnique({
+      where: { id: existingAccount.userId },
+      select: AUTH_USER_SELECT,
+    });
+    if (!user) {
+      throw new HttpError(401, 'Account not found');
+    }
+    return user;
+  }
+
+  let user = profile.email
+    ? await prisma.user.findUnique({ where: { email: profile.email }, select: AUTH_USER_SELECT })
+    : null;
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        email: profile.email,
+        displayName: profile.name,
+        avatarUrl: profile.picture,
+        googleId: profile.sub,
+      },
+      select: AUTH_USER_SELECT,
+    });
+  } else if (!user.googleId) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        googleId: profile.sub,
+        ...(profile.picture && !user.avatarUrl ? { avatarUrl: profile.picture } : {}),
+      },
+    });
+  }
+
+  await prisma.account.create({
+    data: {
+      userId: user.id,
+      provider: 'google',
+      providerAccountId: profile.sub,
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+    },
+  });
+
+  return user;
 }

@@ -1,0 +1,67 @@
+version: '3.9'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://bro_user:bro_password@db:5432/bro
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=change-me-in-production
+      - JWT_REFRESH_SECRET=change-me-in-production
+      - OPENAI_API_KEY=
+      - ELEVENLABS_API_KEY=
+      - PORT=3000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bro_user
+      POSTGRES_PASSWORD: bro_password
+      POSTGRES_DB: bro
+    ports:
+      - '5432:5432'
+    volumes:
+      - bro_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bro_user -d bro']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - bro_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  bro_postgres_data:
+  bro_redis_data:
+
+networks:
+  bro:
+    driver: bridge

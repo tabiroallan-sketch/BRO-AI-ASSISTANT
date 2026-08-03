@@ -117,10 +117,33 @@ access/refresh tokens in the URL fragment.
 Access tokens are signed JWTs (HS256) and expire per `JWT_EXPIRES_IN`. Refresh tokens
 are opaque, stored hashed in the `sessions` table, and expire per `JWT_REFRESH_EXPIRES_IN`.
 
+## Chat & Conversations
+
+All chat endpoints require `Authorization: Bearer <accessToken>`. The streaming chat
+endpoint uses OpenAI-compatible APIs (configure `OPENAI_API_KEY`, `OPENAI_MODEL`, and
+optionally `OPENAI_BASE_URL`). It returns `503 AI is not configured` when no API key
+is set.
+
+`POST /api/v1/conversations` — Create a conversation with an optional `title`.
+
+`GET /api/v1/conversations` — List the current user's conversations (newest first).
+
+`GET /api/v1/conversations/:id` — Fetch a conversation with its messages.
+
+`PATCH /api/v1/conversations/:id` — Rename a conversation.
+
+`DELETE /api/v1/conversations/:id` — Delete a conversation.
+
+`POST /api/v1/chat` — Send a `message` (and optional `conversationId`) and receive a
+server-sent-event (SSE) stream of `start`, `delta`, `done`, and `error` events.
+Conversations are titled automatically from the first message; the last 30 messages
+are sent as history.
+
 ## Frontend
 
 The `web/` directory contains the Next.js frontend (React, Tailwind CSS, shadcn-style
-components) with a landing page, login, registration, dashboard, settings, and dark mode.
+components) with a landing page, login, registration, dashboard, settings, a chat page,
+and dark mode.
 
 ```bash
 cd web

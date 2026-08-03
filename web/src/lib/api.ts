@@ -43,7 +43,7 @@ type ErrorEnvelope = {
   };
 };
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {
     'content-type': 'application/json',
   };

@@ -1,0 +1,175 @@
+import type { FastifyInstance, FastifyReply } from 'fastify';
+import { z } from 'zod';
+import { aiConfigured, streamChatCompletion, type AiChatMessage } from '../lib/ai.js';
+import { HttpError, requireAuth } from '../lib/auth.js';
+import { prisma } from '../lib/prisma.js';
+
+const chatSchema = z.object({
+  conversationId: z.string().uuid().optional(),
+  message: z.string().trim().min(1).max(4000),
+});
+
+const HISTORY_LIMIT = 30;
+const TITLE_MAX = 60;
+
+const SYSTEM_PROMPT =
+  'You are BRO, a helpful, concise AI assistant. Answer the user directly and ' +
+  'accurately. Prefer short answers unless detail is requested.';
+
+function deriveTitle(message: string): string {
+  const firstLine = message.split('\n')[0]?.trim() ?? '';
+  const title = firstLine.length > TITLE_MAX ? `${firstLine.slice(0, TITLE_MAX)}…` : firstLine;
+  return title || 'New conversation';
+}
+
+async function getOrCreateConversation(
+  userId: string,
+  conversationId: string | undefined,
+  message: string,
+): Promise<string> {
+  if (conversationId) {
+    const existing = await prisma?.conversation.findFirst({
+      where: { id: conversationId, userId },
+    });
+    if (!existing) {
+      throw new HttpError(404, 'Conversation not found');
+    }
+    return conversationId;
+  }
+
+  const conversation = await prisma?.conversation.create({
+    data: { userId, title: deriveTitle(message) },
+  });
+  if (!conversation) {
+    throw new HttpError(503, 'Database not configured');
+  }
+  return conversation.id;
+}
+
+function sendEvent(reply: FastifyReply, event: Record<string, unknown>): void {
+  reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function toAiRole(role: 'USER' | 'ASSISTANT' | 'SYSTEM'): AiChatMessage['role'] {
+  switch (role) {
+    case 'USER':
+      return 'user';
+    case 'ASSISTANT':
+      return 'assistant';
+    default:
+      return 'system';
+  }
+}
+
+export async function chatRoutes(app: FastifyInstance): Promise<void> {
+  app.post('/chat', { preHandler: requireAuth }, async (request, reply) => {
+    const parsed = chatSchema.safeParse(request.body);
+    if (!parsed.success) {
+      throw new HttpError(400, 'Invalid request body');
+    }
+    const userId = request.user?.id;
+    if (!userId) {
+      throw new HttpError(401, 'Unauthorized');
+    }
+    if (!aiConfigured()) {
+      throw new HttpError(503, 'AI is not configured');
+    }
+    if (!prisma) {
+      throw new HttpError(503, 'Database not configured');
+    }
+
+    const { conversationId, message } = parsed.data;
+    const conversation = await getOrCreateConversation(userId, conversationId, message);
+
+    const userMessage = await prisma.message.create({
+      data: { conversationId: conversation, role: 'USER', content: message },
+    });
+    await prisma.conversation.update({
+      where: { id: conversation },
+      data: { updatedAt: new Date() },
+    });
+
+    const history = await prisma.message.findMany({
+      where: { conversationId: conversation },
+      orderBy: { createdAt: 'desc' },
+      take: HISTORY_LIMIT,
+      select: { role: true, content: true },
+    });
+    history.reverse();
+
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    sendEvent(reply, { type: 'start', conversationId: conversation, messageId: userMessage.id });
+
+    const abortController = new AbortController();
+    const onAbort = (): void => abortController.abort();
+    request.raw.once('close', onAbort);
+
+    let full = '';
+    try {
+      const aiMessages: AiChatMessage[] = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        ...history.map((entry) => ({
+          role: toAiRole(entry.role),
+          content: entry.content,
+        })),
+      ];
+
+      for await (const delta of streamChatCompletion(aiMessages, abortController.signal)) {
+        full += delta;
+        sendEvent(reply, { type: 'delta', content: delta });
+      }
+
+      const assistantMessage = await prisma.message.create({
+        data: { conversationId: conversation, role: 'ASSISTANT', content: full },
+      });
+      await prisma.conversation.update({
+        where: { id: conversation },
+        data: { updatedAt: new Date() },
+      });
+
+      sendEvent(reply, {
+        type: 'done',
+        message: {
+          id: assistantMessage.id,
+          role: 'ASSISTANT',
+          content: assistantMessage.content,
+          createdAt: assistantMessage.createdAt,
+        },
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'Chat stream failed');
+      if (full) {
+        try {
+          const assistantMessage = await prisma.message.create({
+            data: { conversationId: conversation, role: 'ASSISTANT', content: full },
+          });
+          await prisma.conversation.update({
+            where: { id: conversation },
+            data: { updatedAt: new Date() },
+          });
+          sendEvent(reply, {
+            type: 'done',
+            message: {
+              id: assistantMessage.id,
+              role: 'ASSISTANT',
+              content: assistantMessage.content,
+              createdAt: assistantMessage.createdAt,
+            },
+          });
+        } catch {
+          // Nothing left to do; the error event below still surfaces the failure.
+        }
+      }
+      sendEvent(reply, { type: 'error', message: 'Failed to generate a response' });
+    } finally {
+      request.raw.off('close', onAbort);
+      reply.raw.end();
+    }
+  });
+}

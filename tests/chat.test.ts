@@ -46,11 +46,22 @@ type MockMessage = {
   createdAt: Date;
 };
 
-const { mockPrisma, resetDb, registerAndLogin, seedConversation } = vi.hoisted(() => {
+type MockMemory = {
+  id: string;
+  userId: string;
+  key: string;
+  value: string;
+  category: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = vi.hoisted(() => {
   const users = new Map<string, MockUser>();
   const sessions = new Map<string, MockSession>();
   const conversations = new Map<string, MockConversation>();
   const messages = new Map<string, MockMessage>();
+  const memories = new Map<string, MockMemory>();
 
   const userModel = {
     async findUnique(args: { where: { id?: string; email?: string } }): Promise<MockUser | null> {
@@ -175,6 +186,20 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation } = vi.hoisted((
     },
   };
 
+  const memoryModel = {
+    async findMany(args: {
+      where: { userId: string };
+      take?: number;
+      select?: unknown;
+    }): Promise<MockMemory[]> {
+      let list = [...memories.values()].filter((memory) => memory.userId === args.where.userId);
+      if (args.take !== undefined) {
+        list = list.slice(0, args.take);
+      }
+      return list;
+    },
+  };
+
   async function registerAndLogin(email: string): Promise<string> {
     const now = new Date();
     const user: MockUser = {
@@ -215,12 +240,28 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation } = vi.hoisted((
     return conversation;
   }
 
+  function seedMemory(userId: string, key: string, value: string): MockMemory {
+    const now = new Date();
+    const memory: MockMemory = {
+      id: randomUUID(),
+      userId,
+      key,
+      value,
+      category: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    memories.set(memory.id, memory);
+    return memory;
+  }
+
   return {
     mockPrisma: {
       user: userModel,
       session: sessionModel,
       conversation: conversationModel,
       message: messageModel,
+      memory: memoryModel,
       $disconnect: async (): Promise<void> => undefined,
     },
     resetDb: (): void => {
@@ -228,9 +269,11 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation } = vi.hoisted((
       sessions.clear();
       conversations.clear();
       messages.clear();
+      memories.clear();
     },
     registerAndLogin,
     seedConversation,
+    seedMemory,
   };
 });
 
@@ -377,6 +420,30 @@ describe('chat', () => {
       'Hello world',
       'Second message',
     ]);
+  });
+
+  it('injects stored memories into the system prompt', async () => {
+    const token = await registerAndLogin('mem@example.com');
+    const headers = { authorization: `Bearer ${token}` };
+    const { verifyAccessToken } = await import('../src/lib/jwt.js');
+    const payload = await verifyAccessToken(token);
+    seedMemory(payload.sub, 'name', 'Alice');
+    seedMemory(payload.sub, 'timezone', 'Europe/Berlin');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { message: 'Hi' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const [aiMessages] = mockStreamChatCompletion.mock.calls[0] as unknown as [
+      { role: string; content: string }[],
+    ];
+    expect(aiMessages[0].role).toBe('system');
+    expect(aiMessages[0].content).toContain('- name: Alice');
+    expect(aiMessages[0].content).toContain('- timezone: Europe/Berlin');
   });
 
   it('rejects chat in a conversation the user does not own', async () => {

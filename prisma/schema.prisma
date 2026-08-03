@@ -104,6 +104,7 @@ model Memory {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, key])
   @@map("memories")
 }
 

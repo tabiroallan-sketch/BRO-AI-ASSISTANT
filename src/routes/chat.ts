@@ -16,6 +16,22 @@ const SYSTEM_PROMPT =
   'You are BRO, a helpful, concise AI assistant. Answer the user directly and ' +
   'accurately. Prefer short answers unless detail is requested.';
 
+const MEMORY_LIMIT = 100;
+
+type MemoryFact = { key: string; value: string; category: string | null };
+
+function buildSystemPrompt(memories: MemoryFact[]): string {
+  if (memories.length === 0) {
+    return SYSTEM_PROMPT;
+  }
+  const lines = memories.map((memory) => `- ${memory.key}: ${memory.value}`).join('\n');
+  return (
+    `${SYSTEM_PROMPT}\n\n` +
+    `You have these stored facts about the user. Use them to personalize your ` +
+    `answers; do not repeat them unless relevant.\n${lines}`
+  );
+}
+
 function deriveTitle(message: string): string {
   const firstLine = message.split('\n')[0]?.trim() ?? '';
   const title = firstLine.length > TITLE_MAX ? `${firstLine.slice(0, TITLE_MAX)}…` : firstLine;
@@ -112,8 +128,14 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
     let full = '';
     try {
+      const memories = await prisma.memory.findMany({
+        where: { userId },
+        take: MEMORY_LIMIT,
+        select: { key: true, value: true, category: true },
+      });
+
       const aiMessages: AiChatMessage[] = [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: buildSystemPrompt(memories) },
         ...history.map((entry) => ({
           role: toAiRole(entry.role),
           content: entry.content,

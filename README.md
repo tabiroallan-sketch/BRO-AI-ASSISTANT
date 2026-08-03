@@ -137,13 +137,34 @@ is set.
 `POST /api/v1/chat` — Send a `message` (and optional `conversationId`) and receive a
 server-sent-event (SSE) stream of `start`, `delta`, `done`, and `error` events.
 Conversations are titled automatically from the first message; the last 30 messages
-are sent as history.
+are sent as history. Up to 100 of the user's long-term memories are appended to the
+system prompt, so the assistant can answer from stored facts about the user.
+
+## Memories
+
+All memory endpoints require `Authorization: Bearer <accessToken>`. Memories are
+user-scoped and keyed per user: posting an existing `key` updates it instead of
+creating a duplicate (upsert).
+
+`GET /api/v1/memories` — List the current user's memories (most recently updated first).
+
+`POST /api/v1/memories` — Create or upsert a memory with `key` (max 200 chars), `value`
+(max 4000 chars), and optional `category` (max 100 chars). Returns `201` when created
+and `200` when an existing key was updated.
+
+`PATCH /api/v1/memories/:id` — Update a memory's `value` and/or `category` (keys are
+immutable). Returns `404` for other users' memories.
+
+`DELETE /api/v1/memories/:id` — Delete a memory. Returns `204` on success.
+
+Memories are surfaced in the chat system prompt as `- key: value` lines under a
+"stored facts about the user" header.
 
 ## Frontend
 
 The `web/` directory contains the Next.js frontend (React, Tailwind CSS, shadcn-style
 components) with a landing page, login, registration, dashboard, settings, a chat page,
-and dark mode.
+a memories page, and dark mode.
 
 ```bash
 cd web

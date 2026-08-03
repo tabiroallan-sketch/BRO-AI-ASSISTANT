@@ -17,6 +17,15 @@ services:
       - ELEVENLABS_API_KEY=
       - PORT=3000
       - TOOL_FS_ROOT=/app/data/sandbox
+      - INTEGRATION_REDIRECT_BASE=${INTEGRATION_REDIRECT_BASE:-http://localhost:3000/api/v1/integrations}
+      - INTEGRATION_ENCRYPTION_KEY=${INTEGRATION_ENCRYPTION_KEY:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
+      - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
+      - NOTION_CLIENT_ID=${NOTION_CLIENT_ID:-}
+      - NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET:-}
+      - WHATSAPP_API_URL=${WHATSAPP_API_URL:-https://graph.facebook.com/v18.0}
     volumes:
       - bro_sandbox_data:/app/data
     depends_on:

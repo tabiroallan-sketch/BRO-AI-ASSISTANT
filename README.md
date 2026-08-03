@@ -191,6 +191,22 @@ Built-in tools:
 - `clipboard` — per-user in-memory clipboard (`copy` / `paste` / `clear`) for holding
   short snippets across a conversation
 - `notify` — creates an in-app notification for the user (see Notifications below)
+- `calendar_list_events` — lists upcoming events on the user's Google Calendar
+- `calendar_create_event` — creates a Google Calendar event
+- `gmail_search` — searches the user's Gmail inbox
+- `gmail_send` — sends email from the user's Gmail account
+- `drive_list_files` — lists the user's Google Drive files
+- `github_list_repos` — lists the user's GitHub repositories
+- `github_create_issue` — creates a GitHub issue
+- `slack_send_message` — posts a message to a Slack channel/DM
+- `discord_send_message` — posts a message via a Discord webhook
+- `notion_search_pages` — searches the user's Notion workspace
+- `notion_create_page` — creates a Notion page under a parent page
+- `whatsapp_send_message` — sends a WhatsApp Business message
+
+The productivity tools above require the user to connect the matching integration
+first (see Integrations below). When the tool is used without a connection, it returns
+a message telling the user to connect the provider from Settings.
 
 When the model requests a tool call, the route streams a `tool_start` event (name +
 parsed arguments), executes the tool, streams a `tool_result` event (`ok` + `output`),
@@ -238,6 +254,41 @@ first) plus `unreadCount`.
 read. Returns `204`.
 
 All notification endpoints require `Authorization: Bearer <accessToken>`.
+
+## Integrations (Productivity Tools)
+
+Users can connect third-party services so BRO can read and send data on their behalf.
+Connected credentials are stored per user in the `integrations` table (access tokens are
+encrypted at rest with AES-256-GCM using `INTEGRATION_ENCRYPTION_KEY`, falling back to
+`JWT_SECRET`). Tokens are refreshed automatically before expiry when the provider
+supports refresh tokens.
+
+Three connection types are supported:
+
+- **OAuth** — `google-calendar`, `google-gmail`, `google-drive` (reuse the Google OAuth
+  client), `github`, `slack`, and `notion`
+- **Webhook** — `discord` (paste a channel webhook URL)
+- **Token** — `whatsapp` (paste a WhatsApp Business API token + phone number ID)
+
+Manage connections from **Settings → Integrations** in the web app, or via the API:
+
+`GET /api/v1/integrations` — List all providers with their connection status.
+
+`GET /api/v1/integrations/:provider/connect` — Starts the OAuth flow (redirects to the
+provider). The callback URL is `<INTEGRATION_REDIRECT_BASE>/:provider/callback` and must
+be registered in each provider's app (default base `http://localhost:3000/api/v1/integrations`).
+
+`POST /api/v1/integrations/:provider` — Saves webhook/token credentials (`webhookUrl` for
+discord; `token` + `phoneNumberId` for whatsapp).
+
+`DELETE /api/v1/integrations/:provider` — Disconnects a provider. Returns `204`.
+
+To enable a provider, create the OAuth app and set the corresponding environment
+variables (see `.env.example`): `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`,
+`SLACK_CLIENT_ID`/`SLACK_CLIENT_SECRET`, `NOTION_CLIENT_ID`/`NOTION_CLIENT_SECRET`.
+Providers without credentials show as "Not configured" in Settings and return `503`
+if their connect URL is requested. The Notion integration additionally requires the
+integration to be shared with a page in the workspace so its token has access.
 
 ## Voice
 

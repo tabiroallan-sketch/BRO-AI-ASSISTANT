@@ -1,3 +1,4 @@
+import { IntegrationsCard } from '@/components/integrations-card';
 import { RequireAuth } from '@/components/require-auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -8,6 +9,10 @@ export default function SettingsPage(): React.JSX.Element {
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
           <p className="mt-1 text-muted-foreground">Manage your account and preferences.</p>
+        </div>
+
+        <div className="mb-8">
+          <IntegrationsCard />
         </div>
 
         <Card>

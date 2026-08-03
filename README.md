@@ -203,6 +203,15 @@ Built-in tools:
 - `notion_search_pages` — searches the user's Notion workspace
 - `notion_create_page` — creates a Notion page under a parent page
 - `whatsapp_send_message` — sends a WhatsApp Business message
+- `browser_open` — opens a URL in the user's browser session
+- `browser_navigate` — goes back, forward, reloads, or navigates to a new URL
+- `browser_read` — reads the visible text of the page (or a specific element)
+- `browser_click` — clicks an element by selector, visible text, or role
+- `browser_fill` — fills a form field by selector or label (optionally presses Enter)
+- `browser_screenshot` — saves a page/element screenshot to the user's sandbox
+- `browser_extract` — extracts text or attributes (e.g. `href`) from matching elements
+- `browser_download` — downloads a file from a URL or a download link into the sandbox
+- `browser_close` — closes the user's browser session and frees its memory
 
 The productivity tools above require the user to connect the matching integration
 first (see Integrations below). When the tool is used without a connection, it returns
@@ -289,6 +298,34 @@ variables (see `.env.example`): `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`,
 Providers without credentials show as "Not configured" in Settings and return `503`
 if their connect URL is requested. The Notion integration additionally requires the
 integration to be shared with a page in the workspace so its token has access.
+
+## Browser Automation
+
+The `browser_*` tools let the assistant drive a real headless Chromium via Playwright:
+open sites, navigate, read page text, click buttons, fill forms, take screenshots,
+extract data, and download files. Each user gets their own browser session that is
+reused across tool calls and closed after `browser_close` or an idle timeout.
+
+Screenshots are saved to the user's sandbox under `screenshots/` and downloads under
+`downloads/` (i.e. `data/sandbox/<userId>/...`), so they can be shared with the user
+via the `filesystem` tool.
+
+Configuration (see `.env.example`):
+
+- `BROWSER_ENABLED` — set to `false` to disable browser tools entirely (default `true`)
+- `BROWSER_HEADLESS` — run Chromium headless; `false` opens a visible window (default `true`)
+- `BROWSER_TIMEOUT` — default navigation/wait timeout in ms (default `30000`)
+- `BROWSER_IDLE_TIMEOUT_MS` — close a session after this idle period (default `600000`)
+
+Local development needs Chromium installed once:
+
+```bash
+npx playwright install chromium
+```
+
+The Docker image installs Chromium (with OS dependencies) at build time automatically.
+When browser tools are used without Chromium available, they return a message telling
+the user to install it.
 
 ## Voice
 

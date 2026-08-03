@@ -24,6 +24,9 @@ COPY --from=builder /app/prisma ./prisma
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
+# Browser automation (Milestone 11): install Chromium + OS dependencies
+RUN npx playwright install --with-deps chromium
+
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

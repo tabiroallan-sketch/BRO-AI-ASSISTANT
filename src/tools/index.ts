@@ -1,3 +1,14 @@
+import {
+  browserClickTool,
+  browserCloseTool,
+  browserDownloadTool,
+  browserExtractTool,
+  browserFillTool,
+  browserNavigateTool,
+  browserOpenTool,
+  browserReadTool,
+  browserScreenshotTool,
+} from './browser.js';
 import { calculateTool } from './calculate.js';
 import { calendarCreateEventTool, calendarListEventsTool } from './calendar.js';
 import { clipboardTool } from './clipboard.js';
@@ -17,6 +28,15 @@ import { weatherTool } from './weather.js';
 import { webSearchTool } from './web-search.js';
 import { whatsappSendMessageTool } from './whatsapp.js';
 
+registerTool(browserOpenTool);
+registerTool(browserNavigateTool);
+registerTool(browserReadTool);
+registerTool(browserClickTool);
+registerTool(browserFillTool);
+registerTool(browserScreenshotTool);
+registerTool(browserExtractTool);
+registerTool(browserDownloadTool);
+registerTool(browserCloseTool);
 registerTool(currentTimeTool);
 registerTool(calculateTool);
 registerTool(echoTool);

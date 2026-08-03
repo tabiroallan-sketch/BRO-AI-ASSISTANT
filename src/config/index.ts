@@ -18,6 +18,10 @@ export const config = {
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? '',
   n8nBaseUrl: process.env.N8N_BASE_URL ?? '',
   n8nApiKey: process.env.N8N_API_KEY ?? '',
+  browserEnabled: process.env.BROWSER_ENABLED !== 'false',
+  browserHeadless: process.env.BROWSER_HEADLESS !== 'false',
+  browserTimeout: parseInt(process.env.BROWSER_TIMEOUT ?? '30000', 10),
+  browserIdleTimeoutMs: parseInt(process.env.BROWSER_IDLE_TIMEOUT_MS ?? '600000', 10),
   integrationRedirectBase:
     process.env.INTEGRATION_REDIRECT_BASE ?? 'http://localhost:3000/api/v1/integrations',
   integrationEncryptionKey: process.env.INTEGRATION_ENCRYPTION_KEY ?? '',

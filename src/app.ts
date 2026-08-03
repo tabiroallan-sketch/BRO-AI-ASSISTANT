@@ -8,6 +8,7 @@ import { config } from './config/index.js';
 import { prisma } from './lib/prisma.js';
 import { redis } from './lib/redis.js';
 import { appRoutes } from './routes/index.js';
+import './tools/index.js';
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({

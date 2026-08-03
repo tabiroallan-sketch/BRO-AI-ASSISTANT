@@ -1,8 +1,17 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { aiConfigured, streamChatCompletion, type AiChatMessage } from '../lib/ai.js';
+import {
+  aiConfigured,
+  completeChat,
+  type AiChatMessage,
+  type AiCompletionResult,
+  type AiTool,
+  type AiToolCall,
+} from '../lib/ai.js';
 import { HttpError, requireAuth } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
+import { getTool, listTools } from '../tools/registry.js';
+import type { Tool } from '../tools/types.js';
 
 const chatSchema = z.object({
   conversationId: z.string().uuid().optional(),
@@ -11,12 +20,12 @@ const chatSchema = z.object({
 
 const HISTORY_LIMIT = 30;
 const TITLE_MAX = 60;
+const MEMORY_LIMIT = 100;
+const TOOL_CALL_LIMIT = 5;
 
 const SYSTEM_PROMPT =
   'You are BRO, a helpful, concise AI assistant. Answer the user directly and ' +
   'accurately. Prefer short answers unless detail is requested.';
-
-const MEMORY_LIMIT = 100;
 
 type MemoryFact = { key: string; value: string; category: string | null };
 
@@ -74,6 +83,85 @@ function toAiRole(role: 'USER' | 'ASSISTANT' | 'SYSTEM'): AiChatMessage['role'] 
       return 'assistant';
     default:
       return 'system';
+  }
+}
+
+function toAiTool(tool: Tool): AiTool {
+  return {
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    },
+  };
+}
+
+function parseToolArguments(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed !== null && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function chunkText(text: string, size = 64): string[] {
+  if (!text) {
+    return [];
+  }
+  if (text.length <= size) {
+    return [text];
+  }
+  const chunks: string[] = [];
+  let current = '';
+  for (const word of text.split(/\s+/)) {
+    if (current && current.length + 1 + word.length > size) {
+      chunks.push(current);
+      current = word;
+    } else {
+      current = current ? `${current} ${word}` : word;
+    }
+  }
+  if (current) {
+    chunks.push(current);
+  }
+  return chunks;
+}
+
+async function runModel(
+  messages: AiChatMessage[],
+  tools: AiTool[],
+  signal?: AbortSignal,
+): Promise<AiCompletionResult> {
+  try {
+    return await completeChat(messages, tools, signal);
+  } catch (error) {
+    // Some providers reject the tools array; fall back to a plain completion.
+    if (tools.length > 0) {
+      return await completeChat(messages, [], signal);
+    }
+    throw error;
+  }
+}
+
+async function executeTool(
+  call: AiToolCall,
+  args: Record<string, unknown>,
+  userId: string,
+): Promise<{ ok: boolean; output: string }> {
+  const tool = getTool(call.name);
+  if (!tool) {
+    return { ok: false, output: `Error: unknown tool "${call.name}"` };
+  }
+  try {
+    const output = await tool.execute(args, { userId });
+    return { ok: true, output: String(output) };
+  } catch (error) {
+    return {
+      ok: false,
+      output: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 
@@ -141,9 +229,35 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           content: entry.content,
         })),
       ];
+      const tools: AiTool[] = listTools().map(toAiTool);
 
-      for await (const delta of streamChatCompletion(aiMessages, abortController.signal)) {
-        full += delta;
+      for (let round = 0; round <= TOOL_CALL_LIMIT; round += 1) {
+        const { content, toolCalls } = await runModel(aiMessages, tools, abortController.signal);
+        if (toolCalls.length === 0) {
+          full = content;
+          break;
+        }
+        if (round === TOOL_CALL_LIMIT) {
+          full = content || 'I could not finish before running out of tool calls. Try again.';
+          break;
+        }
+
+        aiMessages.push({ role: 'assistant', content: null, tool_calls: toolCalls });
+        for (const call of toolCalls) {
+          const args = parseToolArguments(call.arguments);
+          sendEvent(reply, { type: 'tool_start', name: call.name, args });
+          const result = await executeTool(call, args, userId);
+          sendEvent(reply, {
+            type: 'tool_result',
+            name: call.name,
+            ok: result.ok,
+            output: result.output,
+          });
+          aiMessages.push({ role: 'tool', tool_call_id: call.id, content: result.output });
+        }
+      }
+
+      for (const delta of chunkText(full)) {
         sendEvent(reply, { type: 'delta', content: delta });
       }
 

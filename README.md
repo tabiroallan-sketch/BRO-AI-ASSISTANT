@@ -135,10 +135,60 @@ is set.
 `DELETE /api/v1/conversations/:id` — Delete a conversation.
 
 `POST /api/v1/chat` — Send a `message` (and optional `conversationId`) and receive a
-server-sent-event (SSE) stream of `start`, `delta`, `done`, and `error` events.
-Conversations are titled automatically from the first message; the last 30 messages
-are sent as history. Up to 100 of the user's long-term memories are appended to the
-system prompt, so the assistant can answer from stored facts about the user.
+server-sent-event (SSE) stream of `start`, `tool_start`, `tool_result`, `delta`,
+`done`, and `error` events. Conversations are titled automatically from the first
+message; the last 30 messages are sent as history. Up to 100 of the user's long-term
+memories are appended to the system prompt, so the assistant can answer from stored
+facts about the user.
+
+## Tool Framework
+
+BRO ships with a modular tool system so the assistant can call tools during a chat
+and new capabilities can be added, removed, or replaced in isolation. Tools live in
+`src/tools/` and are registered in-memory at boot via `src/tools/index.ts`.
+
+Every tool implements the same interface (`src/tools/types.ts`):
+
+- `name` — unique identifier the model calls (e.g. `get_current_time`)
+- `description` — when the tool should be used
+- `parameters` — JSON Schema-style description of the arguments
+- `execute(args, context)` — runs the tool and returns a string result (`context`
+  carries the calling `userId`)
+
+Registering a tool is a single call:
+
+```ts
+import { registerTool } from './tools/registry.js';
+
+registerTool({
+  name: 'my_tool',
+  description: 'Use when ...',
+  parameters: { type: 'object', properties: { query: { type: 'string' } } },
+  execute: async (args) => `result for ${args.query}`,
+});
+```
+
+The registry (`src/tools/registry.ts`) exposes `registerTool`, `unregisterTool`,
+`getTool`, `listTools`, and `clearTools`. The chat route reads the registry on every
+request, so tools are available to the model immediately.
+
+Built-in tools:
+
+- `get_current_time` — returns the current UTC time (ISO 8601)
+- `echo` — echoes the provided `text` back
+- `calculate` — safely evaluates arithmetic expressions (`+ - * / % ^`, parentheses,
+  unary signs) with a hand-written tokenizer/parser; `eval` is never used
+
+When the model requests a tool call, the route streams a `tool_start` event (name +
+parsed arguments), executes the tool, streams a `tool_result` event (`ok` + `output`),
+and feeds the result back to the model. The model may call tools repeatedly within a
+single request (up to 5 rounds); the final reply is streamed as `delta` events and
+persisted like any other message. Tool support requires a model that exposes OpenAI-
+compatible tool calling; if the provider rejects tools, the request falls back to a
+plain chat completion without tools.
+
+The frontend chat page renders tool activity as inline "tool bubbles" while a tool is
+running, then marks it done or failed.
 
 ## Memories
 

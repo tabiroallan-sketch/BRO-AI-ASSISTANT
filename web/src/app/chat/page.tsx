@@ -8,7 +8,7 @@ import { ChatInput } from '@/components/chat/chat-input';
 import { ConversationList } from '@/components/chat/conversation-list';
 import { MessageBubble } from '@/components/chat/message-bubble';
 import { ApiError } from '@/lib/api';
-import type { ChatMessage, Conversation } from '@/lib/chat';
+import type { ChatMessage, Conversation, ToolActivity } from '@/lib/chat';
 import {
   deleteConversation,
   getConversation,
@@ -17,6 +17,7 @@ import {
   streamChat,
 } from '@/lib/chat';
 import { useAuth } from '@/lib/auth';
+import { ToolBubble } from '@/components/chat/tool-bubble';
 
 function TypingIndicator(): React.JSX.Element {
   return (
@@ -41,6 +42,7 @@ export default function ChatPage(): React.JSX.Element {
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = React.useState(false);
   const [streamingContent, setStreamingContent] = React.useState('');
+  const [toolActivity, setToolActivity] = React.useState<ToolActivity[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [loadingList, setLoadingList] = React.useState(true);
   const bottomRef = React.useRef<HTMLDivElement>(null);
@@ -67,7 +69,7 @@ export default function ChatPage(): React.JSX.Element {
 
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, streaming]);
+  }, [messages, streamingContent, toolActivity, streaming]);
 
   async function selectConversation(id: string): Promise<void> {
     if (streaming) {
@@ -79,6 +81,7 @@ export default function ChatPage(): React.JSX.Element {
       setActiveId(id);
       setMessages(conversation.messages);
       setStreamingContent('');
+      setToolActivity([]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load conversation.');
     }
@@ -92,6 +95,7 @@ export default function ChatPage(): React.JSX.Element {
     setActiveId(null);
     setMessages([]);
     setStreamingContent('');
+    setToolActivity([]);
   }
 
   async function handleSend(message: string): Promise<void> {
@@ -109,21 +113,38 @@ export default function ChatPage(): React.JSX.Element {
     setMessages((current) => [...current, optimistic]);
     setStreaming(true);
     setStreamingContent('');
+    setToolActivity([]);
 
     try {
       const events = await streamChat(message, activeId ?? undefined);
       for await (const event of events) {
         if (event.type === 'start') {
           setActiveId(event.conversationId);
+        } else if (event.type === 'tool_start') {
+          setToolActivity((current) => [...current, { name: event.name, args: event.args }]);
+        } else if (event.type === 'tool_result') {
+          setToolActivity((current) => {
+            const index = current.findLastIndex(
+              (activity) => activity.name === event.name && activity.ok === undefined,
+            );
+            if (index === -1) {
+              return current;
+            }
+            const next = [...current];
+            next[index] = { ...next[index]!, ok: event.ok, output: event.output };
+            return next;
+          });
         } else if (event.type === 'delta') {
           setStreamingContent((current) => current + event.content);
         } else if (event.type === 'done') {
           setStreamingContent('');
+          setToolActivity([]);
           setMessages((current) => [...current, event.message]);
           setStreaming(false);
           void loadConversations();
         } else if (event.type === 'error') {
           setStreamingContent('');
+          setToolActivity([]);
           setStreaming(false);
           setError(event.message);
           void loadConversations();
@@ -131,6 +152,7 @@ export default function ChatPage(): React.JSX.Element {
       }
     } catch (err) {
       setStreamingContent('');
+      setToolActivity([]);
       setStreaming(false);
       setError(err instanceof ApiError ? err.message : 'Failed to send message.');
     }
@@ -180,7 +202,16 @@ export default function ChatPage(): React.JSX.Element {
             {messages.map((entry) => (
               <MessageBubble key={entry.id} role={entry.role} content={entry.content} />
             ))}
-            {streaming && streamingContent.length === 0 && <TypingIndicator />}
+            {streaming && streamingContent.length === 0 && toolActivity.length > 0 && (
+              <div className="space-y-2">
+                {toolActivity.map((activity, index) => (
+                  <ToolBubble key={`${activity.name}-${index}`} activity={activity} />
+                ))}
+              </div>
+            )}
+            {streaming && streamingContent.length === 0 && toolActivity.length === 0 && (
+              <TypingIndicator />
+            )}
             {streaming && streamingContent.length > 0 && (
               <MessageBubble role="ASSISTANT" content={streamingContent} streaming />
             )}

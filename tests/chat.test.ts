@@ -62,6 +62,13 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = 
   const conversations = new Map<string, MockConversation>();
   const messages = new Map<string, MockMessage>();
   const memories = new Map<string, MockMemory>();
+  let lastMessageAt = 0;
+
+  function nextCreatedAt(): Date {
+    const now = Date.now();
+    lastMessageAt = now > lastMessageAt ? now : lastMessageAt + 1;
+    return new Date(lastMessageAt);
+  }
 
   const userModel = {
     async findUnique(args: { where: { id?: string; email?: string } }): Promise<MockUser | null> {
@@ -159,7 +166,7 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = 
         conversationId: args.data.conversationId,
         role: args.data.role,
         content: args.data.content,
-        createdAt: new Date(),
+        createdAt: nextCreatedAt(),
       };
       messages.set(message.id, message);
       return message;
@@ -270,6 +277,7 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = 
       conversations.clear();
       messages.clear();
       memories.clear();
+      lastMessageAt = 0;
     },
     registerAndLogin,
     seedConversation,
@@ -277,22 +285,29 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = 
   };
 });
 
-const { mockAiConfigured, mockStreamChatCompletion } = vi.hoisted(() => ({
+const { mockAiConfigured, mockCompleteChat } = vi.hoisted(() => ({
   mockAiConfigured: vi.fn<() => boolean>(),
-  mockStreamChatCompletion: vi.fn<() => AsyncGenerator<string>>(),
+  mockCompleteChat: vi.fn<
+    (
+      messages: unknown[],
+      tools?: unknown[],
+    ) => Promise<{
+      content: string;
+      toolCalls: {
+        id: string;
+        name: string;
+        arguments: string;
+        extraContent?: Record<string, unknown>;
+      }[];
+    }>
+  >(),
 }));
 
 vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }));
 vi.mock('../src/lib/ai.js', () => ({
   aiConfigured: mockAiConfigured,
-  streamChatCompletion: mockStreamChatCompletion,
+  completeChat: mockCompleteChat,
 }));
-
-async function* sequence(values: string[]): AsyncGenerator<string> {
-  for (const value of values) {
-    yield value;
-  }
-}
 
 describe('chat', () => {
   let app: FastifyInstance;
@@ -310,8 +325,8 @@ describe('chat', () => {
   beforeEach(() => {
     resetDb();
     mockAiConfigured.mockReturnValue(true);
-    mockStreamChatCompletion.mockReset();
-    mockStreamChatCompletion.mockImplementation(() => sequence(['Hello', ' ', 'world']));
+    mockCompleteChat.mockReset();
+    mockCompleteChat.mockImplementation(async () => ({ content: 'Hello world', toolCalls: [] }));
   });
 
   async function authHeaders(email: string): Promise<{ authorization: string }> {
@@ -338,7 +353,7 @@ describe('chat', () => {
       .map((line) => JSON.parse(line.slice('data: '.length)));
 
     const types = events.map((event) => event.type);
-    expect(types).toEqual(['start', 'delta', 'delta', 'delta', 'done']);
+    expect(types).toEqual(['start', 'delta', 'done']);
 
     const start = events[0];
     expect(start.conversationId).toEqual(expect.any(String));
@@ -354,11 +369,12 @@ describe('chat', () => {
     expect(done.message.content).toBe('Hello world');
     expect(done.message.role).toBe('ASSISTANT');
 
-    expect(mockStreamChatCompletion).toHaveBeenCalledTimes(1);
-    const [aiMessages] = mockStreamChatCompletion.mock.calls[0] as unknown as [
-      { role: string; content: string }[],
-    ];
-    expect(aiMessages[0].role).toBe('system');
+    expect(mockCompleteChat).toHaveBeenCalledTimes(1);
+    const aiMessages = mockCompleteChat.mock.calls[0]![0] as {
+      role: string;
+      content: string;
+    }[];
+    expect(aiMessages[0]!.role).toBe('system');
     expect(aiMessages[aiMessages.length - 1]).toEqual({ role: 'user', content: 'Hi there' });
 
     const get = await app.inject({
@@ -409,12 +425,12 @@ describe('chat', () => {
     expect(conversation.messages[0].content).toBe('First message');
     expect(conversation.messages[2].content).toBe('Second message');
 
-    const historyCall = mockStreamChatCompletion.mock.calls[1][0] as {
+    const historyCall = mockCompleteChat.mock.calls[1]![0] as {
       role: string;
       content: string;
     }[];
     expect(historyCall).toHaveLength(4);
-    expect(historyCall[0].role).toBe('system');
+    expect(historyCall[0]!.role).toBe('system');
     expect(historyCall.slice(1).map((entry) => entry.content)).toEqual([
       'First message',
       'Hello world',
@@ -438,12 +454,10 @@ describe('chat', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    const [aiMessages] = mockStreamChatCompletion.mock.calls[0] as unknown as [
-      { role: string; content: string }[],
-    ];
-    expect(aiMessages[0].role).toBe('system');
-    expect(aiMessages[0].content).toContain('- name: Alice');
-    expect(aiMessages[0].content).toContain('- timezone: Europe/Berlin');
+    const aiMessages = mockCompleteChat.mock.calls[0]![0] as { role: string; content: string }[];
+    expect(aiMessages[0]!.role).toBe('system');
+    expect(aiMessages[0]!.content).toContain('- name: Alice');
+    expect(aiMessages[0]!.content).toContain('- timezone: Europe/Berlin');
   });
 
   it('rejects chat in a conversation the user does not own', async () => {
@@ -494,5 +508,168 @@ describe('chat', () => {
     });
 
     expect(response.statusCode).toBe(400);
+  });
+
+  type ChatEvent = {
+    type: string;
+    conversationId?: string;
+    messageId?: string;
+    content?: string;
+    name?: string;
+    args?: Record<string, unknown>;
+    ok?: boolean;
+    output?: string;
+    message?: { id: string; role: string; content: string; createdAt: string };
+  };
+
+  function parseEvents(response: { body: string }): ChatEvent[] {
+    return response.body
+      .split('\n\n')
+      .filter((line) => line.startsWith('data: '))
+      .map((line) => JSON.parse(line.slice('data: '.length)) as ChatEvent);
+  }
+
+  it('executes a tool call and streams the final answer', async () => {
+    const headers = await authHeaders('tools@example.com');
+    mockCompleteChat
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [
+          {
+            id: 'call_1',
+            name: 'echo',
+            arguments: '{"text":"hi"}',
+            extraContent: { google: { thought_signature: 'sig-abc' } },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ content: 'hi', toolCalls: [] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { message: 'echo hi' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const events = parseEvents(response);
+    expect(events.map((event) => event.type)).toEqual([
+      'start',
+      'tool_start',
+      'tool_result',
+      'delta',
+      'done',
+    ]);
+
+    const toolStart = events.find((event) => event.type === 'tool_start');
+    expect(toolStart).toMatchObject({ name: 'echo', args: { text: 'hi' } });
+
+    const toolResult = events.find((event) => event.type === 'tool_result');
+    expect(toolResult).toMatchObject({ name: 'echo', ok: true, output: 'hi' });
+
+    const done = events[events.length - 1]!;
+    expect(done.message?.content).toBe('hi');
+
+    expect(mockCompleteChat).toHaveBeenCalledTimes(2);
+    const secondCall = mockCompleteChat.mock.calls[1]![0] as {
+      role: string;
+      content: string | null;
+      tool_call_id?: string;
+      tool_calls?: {
+        id: string;
+        name: string;
+        arguments: string;
+        extraContent?: Record<string, unknown>;
+      }[];
+    }[];
+    expect(secondCall[secondCall.length - 1]).toEqual({
+      role: 'tool',
+      tool_call_id: 'call_1',
+      content: 'hi',
+    });
+    const assistant = secondCall[secondCall.length - 2]!;
+    expect(assistant.role).toBe('assistant');
+    expect(assistant.tool_calls).toEqual([
+      {
+        id: 'call_1',
+        name: 'echo',
+        arguments: '{"text":"hi"}',
+        extraContent: { google: { thought_signature: 'sig-abc' } },
+      },
+    ]);
+  });
+
+  it('feeds an unknown tool back as an error result', async () => {
+    const headers = await authHeaders('unknowntool@example.com');
+    mockCompleteChat
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [{ id: 'call_2', name: 'nope', arguments: '{}' }],
+      })
+      .mockResolvedValueOnce({ content: 'done', toolCalls: [] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { message: 'run nope' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const events = parseEvents(response);
+    const toolResult = events.find((event) => event.type === 'tool_result');
+    expect(toolResult).toMatchObject({ name: 'nope', ok: false });
+    expect(toolResult?.output).toContain('unknown tool');
+
+    const secondCall = mockCompleteChat.mock.calls[1]![0] as {
+      role: string;
+      content: string;
+    }[];
+    expect(secondCall[secondCall.length - 1]!.content).toContain('unknown tool "nope"');
+  });
+
+  it('uses a real tool to compute arithmetic', async () => {
+    const headers = await authHeaders('calc@example.com');
+    mockCompleteChat
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [{ id: 'call_3', name: 'calculate', arguments: '{"expression":"6 * 7"}' }],
+      })
+      .mockResolvedValueOnce({ content: '42', toolCalls: [] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { message: 'what is 6 times 7' },
+    });
+
+    const events = parseEvents(response);
+    const toolResult = events.find((event) => event.type === 'tool_result');
+    expect(toolResult).toMatchObject({ name: 'calculate', ok: true, output: '42' });
+    const done = events[events.length - 1]!;
+    expect(done.message?.content).toBe('42');
+  });
+
+  it('stops after the maximum number of tool rounds', async () => {
+    const headers = await authHeaders('loop@example.com');
+    mockCompleteChat.mockImplementation(async () => ({
+      content: '',
+      toolCalls: [{ id: 'call_x', name: 'echo', arguments: '{"text":"x"}' }],
+    }));
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { message: 'loop forever' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const events = parseEvents(response);
+    expect(events[events.length - 1]!.type).toBe('done');
+    expect(events.filter((event) => event.type === 'tool_start')).toHaveLength(5);
+    expect(mockCompleteChat).toHaveBeenCalledTimes(6);
   });
 });

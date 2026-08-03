@@ -229,7 +229,7 @@ describe('Google OAuth when configured', () => {
     const setCookie = response.headers['set-cookie'];
     const cookieHeader = Array.isArray(setCookie)
       ? setCookie.map((c) => c.split(';')[0]).join('; ')
-      : String(setCookie).split(';')[0];
+      : (String(setCookie).split(';')[0] ?? '');
     return { cookie: cookieHeader, state: location.searchParams.get('state') ?? '' };
   }
 
@@ -265,11 +265,11 @@ describe('Google OAuth when configured', () => {
     expect(location).toContain('refresh_token=');
 
     expect(getUsers()).toHaveLength(1);
-    expect(getUsers()[0].email).toBe('oauth@example.com');
-    expect(getUsers()[0].googleId).toBe('google-sub-123');
+    expect(getUsers()[0]!.email).toBe('oauth@example.com');
+    expect(getUsers()[0]!.googleId).toBe('google-sub-123');
     expect(getAccounts()).toHaveLength(1);
-    expect(getAccounts()[0].provider).toBe('google');
-    expect(getAccounts()[0].accessToken).toBe('google-access');
+    expect(getAccounts()[0]!.provider).toBe('google');
+    expect(getAccounts()[0]!.accessToken).toBe('google-access');
   });
 
   it('links to an existing user by email instead of creating a duplicate', async () => {
@@ -288,7 +288,7 @@ describe('Google OAuth when configured', () => {
 
     expect(response.statusCode).toBe(302);
     expect(getUsers()).toHaveLength(1);
-    expect(getUsers()[0].googleId).toBe('google-sub-123');
+    expect(getUsers()[0]!.googleId).toBe('google-sub-123');
     expect(getAccounts()).toHaveLength(1);
   });
 

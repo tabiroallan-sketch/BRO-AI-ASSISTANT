@@ -22,8 +22,17 @@ export type ConversationDetail = Conversation & {
   messages: ChatMessage[];
 };
 
+export type ToolActivity = {
+  name: string;
+  args: Record<string, unknown>;
+  ok?: boolean;
+  output?: string;
+};
+
 export type StreamEvent =
   | { type: 'start'; conversationId: string; messageId: string }
+  | { type: 'tool_start'; name: string; args: Record<string, unknown> }
+  | { type: 'tool_result'; name: string; ok: boolean; output: string }
   | { type: 'delta'; content: string }
   | { type: 'done'; message: ChatMessage }
   | { type: 'error'; message: string };

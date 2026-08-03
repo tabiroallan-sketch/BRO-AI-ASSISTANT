@@ -169,6 +169,29 @@ describe('SSE parser', () => {
       { type: 'error', message: 'boom' },
     ]);
   });
+
+  it('parses tool activity events', async () => {
+    const events: StreamEvent[] = [];
+    const body = `data: ${JSON.stringify({
+      type: 'tool_start',
+      name: 'calculate',
+      args: { expression: '6*7' },
+    })}\n\ndata: ${JSON.stringify({
+      type: 'tool_result',
+      name: 'calculate',
+      ok: true,
+      output: '42',
+    })}\n\n`;
+
+    for await (const event of parseSseStream(streamOf(body))) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: 'tool_start', name: 'calculate', args: { expression: '6*7' } },
+      { type: 'tool_result', name: 'calculate', ok: true, output: '42' },
+    ]);
+  });
 });
 
 describe('streamChat', () => {
@@ -199,6 +222,32 @@ describe('streamChat', () => {
     expect(url).toBe('http://test.local/api/v1/chat');
     expect(JSON.parse(init.body as string)).toEqual({ message: 'hello', conversationId: 'c1' });
     expect(events.map((event) => event.type)).toEqual(['start', 'delta', 'done']);
+  });
+
+  it('yields tool events between the start and final delta', async () => {
+    fetchMock.mockResolvedValue(
+      sseResponse(
+        { type: 'start', conversationId: 'c1', messageId: 'm1' },
+        { type: 'tool_start', name: 'calculate', args: { expression: '6*7' } },
+        { type: 'tool_result', name: 'calculate', ok: true, output: '42' },
+        { type: 'delta', content: '42' },
+        { type: 'done', message: { id: 'a1', role: 'ASSISTANT', content: '42', createdAt: '' } },
+      ),
+    );
+
+    const events: StreamEvent[] = [];
+    const stream = await streamChat('what is 6*7');
+    for await (const event of stream) {
+      events.push(event);
+    }
+
+    expect(events.map((event) => event.type)).toEqual([
+      'start',
+      'tool_start',
+      'tool_result',
+      'delta',
+      'done',
+    ]);
   });
 
   it('omits conversationId for a new conversation', async () => {

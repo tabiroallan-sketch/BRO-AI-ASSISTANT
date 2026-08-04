@@ -6,6 +6,7 @@ import { AdaptiveDpr } from '@react-three/drei';
 import { useReducedMotion } from 'framer-motion';
 import { EnergyPulses } from './energy-pulses';
 import { HoloSphere } from './holo-sphere';
+import { NeuralNet } from './neural-net';
 import { OrbitRings } from './orbit-rings';
 import { ParticleField } from './particle-field';
 
@@ -62,6 +63,7 @@ export default function CoreScene(): React.JSX.Element {
       <OrbitRings />
       <EnergyPulses />
       <ParticleField />
+      <NeuralNet />
     </Canvas>
   );
 }

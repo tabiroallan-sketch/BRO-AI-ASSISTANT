@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import dynamic from 'next/dynamic';
+import { initScenePointer } from '@/lib/scene-pointer';
 import { supportsWebGL } from '@/lib/webgl';
 
 const CoreScene = dynamic(() => import('@/components/ai-os/scene/core-scene'), {
@@ -19,6 +20,8 @@ export default function AiScene(): React.JSX.Element {
 
   React.useEffect(() => {
     setEnabled(supportsWebGL());
+    const cleanupPointer = initScenePointer();
+    return cleanupPointer;
   }, []);
 
   if (!enabled) {

@@ -1,10 +1,12 @@
 'use client';
 
 import * as React from 'react';
-import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { AdaptiveDpr } from '@react-three/drei';
 import { useReducedMotion } from 'framer-motion';
+import { EnergyPulses } from './energy-pulses';
+import { HoloSphere } from './holo-sphere';
+import { OrbitRings } from './orbit-rings';
 
 const NEON_CYAN = '#22d3ee';
 const NEON_BLUE = '#3b82f6';
@@ -33,58 +35,6 @@ function CameraRig(): null {
   return null;
 }
 
-/**
- * Placeholder for the Milestone 3 holographic sphere.
- * A slow-turning wireframe core with an additive glow shell, kept intentionally
- * lightweight so the stage is verifiable before the real sphere lands.
- */
-function PlaceholderCore(): React.JSX.Element {
-  const wire = React.useRef<THREE.Mesh>(null);
-  const glow = React.useRef<THREE.Mesh>(null);
-  const reduceMotion = useReducedMotion();
-
-  useFrame((_state, delta) => {
-    if (reduceMotion) {
-      return;
-    }
-    if (wire.current) {
-      wire.current.rotation.y += delta * 0.22;
-      wire.current.rotation.x += delta * 0.07;
-    }
-    if (glow.current) {
-      const pulse = 1 + Math.sin(_state.clock.elapsedTime * 0.9) * 0.04;
-      glow.current.scale.setScalar(pulse);
-    }
-  });
-
-  return (
-    <group>
-      <mesh ref={wire}>
-        <icosahedronGeometry args={[1.35, 1]} />
-        <meshStandardMaterial
-          color={NEON_CYAN}
-          wireframe
-          transparent
-          opacity={0.55}
-          emissive={NEON_BLUE}
-          emissiveIntensity={0.5}
-        />
-      </mesh>
-      <mesh ref={glow}>
-        <sphereGeometry args={[1.7, 32, 32]} />
-        <meshBasicMaterial
-          color={NEON_CYAN}
-          transparent
-          opacity={0.12}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-      <pointLight color={NEON_CYAN} intensity={9} distance={14} />
-    </group>
-  );
-}
-
 /** Lighting rig for the stage: soft ambient, cyan key, purple rim, blue fill. */
 function Lights(): React.JSX.Element {
   return (
@@ -107,7 +57,9 @@ export default function CoreScene(): React.JSX.Element {
       <AdaptiveDpr pixelated={false} />
       <Lights />
       <CameraRig />
-      <PlaceholderCore />
+      <HoloSphere />
+      <OrbitRings />
+      <EnergyPulses />
     </Canvas>
   );
 }

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { AiBackground } from '@/components/ai-os/background';
+import { CommandConsole } from '@/components/ai-os/console/command-console';
 import { FloatingLayer } from '@/components/ai-os/floating/floating-layer';
 import { StatusBar } from '@/components/ai-os/status-bar';
 import AiScene from '@/components/ai-os/scene/ai-scene';
@@ -26,6 +27,7 @@ export function AiOsShell({
       <AiBackground />
       <AiScene />
       <FloatingLayer />
+      <CommandConsole />
       <StatusBar micMode={micMode} />
       <div className="relative z-10 mx-auto flex w-full max-w-[90rem] flex-1 flex-col gap-4 px-4 pb-6 pt-4 md:flex-row">
         {sidebar && <aside className="w-full shrink-0 md:w-56">{sidebar}</aside>}

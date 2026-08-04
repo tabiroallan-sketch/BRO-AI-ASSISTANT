@@ -1,13 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { Activity, Cpu, Gauge, Globe, MemoryStick, Settings, Wrench, Zap } from 'lucide-react';
+import {
+  Activity,
+  Cpu,
+  Gauge,
+  Globe,
+  MemoryStick,
+  Settings,
+  Terminal,
+  Wrench,
+  Zap,
+} from 'lucide-react';
 import { NotificationsMenu } from '@/components/notifications-menu';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { useAiState, AI_STATE_COLORS, AI_STATE_LABELS } from '@/lib/ai-state';
 import { useAuth } from '@/lib/auth';
 import type { MicMode } from '@/lib/audio-engine';
+import { useConsole } from '@/lib/console-state';
 import { useSystemStatus } from '@/lib/system';
 import { cn } from '@/lib/utils';
 
@@ -97,6 +108,15 @@ export function StatusBar({ micMode }: { micMode: MicMode }): React.JSX.Element 
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => useConsole.getState().openConsole()}
+            aria-label="Open command console"
+            title="Command console (Ctrl+K)"
+          >
+            <Terminal className="h-5 w-5" />
+          </Button>
           <Link href="/settings" aria-label="Settings">
             <Button variant="ghost" size="icon">
               <Settings className="h-5 w-5" />

@@ -5,8 +5,7 @@ import { Plus } from 'lucide-react';
 import { CorePanelContent } from './core-panel';
 import { FloatingPanel } from './floating-panel';
 import { TelemetryPanelContent } from './telemetry-panel';
-
-type PanelId = 'telemetry' | 'core';
+import { useHud, type PanelId } from '@/lib/hud-state';
 
 interface PanelDef {
   id: PanelId;
@@ -34,10 +33,7 @@ function initialPosition(index: number): { x: number; y: number } {
  */
 export function FloatingLayer(): React.JSX.Element | null {
   const [ready, setReady] = React.useState(false);
-  const [open, setOpen] = React.useState<Record<PanelId, boolean>>({
-    telemetry: true,
-    core: true,
-  });
+  const { panels, togglePanel } = useHud();
   const [positions, setPositions] = React.useState<Record<
     PanelId,
     { x: number; y: number }
@@ -55,18 +51,18 @@ export function FloatingLayer(): React.JSX.Element | null {
     return null;
   }
 
-  const closed = PANELS.filter((panel) => !open[panel.id]);
+  const closed = PANELS.filter((panel) => !panels[panel.id]);
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 hidden md:block">
       {PANELS.map((panel, index) =>
-        open[panel.id] ? (
+        panels[panel.id] ? (
           <FloatingPanel
             key={panel.id}
             title={panel.title}
             accent={panel.accent}
             defaultPosition={positions[panel.id] ?? initialPosition(index)}
-            onClose={() => setOpen((o) => ({ ...o, [panel.id]: false }))}
+            onClose={() => togglePanel(panel.id)}
           >
             {panel.id === 'telemetry' ? <TelemetryPanelContent /> : <CorePanelContent />}
           </FloatingPanel>
@@ -79,7 +75,7 @@ export function FloatingLayer(): React.JSX.Element | null {
             <button
               key={panel.id}
               type="button"
-              onClick={() => setOpen((o) => ({ ...o, [panel.id]: true }))}
+              onClick={() => togglePanel(panel.id)}
               aria-label={`Reopen ${panel.title} panel`}
               title={`Reopen ${panel.title}`}
               className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-background/55 text-muted-foreground shadow-[0_0_16px_color-mix(in_oklab,var(--neon-cyan)_15%,transparent)] backdrop-blur-xl transition-colors hover:text-foreground"

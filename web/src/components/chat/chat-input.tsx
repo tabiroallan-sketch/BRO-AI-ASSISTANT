@@ -9,6 +9,7 @@ import {
   isSpeechRecognitionSupported,
   type SpeechRecognizer,
 } from '@/lib/speech';
+import { useAiState } from '@/lib/ai-state';
 
 export function ChatInput({
   disabled,
@@ -43,6 +44,7 @@ export function ChatInput({
     recognizerRef.current?.stop();
     setListening(false);
     setInterim('');
+    useAiState.getState().setState('idle');
   }
 
   function toggleListening(): void {
@@ -64,10 +66,12 @@ export function ChatInput({
       onEnd: () => {
         setListening(false);
         setInterim('');
+        useAiState.getState().setState('idle');
       },
       onError: () => {
         setListening(false);
         setInterim('');
+        useAiState.getState().setState('idle');
       },
     });
     if (!recognizer) {
@@ -76,6 +80,7 @@ export function ChatInput({
     recognizerRef.current = recognizer;
     recognizer.start();
     setListening(true);
+    useAiState.getState().setState('listening');
   }
 
   const displayed = interim ? `${value}${value ? ' ' : ''}${interim}` : value;

@@ -7,6 +7,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { useAiState, AI_STATE_COLORS, AI_STATE_LABELS } from '@/lib/ai-state';
 import { useAuth } from '@/lib/auth';
+import type { MicMode } from '@/lib/audio-engine';
 import { useSystemStatus } from '@/lib/system';
 import { cn } from '@/lib/utils';
 
@@ -37,14 +38,21 @@ function Metric({
  * Left: identity + live AI state. Middle: system telemetry.
  * Right: profile, settings, notifications, theme.
  */
-export function StatusBar(): React.JSX.Element {
-  const { cpu, memory, online, latency, voice } = useSystemStatus();
+export function StatusBar({ micMode }: { micMode: MicMode }): React.JSX.Element {
+  const { cpu, memory, online, latency } = useSystemStatus();
   const { state, activeTool } = useAiState();
   const { user } = useAuth();
 
   const memoryLabel = memory === null ? '—' : `${Math.round(memory * 100)}%`;
   const latencyLabel = latency === null ? '—' : `${latency}ms`;
   const initialState = user?.displayName ?? user?.email ?? 'U';
+  const voiceLabel = micMode === 'off' ? 'OFF' : micMode === 'live' ? 'LIVE' : 'SIM';
+  const voiceTone =
+    micMode === 'live'
+      ? 'text-neon-cyan'
+      : micMode === 'demo'
+        ? 'text-neon-purple'
+        : 'text-muted-foreground';
 
   return (
     <header className="sticky top-0 z-40 glass-strong">
@@ -85,12 +93,7 @@ export function StatusBar(): React.JSX.Element {
             value={activeTool ?? '—'}
             tone={activeTool ? 'text-neon-cyan' : 'text-muted-foreground'}
           />
-          <Metric
-            icon={Activity}
-            label="VOICE"
-            value={voice === 'off' ? 'OFF' : voice.toUpperCase()}
-            tone={voice === 'off' ? 'text-muted-foreground' : 'text-neon-cyan'}
-          />
+          <Metric icon={Activity} label="VOICE" value={voiceLabel} tone={voiceTone} />
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">

@@ -4,6 +4,7 @@ import * as React from 'react';
 import { AiBackground } from '@/components/ai-os/background';
 import { StatusBar } from '@/components/ai-os/status-bar';
 import AiScene from '@/components/ai-os/scene/ai-scene';
+import { useAudioReactivity } from '@/lib/use-audio-reactivity';
 
 /**
  * Layout chrome of the AI operating system.
@@ -18,11 +19,12 @@ export function AiOsShell({
   sidebar?: React.ReactNode;
   children: React.ReactNode;
 }): React.JSX.Element {
+  const { micMode } = useAudioReactivity();
   return (
     <div className="relative flex min-h-dvh flex-col">
       <AiBackground />
       <AiScene />
-      <StatusBar />
+      <StatusBar micMode={micMode} />
       <div className="relative z-10 mx-auto flex w-full max-w-[90rem] flex-1 flex-col gap-4 px-4 pb-6 pt-4 md:flex-row">
         {sidebar && <aside className="w-full shrink-0 md:w-56">{sidebar}</aside>}
         <main className="min-w-0 flex-1">{children}</main>

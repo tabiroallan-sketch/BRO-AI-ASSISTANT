@@ -11,10 +11,12 @@ import {
   Link2,
   MessageSquare,
   ScrollText,
+  ShieldCheck,
   Wrench,
   Workflow,
   type LucideIcon,
 } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
 const items: Array<{ href: string; label: string; icon: LucideIcon }> = [
@@ -29,12 +31,17 @@ const items: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: '/dashboard/logs', label: 'Logs', icon: ScrollText },
 ];
 
+const adminItem = { href: '/dashboard/admin', label: 'Admin', icon: ShieldCheck };
+
 export function DashboardSidebar(): React.JSX.Element {
   const pathname = usePathname();
+  const { user } = useAuth();
+
+  const visibleItems = user?.role === 'ADMIN' ? [...items, adminItem] : items;
 
   return (
     <nav className="flex w-full shrink-0 gap-1 overflow-x-auto md:w-56 md:flex-col md:gap-1 md:overflow-visible">
-      {items.map((item) => {
+      {visibleItems.map((item) => {
         const active = pathname === item.href;
         return (
           <Link

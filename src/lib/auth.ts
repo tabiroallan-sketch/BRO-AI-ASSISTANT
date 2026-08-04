@@ -22,6 +22,19 @@ export type AuthUser = {
   isActive: boolean;
 };
 
+export type Role = AuthUser['role'];
+
+export function requireRole(...roles: Role[]): (request: FastifyRequest) => Promise<void> {
+  return async (request: FastifyRequest) => {
+    if (!request.user) {
+      throw new HttpError(401, 'Unauthorized');
+    }
+    if (!roles.includes(request.user.role)) {
+      throw new HttpError(403, 'Forbidden: insufficient permissions');
+    }
+  };
+}
+
 const AUTH_USER_SELECT = {
   id: true,
   email: true,

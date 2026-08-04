@@ -61,6 +61,32 @@ export type PluginInfo = {
   loadedAt: string;
 };
 
+export type AdminUser = {
+  id: string;
+  email: string;
+  displayName: string | null;
+  role: 'USER' | 'ADMIN';
+  isActive: boolean;
+  createdAt: string;
+};
+
+export type AdminUserUpdate = {
+  role?: 'USER' | 'ADMIN';
+  isActive?: boolean;
+};
+
+export type AuditEvent = {
+  id: string;
+  at: string;
+  actorId?: string;
+  actorEmail?: string;
+  action: string;
+  target?: string;
+  detail?: string;
+  ip?: string;
+  userAgent?: string;
+};
+
 function authToken(): string {
   const token = getAccessToken();
   if (!token) {
@@ -105,4 +131,28 @@ export async function reloadPlugins(): Promise<{ loaded: string[]; failed: numbe
     failed: Array<{ file: string; error: string }>;
   }>('/plugins/reload', { method: 'POST', token: authToken() });
   return { loaded: result.loaded.map((plugin) => plugin.name), failed: result.failed.length };
+}
+
+export async function listUsers(): Promise<AdminUser[]> {
+  const result = await request<{ count: number; users: AdminUser[] }>('/admin/users', {
+    token: authToken(),
+  });
+  return result.users;
+}
+
+export async function updateUser(id: string, data: AdminUserUpdate): Promise<AdminUser> {
+  const result = await request<{ user: AdminUser }>(`/admin/users/${id}`, {
+    method: 'PATCH',
+    body: data,
+    token: authToken(),
+  });
+  return result.user;
+}
+
+export async function getAuditLogs(limit = 200): Promise<AuditEvent[]> {
+  const result = await request<{ count: number; events: AuditEvent[] }>(
+    `/admin/audit?limit=${limit}`,
+    { token: authToken() },
+  );
+  return result.events;
 }

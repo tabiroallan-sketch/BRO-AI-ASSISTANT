@@ -6,7 +6,9 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { config } from './config/index.js';
 import { createPinoStream } from './config/logging.js';
+import { HttpError } from './lib/auth.js';
 import { prisma } from './lib/prisma.js';
+import { applyRateLimits } from './lib/rate-limit.js';
 import { redis } from './lib/redis.js';
 import { loadPluginsFromDisk } from './plugins/index.js';
 import { appRoutes } from './routes/index.js';
@@ -19,9 +21,17 @@ export function buildApp(): FastifyInstance {
       stream: createPinoStream(config.logLevel),
     },
     trustProxy: true,
+    bodyLimit: config.bodyLimit,
+    maxParamLength: 1000,
   });
 
-  app.register(helmet);
+  app.register(helmet, {
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'same-site' },
+    frameguard: { action: 'deny' },
+    referrerPolicy: { policy: 'no-referrer' },
+    hsts: config.nodeEnv === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
+  });
 
   app.register(cookie);
 
@@ -57,6 +67,14 @@ export function buildApp(): FastifyInstance {
   });
 
   app.register(appRoutes);
+
+  app.addHook('onRequest', async (request, _reply) => {
+    if (request.raw.url && request.raw.url.length > config.maxRequestUrlLength) {
+      throw new HttpError(414, 'Request URL is too long');
+    }
+  });
+
+  applyRateLimits(app);
 
   app.addHook('onReady', async () => {
     const result = await loadPluginsFromDisk(config.pluginsDir);

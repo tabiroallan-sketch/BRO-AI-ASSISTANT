@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config/index.js';
-import { requireAuth } from '../lib/auth.js';
+import { requireAuth, requireRole } from '../lib/auth.js';
+import { recordAudit } from '../lib/audit.js';
 import { listPlugins, reloadPlugins } from '../plugins/index.js';
 
 export async function pluginRoutes(app: FastifyInstance): Promise<void> {
@@ -21,8 +22,15 @@ export async function pluginRoutes(app: FastifyInstance): Promise<void> {
     return { count: plugins.length, plugins };
   });
 
-  app.post('/plugins/reload', async () => {
+  app.post('/plugins/reload', { preHandler: requireRole('ADMIN') }, async (request) => {
     const result = await reloadPlugins(config.pluginsDir);
+    recordAudit({
+      actorId: request.user?.id,
+      actorEmail: request.user?.email,
+      action: 'plugins.reload',
+      detail: `Reloaded ${result.loaded} plugins`,
+      ip: request.ip,
+    });
     return { reloaded: true, ...result };
   });
 }

@@ -9,6 +9,7 @@ import {
   type AiToolCall,
 } from '../lib/ai.js';
 import { HttpError, requireAuth } from '../lib/auth.js';
+import { sanitizeOutputText, validateToolOutput } from '../lib/output-validate.js';
 import { prisma } from '../lib/prisma.js';
 import { getTool, listTools } from '../tools/registry.js';
 import type { Tool } from '../tools/types.js';
@@ -155,8 +156,8 @@ async function executeTool(
     return { ok: false, output: `Error: unknown tool "${call.name}"` };
   }
   try {
-    const output = await tool.execute(args, { userId });
-    return { ok: true, output: String(output) };
+    const output = validateToolOutput(await tool.execute(args, { userId }));
+    return { ok: true, output };
   } catch (error) {
     return {
       ok: false,
@@ -257,6 +258,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      full = sanitizeOutputText(full);
       for (const delta of chunkText(full)) {
         sendEvent(reply, { type: 'delta', content: delta });
       }
@@ -283,7 +285,11 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       if (full) {
         try {
           const assistantMessage = await prisma.message.create({
-            data: { conversationId: conversation, role: 'ASSISTANT', content: full },
+            data: {
+              conversationId: conversation,
+              role: 'ASSISTANT',
+              content: sanitizeOutputText(full),
+            },
           });
           await prisma.conversation.update({
             where: { id: conversation },

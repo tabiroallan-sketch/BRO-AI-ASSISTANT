@@ -551,6 +551,72 @@ core application and their tools can be called by the model on the user's behalf
 Only install plugins you trust. `PLUGINS_DIR` defaults to `<cwd>/plugins`; the Docker
 image copies `plugins/` into the container (or mount it as a volume).
 
+## Security
+
+### Secrets management
+
+Sensitive configuration (JWT secrets, API keys, OAuth client secrets, encryption keys)
+is read through `getSecret`, which prefers a `<NAME>_FILE` environment variable pointing
+at a file containing the value (e.g. `JWT_SECRET_FILE=/run/secrets/jwt`), falling back to
+the plain `<NAME>` variable. This makes it easy to mount secrets in Docker/Kubernetes.
+
+### Encryption at rest
+
+Integration access tokens are encrypted with AES-256-GCM before being stored
+(`enc:v1:<iv>:<tag>:<ciphertext>`). The key is derived from
+`INTEGRATION_ENCRYPTION_KEY` (or `ENCRYPTION_KEY`, or `JWT_SECRET`). In production the
+server refuses to start without an explicit encryption key; in development it falls
+back to plaintext with a one-time warning.
+
+### Authentication & authorization (RBAC)
+
+- Passwords are hashed with **bcrypt**; JWTs are signed with
+  `JWT_SECRET`/`JWT_REFRESH_SECRET` and carry the user's role (`USER` or `ADMIN`).
+- Emails listed in `ADMIN_EMAILS` (comma-separated) are promoted to `ADMIN` on login
+  (including OAuth). Admins can manage users and reload plugins.
+- Admin-only endpoints (`/api/v1/admin/*`, `POST /api/v1/plugins/reload`) are guarded by
+  the `requireRole('ADMIN')` pre-handler and return `403` for non-admins.
+
+### Rate limiting
+
+A per-IP sliding window limiter (`RATE_LIMIT_MAX` requests per `RATE_LIMIT_WINDOW_MS`)
+is applied globally and can be tightened per route via the route config
+(e.g. `max: 20, windowMs: 60_000` for register/login). Exceeded limits return `429`
+with `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, and `Retry-After`
+headers. Redis-backed when `REDIS_URL` is set, with an in-memory fallback.
+
+### Audit log
+
+Security-relevant actions (register, login, logout, token refresh, OAuth, admin user
+updates, plugin reloads) are recorded in an in-memory audit log with actor, target,
+IP, and a redacted detail. Browsed at `GET /api/v1/admin/audit` (capped at
+`AUDIT_LOG_MAX`, default 1000 events).
+
+### Input & output validation
+
+- Request bodies are validated with Zod; oversized bodies (`BODY_LIMIT_BYTES`) and
+  overlong URLs (`MAX_REQUEST_URL_LENGTH`, returns `414`) are rejected.
+- Model and tool output is sanitized: control characters are stripped, long output is
+  truncated (tool results are capped at 20k characters), and known secrets are redacted
+  before being stored or streamed.
+
+### Security headers
+
+The API sets security headers via helmet (frame protection, `nosniff`,
+referrer-policy, same-site CORS, production-only HSTS) and the web app sets
+`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`
+via `next.config.ts` `headers()`.
+
+### Admin endpoints
+
+- `GET /api/v1/admin/users` — List users (id, email, display name, role, active state).
+- `PATCH /api/v1/admin/users/:id` — Update `role` and/or `isActive` (cannot deactivate
+  your own account). Records an `admin.user.update` audit event.
+- `GET /api/v1/admin/audit?limit=` — Recent audit events (newest first, capped at 1000).
+
+The web dashboard shows an **Admin** page (visible only to `ADMIN` users) with user
+management and the audit log.
+
 ## Health Check
 
 `GET /health` — Returns the status of the application and its dependencies (database, Redis).

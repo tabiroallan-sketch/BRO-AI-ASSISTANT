@@ -1,11 +1,13 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { config } from '../config/index.js';
+import { logger } from './logger.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 
 let cachedKey: Buffer | null = null;
 let plaintextMode = false;
+let warned = false;
 
 function deriveKey(): Buffer {
   if (cachedKey) {
@@ -13,8 +15,19 @@ function deriveKey(): Buffer {
   }
   const secret = config.integrationEncryptionKey || config.jwtSecret || '';
   if (!secret) {
+    if (config.nodeEnv === 'production') {
+      throw new Error(
+        'Encryption key is not configured. Set ENCRYPTION_KEY (or INTEGRATION_ENCRYPTION_KEY) in production.',
+      );
+    }
     plaintextMode = true;
     cachedKey = Buffer.alloc(0);
+    if (!warned) {
+      warned = true;
+      logger.warn(
+        'Encryption is disabled: no ENCRYPTION_KEY set. Sensitive values are stored in plaintext (development only).',
+      );
+    }
     return cachedKey;
   }
   plaintextMode = false;

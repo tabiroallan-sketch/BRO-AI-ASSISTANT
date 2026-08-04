@@ -31,11 +31,11 @@ const { mockPrisma, registerAndLogin } = vi.hoisted(() => {
     },
   };
 
-  async function registerAndLogin(email: string): Promise<string> {
+  async function registerAndLogin(email: string, role: 'USER' | 'ADMIN' = 'USER'): Promise<string> {
     const user: MockUser = {
       id: randomUUID(),
       email,
-      role: 'USER',
+      role,
       isActive: true,
       displayName: null,
       avatarUrl: null,
@@ -259,7 +259,7 @@ describe('plugin endpoints', () => {
   });
 
   it('reloads plugins from disk', async () => {
-    const token = await registerAndLogin('plugins-reload@example.com');
+    const token = await registerAndLogin('plugins-reload@example.com', 'ADMIN');
 
     const response = await app.inject({
       method: 'POST',

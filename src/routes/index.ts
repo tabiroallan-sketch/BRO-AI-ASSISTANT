@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { adminRoutes } from './admin.js';
 import { analyticsRoutes } from './analytics.js';
 import { authRoutes } from './auth.js';
 import { automationRoutes } from './automations.js';
@@ -28,6 +29,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       await v1.register(analyticsRoutes);
       await v1.register(logRoutes);
       await v1.register(pluginRoutes);
+      await v1.register(adminRoutes);
     },
     { prefix: '/api/v1' },
   );

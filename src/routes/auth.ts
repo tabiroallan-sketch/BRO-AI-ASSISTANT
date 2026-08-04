@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config/index.js';
-import { HttpError, requireAuth, upsertGoogleUser, type AuthUser } from '../lib/auth.js';
+import { HttpError, requireAuth, upsertGoogleUser, type AuthUser, type Role } from '../lib/auth.js';
+import { recordAudit } from '../lib/audit.js';
 import {
   generateRefreshToken,
   hashRefreshToken,
@@ -32,6 +33,8 @@ const loginSchema = z.object({
 const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
+
+const AUTH_RATE_LIMIT = { max: 20, windowMs: 60_000 } as const;
 
 async function createSession(userId: string): Promise<string> {
   if (!prisma) {
@@ -64,8 +67,37 @@ function publicUser(user: AuthUser): {
   };
 }
 
+function auditContext(request: FastifyRequest): { ip?: string; userAgent?: string } {
+  return {
+    ip: request.ip,
+    userAgent: request.headers['user-agent'],
+  };
+}
+
+async function ensureAdminRole(user: AuthUser): Promise<AuthUser> {
+  if (config.adminEmails.includes(user.email) && user.role !== 'ADMIN') {
+    if (!prisma) {
+      return user;
+    }
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { role: 'ADMIN' as Role },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        avatarUrl: true,
+        role: true,
+        isActive: true,
+      },
+    });
+    return updated;
+  }
+  return user;
+}
+
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/auth/register', async (request, reply) => {
+  app.post('/auth/register', { config: { rateLimit: AUTH_RATE_LIMIT } }, async (request, reply) => {
     const parsed = registerSchema.safeParse(request.body);
     if (!parsed.success) {
       throw new HttpError(400, 'Invalid request body');
@@ -86,6 +118,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         email,
         passwordHash: await hashPassword(password),
         displayName,
+        role: config.adminEmails.includes(email) ? 'ADMIN' : undefined,
       },
       select: {
         id: true,
@@ -102,10 +135,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       createSession(user.id),
     ]);
 
+    recordAudit({
+      actorId: user.id,
+      actorEmail: user.email,
+      action: 'auth.register',
+      ...auditContext(request),
+    });
+
     return reply.status(201).send({ accessToken, refreshToken, user: publicUser(user) });
   });
 
-  app.post('/auth/login', async (request, reply) => {
+  app.post('/auth/login', { config: { rateLimit: AUTH_RATE_LIMIT } }, async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
       throw new HttpError(400, 'Invalid request body');
@@ -116,7 +156,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(503, 'Database not configured');
     }
 
-    const user = await prisma.user.findUnique({
+    const found = await prisma.user.findUnique({
       where: { email },
       select: {
         id: true,
@@ -129,20 +169,34 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    const passwordOk = user?.passwordHash
-      ? await verifyPassword(password, user.passwordHash)
+    const passwordOk = found?.passwordHash
+      ? await verifyPassword(password, found.passwordHash)
       : false;
-    if (!user || !passwordOk) {
+    if (!found || !passwordOk) {
+      recordAudit({
+        action: 'auth.login',
+        detail: `Failed login for ${email}`,
+        ...auditContext(request),
+      });
       throw new HttpError(401, 'Invalid email or password');
     }
-    if (!user.isActive) {
+    if (!found.isActive) {
       throw new HttpError(403, 'Account disabled');
     }
+
+    const user = await ensureAdminRole(found);
 
     const [accessToken, refreshToken] = await Promise.all([
       signAccessToken(user.id, user.role),
       createSession(user.id),
     ]);
+
+    recordAudit({
+      actorId: user.id,
+      actorEmail: user.email,
+      action: 'auth.login',
+      ...auditContext(request),
+    });
 
     return reply.send({ accessToken, refreshToken, user: publicUser(user) });
   });
@@ -183,15 +237,24 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     await prisma.session.delete({ where: { id: session.id } });
 
+    const user = await ensureAdminRole(session.user);
+
     const [accessToken, newRefreshToken] = await Promise.all([
-      signAccessToken(session.user.id, session.user.role),
-      createSession(session.userId),
+      signAccessToken(user.id, user.role),
+      createSession(user.id),
     ]);
+
+    recordAudit({
+      actorId: user.id,
+      actorEmail: user.email,
+      action: 'auth.refresh',
+      ...auditContext(request),
+    });
 
     return reply.send({
       accessToken,
       refreshToken: newRefreshToken,
-      user: publicUser(session.user),
+      user: publicUser(user),
     });
   });
 
@@ -207,6 +270,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     }
 
     await prisma.session.deleteMany({ where: { token: hashRefreshToken(refreshToken) } });
+    recordAudit({
+      action: 'auth.logout',
+      ...auditContext(request),
+    });
     return reply.status(204).send();
   });
 
@@ -270,7 +337,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(400, 'Google account has no email address');
     }
 
-    const user = await upsertGoogleUser(profile, tokens);
+    const user = await ensureAdminRole(await upsertGoogleUser(profile, tokens));
     if (!user.isActive) {
       throw new HttpError(403, 'Account disabled');
     }
@@ -279,6 +346,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       signAccessToken(user.id, user.role),
       createSession(user.id),
     ]);
+
+    recordAudit({
+      actorId: user.id,
+      actorEmail: user.email,
+      action: 'auth.oauth',
+      detail: 'Google sign-in',
+      ...auditContext(request),
+    });
 
     const webOrigin = config.corsOrigin;
     return reply.redirect(

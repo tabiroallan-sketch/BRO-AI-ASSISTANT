@@ -36,12 +36,13 @@ describe('tool registry', () => {
     expect(getTool('missing')).toBeUndefined();
   });
 
-  it('overwrites a tool with the same name', () => {
+  it('refuses to overwrite a tool with the same name', () => {
     registerTool(makeTool('alpha'));
-    registerTool({ ...makeTool('alpha'), description: 'updated' });
+    const replaced = registerTool({ ...makeTool('alpha'), description: 'updated' });
 
     expect(listTools()).toHaveLength(1);
-    expect(getTool('alpha')?.description).toBe('updated');
+    expect(replaced).toBe(false);
+    expect(getTool('alpha')?.description).toBe('The alpha tool');
   });
 
   it('unregisters a tool', () => {

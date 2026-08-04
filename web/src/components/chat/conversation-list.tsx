@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-export function ConversationList({
+export const ConversationList = React.memo(function ConversationList({
   conversations,
   activeId,
   onSelect,
@@ -139,4 +139,4 @@ export function ConversationList({
       </div>
     </aside>
   );
-}
+});

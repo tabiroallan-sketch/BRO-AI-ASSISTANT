@@ -46,8 +46,9 @@ export default function ChatPage(): React.JSX.Element {
   const [error, setError] = React.useState<string | null>(null);
   const [loadingList, setLoadingList] = React.useState(true);
   const bottomRef = React.useRef<HTMLDivElement>(null);
+  const busyRef = React.useRef(false);
 
-  async function loadConversations(): Promise<void> {
+  const loadConversations = React.useCallback(async (): Promise<void> => {
     try {
       setConversations(await listConversations());
     } catch (err) {
@@ -60,19 +61,18 @@ export default function ChatPage(): React.JSX.Element {
     } finally {
       setLoadingList(false);
     }
-  }
+  }, [logout, router]);
 
   React.useEffect(() => {
     void loadConversations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadConversations]);
 
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent, toolActivity, streaming]);
 
-  async function selectConversation(id: string): Promise<void> {
-    if (streaming) {
+  const selectConversation = React.useCallback(async (id: string): Promise<void> => {
+    if (busyRef.current) {
       return;
     }
     setError(null);
@@ -85,10 +85,10 @@ export default function ChatPage(): React.JSX.Element {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load conversation.');
     }
-  }
+  }, []);
 
-  function startNewChat(): void {
-    if (streaming) {
+  const startNewChat = React.useCallback((): void => {
+    if (busyRef.current) {
       return;
     }
     setError(null);
@@ -96,81 +96,99 @@ export default function ChatPage(): React.JSX.Element {
     setMessages([]);
     setStreamingContent('');
     setToolActivity([]);
-  }
+  }, []);
 
-  async function handleSend(message: string): Promise<void> {
-    if (streaming) {
-      return;
-    }
-    setError(null);
-
-    const optimistic: ChatMessage = {
-      id: `temp-${Date.now()}`,
-      role: 'USER',
-      content: message,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((current) => [...current, optimistic]);
-    setStreaming(true);
-    setStreamingContent('');
-    setToolActivity([]);
-
-    try {
-      const events = await streamChat(message, activeId ?? undefined);
-      for await (const event of events) {
-        if (event.type === 'start') {
-          setActiveId(event.conversationId);
-        } else if (event.type === 'tool_start') {
-          setToolActivity((current) => [...current, { name: event.name, args: event.args }]);
-        } else if (event.type === 'tool_result') {
-          setToolActivity((current) => {
-            const index = current.findLastIndex(
-              (activity) => activity.name === event.name && activity.ok === undefined,
-            );
-            if (index === -1) {
-              return current;
-            }
-            const next = [...current];
-            next[index] = { ...next[index]!, ok: event.ok, output: event.output };
-            return next;
-          });
-        } else if (event.type === 'delta') {
-          setStreamingContent((current) => current + event.content);
-        } else if (event.type === 'done') {
-          setStreamingContent('');
-          setToolActivity([]);
-          setMessages((current) => [...current, event.message]);
-          setStreaming(false);
-          void loadConversations();
-        } else if (event.type === 'error') {
-          setStreamingContent('');
-          setToolActivity([]);
-          setStreaming(false);
-          setError(event.message);
-          void loadConversations();
-        }
+  const handleSend = React.useCallback(
+    async (message: string): Promise<void> => {
+      if (busyRef.current) {
+        return;
       }
-    } catch (err) {
+      busyRef.current = true;
+      setError(null);
+
+      const optimistic: ChatMessage = {
+        id: `temp-${Date.now()}`,
+        role: 'USER',
+        content: message,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((current) => [...current, optimistic]);
+      setStreaming(true);
       setStreamingContent('');
       setToolActivity([]);
-      setStreaming(false);
-      setError(err instanceof ApiError ? err.message : 'Failed to send message.');
-    }
-  }
 
-  async function handleRename(id: string, title: string): Promise<void> {
-    await renameConversation(id, title);
-    await loadConversations();
-  }
+      try {
+        const events = await streamChat(message, activeId ?? undefined);
+        for await (const event of events) {
+          if (event.type === 'start') {
+            setActiveId(event.conversationId);
+          } else if (event.type === 'tool_start') {
+            setToolActivity((current) => [...current, { name: event.name, args: event.args }]);
+          } else if (event.type === 'tool_result') {
+            setToolActivity((current) => {
+              const index = current.findLastIndex(
+                (activity) => activity.name === event.name && activity.ok === undefined,
+              );
+              if (index === -1) {
+                return current;
+              }
+              const next = [...current];
+              next[index] = { ...next[index]!, ok: event.ok, output: event.output };
+              return next;
+            });
+          } else if (event.type === 'delta') {
+            setStreamingContent((current) => current + event.content);
+          } else if (event.type === 'done') {
+            setStreamingContent('');
+            setToolActivity([]);
+            setMessages((current) => [...current, event.message]);
+            setStreaming(false);
+            void loadConversations();
+          } else if (event.type === 'error') {
+            setStreamingContent('');
+            setToolActivity([]);
+            setStreaming(false);
+            setError(event.message);
+            void loadConversations();
+          }
+        }
+      } catch (err) {
+        setStreamingContent('');
+        setToolActivity([]);
+        setStreaming(false);
+        if (err instanceof ApiError && err.status === 401) {
+          await logout();
+          router.replace('/login');
+          return;
+        }
+        setError(err instanceof ApiError ? err.message : 'Failed to send message.');
+      } finally {
+        busyRef.current = false;
+        setStreaming(false);
+      }
+    },
+    [activeId, logout, router, loadConversations],
+  );
 
-  async function handleDelete(id: string): Promise<void> {
-    await deleteConversation(id);
-    if (activeId === id) {
-      setActiveId(null);
-      setMessages([]);
-    }
-    await loadConversations();
-  }
+  const handleRename = React.useCallback(
+    async (id: string, title: string): Promise<void> => {
+      await renameConversation(id, title);
+      await loadConversations();
+    },
+    [loadConversations],
+  );
+
+  const handleDelete = React.useCallback(
+    async (id: string): Promise<void> => {
+      await deleteConversation(id);
+      if (activeId === id) {
+        setActiveId(null);
+        setMessages([]);
+      }
+      await loadConversations();
+    },
+    [activeId, loadConversations],
+  );
 
   const hasThread = activeId !== null || messages.length > 0;
 

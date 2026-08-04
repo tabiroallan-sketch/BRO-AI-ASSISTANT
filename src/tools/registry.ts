@@ -2,8 +2,12 @@ import type { Tool } from './types.js';
 
 const tools = new Map<string, Tool>();
 
-export function registerTool(tool: Tool): void {
+export function registerTool(tool: Tool): boolean {
+  if (tools.has(tool.name)) {
+    return false;
+  }
   tools.set(tool.name, tool);
+  return true;
 }
 
 export function unregisterTool(name: string): boolean {

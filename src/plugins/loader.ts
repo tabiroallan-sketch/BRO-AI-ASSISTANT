@@ -91,10 +91,18 @@ async function loadPluginFile(
     await manifest.setup(context);
   }
 
-  const tools = (manifest.tools ?? []).map((tool) => {
-    registerTool(tool);
-    return tool.name;
-  });
+  const tools = (manifest.tools ?? [])
+    .filter((tool) => {
+      if (registerTool(tool)) {
+        return true;
+      }
+      logger.warn(
+        { plugin: manifest.name, tool: tool.name },
+        'Plugin tool name is already registered and was skipped',
+      );
+      return false;
+    })
+    .map((tool) => tool.name);
 
   registerPlugin(manifest.name, manifest, path.dirname(file), tools);
 

@@ -73,6 +73,9 @@ async function getOrCreateConversation(
 }
 
 function sendEvent(reply: FastifyReply, event: Record<string, unknown>): void {
+  if (reply.raw.writableEnded || reply.raw.destroyed) {
+    return;
+  }
   reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
@@ -130,6 +133,10 @@ async function runModel(
   try {
     await consume(streamChatCompletion(messages, tools, signal));
   } catch (error) {
+    // The client disconnected: do not retry and do not keep generating.
+    if (signal.aborted) {
+      throw error;
+    }
     // Some providers reject the tools array; fall back to a plain completion.
     if (tools.length > 0) {
       toolCalls = [];
@@ -233,7 +240,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           aiMessages,
           tools,
           abortController.signal,
-          (delta) => sendEvent(reply, { type: 'delta', content: delta }),
+          (delta) => sendEvent(reply, { type: 'delta', content: sanitizeOutputText(delta) }),
         );
         if (toolCalls.length === 0) {
           full = content;
@@ -246,6 +253,9 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
         aiMessages.push({ role: 'assistant', content: null, tool_calls: toolCalls });
         for (const call of toolCalls) {
+          if (abortController.signal.aborted) {
+            throw abortController.signal.reason ?? new Error('Client disconnected');
+          }
           const args = parseToolArguments(call.arguments);
           sendEvent(reply, { type: 'tool_start', name: call.name, args });
           const result = await executeTool(call, args, userId);

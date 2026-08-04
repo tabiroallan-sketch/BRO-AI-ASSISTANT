@@ -2,6 +2,18 @@
 
 BRO is a production-quality AI assistant platform built with Node.js, TypeScript, Fastify, Prisma, PostgreSQL, and Redis.
 
+## Documentation
+
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — system overview, request lifecycle, streaming, security boundaries
+- **[docs/API.md](docs/API.md)** — full endpoint reference (also served as Swagger at `/docs`)
+- **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** — using the app: chat, memory, integrations, dashboard
+- **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** — setup, scripts, adding routes/tools, testing
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — Docker Compose, production, TLS, CI/CD
+- **[docs/MONITORING.md](docs/MONITORING.md)** — health checks, logs, alerting
+- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — common issues and fixes
+- **[docs/BACKUP.md](docs/BACKUP.md)** — Postgres/Redis/secrets backup & restore
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — planned work
+
 ## Architecture
 
 BRO follows a modular, layered architecture:
@@ -9,7 +21,7 @@ BRO follows a modular, layered architecture:
 - **API Layer** — Fastify with modular routing, schema validation via Zod, and OpenAPI documentation
 - **Service Layer** — Business logic separated from transport
 - **Data Layer** — Prisma ORM with PostgreSQL, Redis for caching and sessions
-- **AI Layer** — OpenAI SDK and LangGraph for AI capabilities
+- **AI Layer** — OpenAI SDK streaming chat with tool calling
 - **Plugin System** — Extensible tool and plugin architecture
 
 ## Project Structure
@@ -285,9 +297,9 @@ All notification endpoints require `Authorization: Bearer <accessToken>`.
 
 Users can connect third-party services so BRO can read and send data on their behalf.
 Connected credentials are stored per user in the `integrations` table (access tokens are
-encrypted at rest with AES-256-GCM using `INTEGRATION_ENCRYPTION_KEY`, falling back to
-`JWT_SECRET`). Tokens are refreshed automatically before expiry when the provider
-supports refresh tokens.
+encrypted at rest with AES-256-GCM using `ENCRYPTION_KEY`, falling back to
+`INTEGRATION_ENCRYPTION_KEY`, then `JWT_SECRET`). Tokens are refreshed automatically
+before expiry when the provider supports refresh tokens.
 
 Three connection types are supported:
 
@@ -412,14 +424,14 @@ Conversations, Memories, Connected accounts, Installed tools, Automations, Analy
 and Logs. Each page is backed by an authenticated endpoint:
 
 - `GET /api/v1/tools` — Lists installed tools (`count` + `[{ name, description }]`).
-- `GET /api/v1/automations` — n8n status: `enabled`, `configured`, `workflows`
+- `GET /api/v1/automations` — **Admin only.** n8n status: `enabled`, `configured`, `workflows`
   (id/name/active) and recent `executions` (workflow name, status, timestamps). When
   n8n is unreachable it returns `error` instead of failing.
 - `GET /api/v1/analytics` — Per-user totals (`conversations`, `memories`,
   `integrations`, `notifications`, `messages`), a `messagesByRole` breakdown, and a
   `daily` array of message counts for the last 14 days (for activity charts).
 - `GET /api/v1/logs?limit=N` — The most recent server log entries (default 200, capped
-  at 300). Logs are captured from both the application logger and Fastify request logs
+  at 1000). Logs are captured from both the application logger and Fastify request logs
   into an in-memory ring buffer.
 - `DELETE /api/v1/logs` — Clears the in-memory log buffer. Returns `204`.
 
@@ -617,7 +629,7 @@ the plain `<NAME>` variable. This makes it easy to mount secrets in Docker/Kuber
 
 Integration access tokens are encrypted with AES-256-GCM before being stored
 (`enc:v1:<iv>:<tag>:<ciphertext>`). The key is derived from
-`INTEGRATION_ENCRYPTION_KEY` (or `ENCRYPTION_KEY`, or `JWT_SECRET`). In production the
+`ENCRYPTION_KEY` (or `INTEGRATION_ENCRYPTION_KEY`, or `JWT_SECRET`). In production the
 server refuses to start without an explicit encryption key; in development it falls
 back to plaintext with a one-time warning.
 

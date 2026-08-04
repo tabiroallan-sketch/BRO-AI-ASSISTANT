@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { requireAuth } from '../lib/auth.js';
+import { requireAuth, requireRole } from '../lib/auth.js';
 import {
   isN8nConfigured,
   listN8nExecutions,
@@ -43,8 +43,7 @@ function executionSummary(execution: N8nExecution): {
 
 export async function automationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);
-
-  app.get('/automations', async () => {
+  app.get('/automations', { preHandler: requireRole('ADMIN') }, async () => {
     if (!isN8nConfigured()) {
       return {
         enabled: false,

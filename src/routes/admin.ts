@@ -54,8 +54,21 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(503, 'Database not configured');
     }
 
-    if (request.user?.id === params.id && parsed.data.isActive === false) {
-      throw new HttpError(400, 'You cannot deactivate your own account');
+    if (request.user?.id === params.id) {
+      if (parsed.data.isActive === false) {
+        throw new HttpError(400, 'You cannot deactivate your own account');
+      }
+      if (parsed.data.role === 'USER') {
+        throw new HttpError(400, 'You cannot demote your own account');
+      }
+    }
+
+    const existing = await prisma.user.findUnique({
+      where: { id: params.id },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new HttpError(404, 'User not found');
     }
 
     const updated = await prisma.user.update({
@@ -87,7 +100,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/audit', async (request) => {
     const query = request.query as { limit?: string };
     const parsed = Number.parseInt(query.limit ?? '200', 10);
-    const limit = Number.isFinite(parsed) ? Math.min(parsed, 1000) : 200;
-    return { count: getAuditLogs(limit).length, events: getAuditLogs(limit) };
+    const limit = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 1000) : 200;
+    const events = getAuditLogs(limit);
+    return { count: events.length, events };
   });
 }

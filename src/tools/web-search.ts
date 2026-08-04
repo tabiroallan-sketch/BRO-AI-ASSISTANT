@@ -1,4 +1,5 @@
 import type { Tool } from './types.js';
+import { fetchJson } from '../lib/http.js';
 
 type DuckDuckGoResponse = {
   AbstractText?: string;
@@ -19,23 +20,6 @@ type WikipediaResponse = {
 const MAX_RESULTS = 5;
 const REQUEST_TIMEOUT_MS = 8000;
 
-async function fetchJson(url: string): Promise<unknown> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { accept: 'application/json' },
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    return (await response.json()) as unknown;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function stripHtml(text: string): string {
   return text
     .replace(/<[^>]*>/g, '')
@@ -48,7 +32,7 @@ function stripHtml(text: string): string {
 
 async function duckDuckGoSearch(query: string): Promise<string> {
   const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-  const data = (await fetchJson(url)) as DuckDuckGoResponse;
+  const data = await fetchJson<DuckDuckGoResponse>(url, { timeoutMs: REQUEST_TIMEOUT_MS });
   const lines: string[] = [];
   if (data.AbstractText && data.AbstractURL) {
     lines.push(`${data.AbstractText}\nSource: ${data.AbstractURL}`);
@@ -70,7 +54,7 @@ async function duckDuckGoSearch(query: string): Promise<string> {
 
 async function wikipediaSearch(query: string): Promise<string> {
   const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=${MAX_RESULTS}&format=json&origin=*`;
-  const data = (await fetchJson(url)) as WikipediaResponse;
+  const data = await fetchJson<WikipediaResponse>(url, { timeoutMs: REQUEST_TIMEOUT_MS });
   const results = data.query?.search ?? [];
   if (results.length === 0) {
     return 'No results found.';

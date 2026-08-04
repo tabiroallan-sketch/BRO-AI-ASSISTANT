@@ -20,7 +20,7 @@ export function buildApp(): FastifyInstance {
       level: config.logLevel,
       stream: createPinoStream(config.logLevel),
     },
-    trustProxy: true,
+    trustProxy: config.trustProxy,
     bodyLimit: config.bodyLimit,
     maxParamLength: 1000,
   });

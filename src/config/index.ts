@@ -9,6 +9,22 @@ function csv(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function parseTrustProxy(value: string | undefined): FastifyTrustProxy {
+  if (value === undefined || value === '') {
+    return 'loopback';
+  }
+  if (value === 'false' || value === '0' || value === 'no') {
+    return false;
+  }
+  const hops = Number.parseInt(value, 10);
+  if (Number.isInteger(hops) && hops > 0) {
+    return hops;
+  }
+  return value;
+}
+
+type FastifyTrustProxy = boolean | number | string;
+
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3000', 10),
@@ -39,14 +55,12 @@ export const config = {
   githubClientSecret: getSecret('GITHUB_CLIENT_SECRET'),
   slackClientId: getSecret('SLACK_CLIENT_ID'),
   slackClientSecret: getSecret('SLACK_CLIENT_SECRET'),
-  discordWebhookEnabled: process.env.DISCORD_WEBHOOK_ENABLED ?? 'true',
   notionClientId: getSecret('NOTION_CLIENT_ID'),
   notionClientSecret: getSecret('NOTION_CLIENT_SECRET'),
-  whatsappToken: getSecret('WHATSAPP_TOKEN'),
-  whatsappPhoneNumberId: getSecret('WHATSAPP_PHONE_NUMBER_ID'),
   whatsappApiUrl: process.env.WHATSAPP_API_URL ?? 'https://graph.facebook.com/v18.0',
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:3001',
-  appVersion: '0.1.0',
+  appVersion: process.env.BRO_VERSION ?? '0.1.0',
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
   rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
   rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX ?? '100', 10),
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '60000', 10),
@@ -55,7 +69,9 @@ export const config = {
   maxRequestUrlLength: parseInt(process.env.MAX_REQUEST_URL_LENGTH ?? '2048', 10),
   adminEmails: csv(process.env.ADMIN_EMAILS),
   cacheTtlMs: parseInt(process.env.CACHE_TTL_MS ?? '60000', 10),
-  analyticsCacheMs: parseInt(process.env.ANALYTICS_CACHE_MS ?? '60000', 10),
+  analyticsCacheMs:
+    parseInt(process.env.ANALYTICS_CACHE_MS ?? '0', 10) ||
+    parseInt(process.env.CACHE_TTL_MS ?? '60000', 10),
   authUserCacheMs: parseInt(process.env.AUTH_USER_CACHE_MS ?? '0', 10),
   connectionPoolSize: parseInt(process.env.DATABASE_POOL_SIZE ?? '10', 10),
   poolTimeoutSeconds: parseInt(process.env.DATABASE_POOL_TIMEOUT ?? '5', 10),

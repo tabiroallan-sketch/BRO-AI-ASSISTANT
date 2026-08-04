@@ -1,5 +1,6 @@
 import { requireProviderToken } from '../integrations/access.js';
 import type { Tool } from './types.js';
+import { fetchWithTimeout } from '../lib/http.js';
 
 const NOTION_VERSION = '2022-06-28';
 
@@ -51,8 +52,9 @@ export const notionSearchPagesTool: Tool = {
     const token = await requireProviderToken(context.userId, 'notion');
     const query = typeof args.query === 'string' ? args.query.trim() : '';
     const maxResults = typeof args.maxResults === 'string' ? args.maxResults : '10';
-    const response = await fetch('https://api.notion.com/v1/search', {
+    const response = await fetchWithTimeout('https://api.notion.com/v1/search', {
       method: 'POST',
+      timeoutMs: 10_000,
       headers: notionHeaders(token),
       body: JSON.stringify({
         ...(query ? { query } : {}),
@@ -95,8 +97,9 @@ export const notionCreatePageTool: Tool = {
       throw new Error('Missing "parentId" or "title" argument');
     }
     const token = await requireProviderToken(context.userId, 'notion');
-    const response = await fetch('https://api.notion.com/v1/pages', {
+    const response = await fetchWithTimeout('https://api.notion.com/v1/pages', {
       method: 'POST',
+      timeoutMs: 10_000,
       headers: notionHeaders(token),
       body: JSON.stringify({
         parent: { type: 'page_id', page_id: parentId },

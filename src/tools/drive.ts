@@ -1,5 +1,6 @@
 import { requireProviderToken } from '../integrations/access.js';
 import type { Tool } from './types.js';
+import { fetchWithTimeout } from '../lib/http.js';
 
 type DriveFile = {
   id?: string;
@@ -36,9 +37,13 @@ export const driveListFilesTool: Tool = {
       fields: 'files(id,name,mimeType,modifiedTime)',
       ...(query ? { q: query } : {}),
     });
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
+    const response = await fetchWithTimeout(
+      `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
+      {
+        timeoutMs: 10_000,
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
     if (!response.ok) {
       throw new Error(`Google Drive request failed with status ${response.status}`);
     }

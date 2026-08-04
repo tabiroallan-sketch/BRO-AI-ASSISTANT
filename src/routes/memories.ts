@@ -9,10 +9,14 @@ const createSchema = z.object({
   category: z.string().trim().min(1).max(100).optional(),
 });
 
-const updateSchema = z.object({
-  value: z.string().trim().min(1).max(4000).optional(),
-  category: z.string().trim().min(1).max(100).nullable().optional(),
-});
+const updateSchema = z
+  .object({
+    value: z.string().trim().min(1).max(4000).optional(),
+    category: z.string().trim().min(1).max(100).nullable().optional(),
+  })
+  .refine((value) => value.value !== undefined || value.category !== undefined, {
+    message: 'Provide a value and/or category to update',
+  });
 
 export async function memoryRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);

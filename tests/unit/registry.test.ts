@@ -37,12 +37,13 @@ describe('tool registry', () => {
     ).toEqual(['alpha', 'beta']);
   });
 
-  it('overwrites a tool with the same name', () => {
+  it('refuses to overwrite a tool with the same name', () => {
     clearTools();
     registerTool(makeTool('alpha'));
-    registerTool({ ...makeTool('alpha'), description: 'Replacement' });
+    const replaced = registerTool({ ...makeTool('alpha'), description: 'Replacement' });
+    expect(replaced).toBe(false);
     expect(listTools().filter((tool) => tool.name === 'alpha')).toHaveLength(1);
-    expect(getTool('alpha')?.description).toBe('Replacement');
+    expect(getTool('alpha')?.description).toBe('Description for alpha');
   });
 
   it('unregisters tools and reports success', () => {

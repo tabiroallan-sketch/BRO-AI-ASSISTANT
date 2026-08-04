@@ -83,6 +83,15 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
       const key = `${args.where.userId_provider.userId}:${args.where.userId_provider.provider}`;
       return integrations.get(key) ?? null;
     },
+    async findMany(args: { where: { userId?: string } }): Promise<MockIntegration[]> {
+      const matches: MockIntegration[] = [];
+      for (const integration of integrations.values()) {
+        if (args.where.userId === undefined || integration.userId === args.where.userId) {
+          matches.push(integration);
+        }
+      }
+      return matches;
+    },
     async upsert(args: {
       where: { userId_provider: { userId: string; provider: string } };
       update: Partial<MockIntegration>;
@@ -251,7 +260,7 @@ describe('integrations', () => {
       headers: { authorization },
       payload: { webhookUrl: 'https://discord.com/api/webhooks/123/abc' },
     });
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(201);
     const body = JSON.parse(response.body);
     expect(body.connected).toBe(true);
 
@@ -286,7 +295,7 @@ describe('integrations', () => {
       headers: { authorization },
       payload: { token: 'wa_token', phoneNumberId: '123456789' },
     });
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(201);
 
     const list = await app.inject({
       method: 'GET',

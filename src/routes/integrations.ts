@@ -9,7 +9,11 @@ import {
   signIntegrationState,
   verifyIntegrationState,
 } from '../integrations/oauth.js';
-import { deleteIntegration, getIntegration, upsertIntegration } from '../integrations/store.js';
+import {
+  deleteIntegration,
+  listUserIntegrations,
+  upsertIntegration,
+} from '../integrations/store.js';
 
 const CONNECTED_REDIRECT = (providerId: string): string =>
   `${config.corsOrigin}/settings?integration=${encodeURIComponent(providerId)}&status=connected`;
@@ -66,25 +70,24 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
     if (!userId) {
       throw new HttpError(401, 'Unauthorized');
     }
-    const integrations = await Promise.all(
-      listProviders().map(async (provider) => {
-        const record = await getIntegration(userId, provider.id);
-        return {
-          id: provider.id,
-          label: provider.label,
-          description: provider.description,
-          type: provider.type,
-          icon: provider.icon,
-          configured: provider.oauthConfigured,
-          connected: record !== null,
-          accountName: record?.accountName ?? null,
-        };
-      }),
-    );
+    const records = await listUserIntegrations(userId);
+    const integrations = listProviders().map((provider) => {
+      const record = records.get(provider.id) ?? null;
+      return {
+        id: provider.id,
+        label: provider.label,
+        description: provider.description,
+        type: provider.type,
+        icon: provider.icon,
+        configured: provider.oauthConfigured,
+        connected: record !== null,
+        accountName: record?.accountName ?? null,
+      };
+    });
     return { integrations };
   });
 
-  app.post('/integrations/:provider', async (request) => {
+  app.post('/integrations/:provider', async (request, reply) => {
     const userId = request.user?.id;
     if (!userId) {
       throw new HttpError(401, 'Unauthorized');
@@ -107,7 +110,7 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
         accountName: 'Discord webhook',
         metadata: { kind: 'webhook' },
       });
-      return { ok: true, connected: true, accountName: 'Discord webhook' };
+      return reply.status(201).send({ ok: true, connected: true, accountName: 'Discord webhook' });
     }
 
     if (def.type === 'token') {
@@ -122,7 +125,9 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
         accountName: `Phone ${phoneNumberId}`,
         metadata: { phoneNumberId },
       });
-      return { ok: true, connected: true, accountName: `Phone ${phoneNumberId}` };
+      return reply
+        .status(201)
+        .send({ ok: true, connected: true, accountName: `Phone ${phoneNumberId}` });
     }
 
     throw new HttpError(400, 'Use the connect URL for OAuth providers');

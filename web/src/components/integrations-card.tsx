@@ -62,7 +62,7 @@ const CONFIG_FIELDS: Record<string, Field[]> = {
   ],
 };
 
-export function IntegrationsCard(): React.JSX.Element {
+export const IntegrationsCard = React.memo(function IntegrationsCard(): React.JSX.Element {
   const router = useRouter();
   const { logout } = useAuth();
   const [integrations, setIntegrations] = React.useState<IntegrationInfo[] | null>(null);
@@ -248,4 +248,4 @@ export function IntegrationsCard(): React.JSX.Element {
       </CardContent>
     </Card>
   );
-}
+});

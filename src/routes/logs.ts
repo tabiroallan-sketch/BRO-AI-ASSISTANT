@@ -1,14 +1,15 @@
 import type { FastifyInstance } from 'fastify';
-import { requireAuth } from '../lib/auth.js';
+import { requireAuth, requireRole } from '../lib/auth.js';
 import { clearLogBuffer, getRecentLogs } from '../lib/log-buffer.js';
 
 export async function logRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);
+  app.addHook('preHandler', requireRole('ADMIN'));
 
   app.get('/logs', async (request) => {
     const query = request.query as { limit?: string };
     const parsed = Number.parseInt(query.limit ?? '200', 10);
-    const limit = Number.isFinite(parsed) ? parsed : 200;
+    const limit = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 1000) : 200;
     return { logs: getRecentLogs(limit) };
   });
 

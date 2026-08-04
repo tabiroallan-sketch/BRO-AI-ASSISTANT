@@ -13,7 +13,7 @@ function deriveKey(): Buffer {
   if (cachedKey) {
     return cachedKey;
   }
-  const secret = config.integrationEncryptionKey || config.jwtSecret || '';
+  const secret = config.integrationEncryptionKey;
   if (!secret) {
     if (config.nodeEnv === 'production') {
       throw new Error(

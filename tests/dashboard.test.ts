@@ -143,11 +143,11 @@ const { mockPrisma, resetDb, registerAndLogin, getUserId, seed } = vi.hoisted(()
     },
   };
 
-  async function registerAndLogin(email: string): Promise<string> {
+  async function registerAndLogin(email: string, role: 'USER' | 'ADMIN' = 'USER'): Promise<string> {
     const user: MockUser = {
       id: randomUUID(),
       email,
-      role: 'USER',
+      role,
       isActive: true,
     };
     users.set(user.id, user);
@@ -160,7 +160,7 @@ const { mockPrisma, resetDb, registerAndLogin, getUserId, seed } = vi.hoisted(()
     sessions.set(session.id, session);
 
     const { signAccessToken } = await import('../src/lib/jwt.js');
-    return signAccessToken(user.id, user.role);
+    return signAccessToken(user.id, role);
   }
 
   function getUserId(email: string): string {
@@ -316,8 +316,11 @@ describe('dashboard endpoints', () => {
     (config as { n8nBaseUrl: string; n8nApiKey: string }).n8nApiKey = 'test-key';
   });
 
-  async function authHeaders(email: string): Promise<{ authorization: string }> {
-    const token = await registerAndLogin(email);
+  async function authHeaders(
+    email: string,
+    role: 'USER' | 'ADMIN' = 'USER',
+  ): Promise<{ authorization: string }> {
+    const token = await registerAndLogin(email, role);
     return { authorization: `Bearer ${token}` };
   }
 
@@ -346,7 +349,7 @@ describe('dashboard endpoints', () => {
 
   describe('GET /api/v1/automations', () => {
     it('returns workflow and execution status when n8n is configured', async () => {
-      const headers = await authHeaders('automations@example.com');
+      const headers = await authHeaders('automations@example.com', 'ADMIN');
 
       const response = await app.inject({ method: 'GET', url: '/api/v1/automations', headers });
       expect(response.statusCode).toBe(200);
@@ -367,7 +370,7 @@ describe('dashboard endpoints', () => {
     });
 
     it('reports disabled when n8n is not configured', async () => {
-      const headers = await authHeaders('automations-off@example.com');
+      const headers = await authHeaders('automations-off@example.com', 'ADMIN');
       (config as { n8nBaseUrl: string; n8nApiKey: string }).n8nBaseUrl = '';
       (config as { n8nBaseUrl: string; n8nApiKey: string }).n8nApiKey = '';
 
@@ -383,7 +386,7 @@ describe('dashboard endpoints', () => {
     });
 
     it('reports an error message when n8n is unreachable', async () => {
-      const headers = await authHeaders('automations-error@example.com');
+      const headers = await authHeaders('automations-error@example.com', 'ADMIN');
       failN8n = true;
 
       const response = await app.inject({ method: 'GET', url: '/api/v1/automations', headers });
@@ -466,7 +469,7 @@ describe('dashboard endpoints', () => {
 
   describe('GET /api/v1/logs', () => {
     it('returns recent log entries and supports clearing', async () => {
-      const headers = await authHeaders('logs@example.com');
+      const headers = await authHeaders('logs@example.com', 'ADMIN');
       logger.info('dashboard-test-marker');
 
       const response = await app.inject({ method: 'GET', url: '/api/v1/logs', headers });
@@ -487,7 +490,7 @@ describe('dashboard endpoints', () => {
     });
 
     it('honours the limit query parameter', async () => {
-      const headers = await authHeaders('logs-limit@example.com');
+      const headers = await authHeaders('logs-limit@example.com', 'ADMIN');
 
       const response = await app.inject({
         method: 'GET',

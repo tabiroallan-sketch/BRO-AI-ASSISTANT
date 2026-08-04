@@ -1,4 +1,4 @@
-import { getRefreshToken } from './token-store';
+import { clearTokens, getAccessToken, getRefreshToken, setTokens } from './token-store';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
 
@@ -35,6 +35,7 @@ type RequestOptions = {
   method?: string;
   body?: unknown;
   token?: string;
+  skipAuthRetry?: boolean;
 };
 
 type ErrorEnvelope = {
@@ -43,25 +44,72 @@ type ErrorEnvelope = {
   };
 };
 
+const NO_RETRY_PATHS = new Set(['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout']);
+
+let refreshPromise: Promise<AuthResponse> | null = null;
+
+function performRefresh(): Promise<AuthResponse> {
+  if (!refreshPromise) {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      refreshPromise = Promise.reject(new ApiError(401, 'No refresh token available'));
+    } else {
+      refreshPromise = request<AuthResponse>('/auth/refresh', {
+        method: 'POST',
+        body: { refreshToken },
+        skipAuthRetry: true,
+      });
+    }
+    refreshPromise.then(
+      () => {
+        refreshPromise = null;
+      },
+      () => {
+        refreshPromise = null;
+      },
+    );
+  }
+  return refreshPromise;
+}
+
+async function readResponse(response: Response): Promise<unknown> {
+  if (response.status === 204) {
+    return undefined;
+  }
+  return response.json().catch(() => null);
+}
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const token = options.token ?? getAccessToken();
   const headers: Record<string, string> = {
     'content-type': 'application/json',
   };
-  if (options.token) {
-    headers.authorization = `Bearer ${options.token}`;
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: options.method ?? 'GET',
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  const doFetch = (): Promise<Response> =>
+    fetch(`${API_BASE_URL}${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
 
-  if (response.status === 204) {
-    return undefined as T;
+  let response = await doFetch();
+
+  if (response.status === 401 && !options.skipAuthRetry && !NO_RETRY_PATHS.has(path)) {
+    try {
+      const refreshed = await performRefresh();
+      setTokens(refreshed.accessToken, refreshed.refreshToken);
+      headers.authorization = `Bearer ${refreshed.accessToken}`;
+      response = await doFetch();
+    } catch {
+      clearTokens();
+      throw new ApiError(response.status, 'Session expired');
+    }
   }
 
-  const data = (await response.json().catch(() => null)) as ErrorEnvelope | T | null;
+  const data = (await readResponse(response)) as ErrorEnvelope | T | null;
 
   if (!response.ok) {
     const message =
@@ -91,23 +139,20 @@ export function register(
 }
 
 export function refresh(): Promise<AuthResponse> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
-    return Promise.reject(new ApiError(401, 'No refresh token available'));
-  }
-  return request<AuthResponse>('/auth/refresh', {
-    method: 'POST',
-    body: { refreshToken },
-  });
+  return performRefresh();
 }
 
 export async function logout(): Promise<void> {
   const refreshToken = getRefreshToken();
   if (refreshToken) {
-    await request<void>('/auth/logout', {
-      method: 'POST',
-      body: { refreshToken },
-    });
+    try {
+      await request<void>('/auth/logout', {
+        method: 'POST',
+        body: { refreshToken },
+      });
+    } finally {
+      clearTokens();
+    }
   }
 }
 

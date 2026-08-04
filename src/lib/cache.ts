@@ -5,7 +5,26 @@ type CacheEntry = {
 };
 
 const MAX_ENTRIES = 5000;
+const EVICT_BATCH = 64;
 const store = new Map<string, CacheEntry>();
+
+function evictOldest(batch: number): void {
+  const smallest: Array<[string, number]> = [];
+  for (const [key, entry] of store) {
+    if (smallest.length < batch) {
+      smallest.push([key, entry.insertedAt]);
+      if (smallest.length === batch) {
+        smallest.sort((a, b) => a[1] - b[1]);
+      }
+    } else if (entry.insertedAt < smallest[batch - 1]![1]) {
+      smallest[batch - 1] = [key, entry.insertedAt];
+      smallest.sort((a, b) => a[1] - b[1]);
+    }
+  }
+  for (const [key] of smallest) {
+    store.delete(key);
+  }
+}
 
 function prune(now: number): void {
   if (store.size < MAX_ENTRIES) {
@@ -19,17 +38,7 @@ function prune(now: number): void {
   if (store.size < MAX_ENTRIES) {
     return;
   }
-  let oldestKey: string | null = null;
-  let oldestAt = Number.POSITIVE_INFINITY;
-  for (const [key, entry] of store) {
-    if (entry.insertedAt < oldestAt) {
-      oldestAt = entry.insertedAt;
-      oldestKey = key;
-    }
-  }
-  if (oldestKey) {
-    store.delete(oldestKey);
-  }
+  evictOldest(EVICT_BATCH);
 }
 
 export function cacheGet<T>(key: string): T | undefined {

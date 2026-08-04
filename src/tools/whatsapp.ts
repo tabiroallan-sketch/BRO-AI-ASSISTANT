@@ -1,6 +1,7 @@
 import { config } from '../config/index.js';
 import { getIntegrationRecord } from '../integrations/access.js';
 import type { Tool } from './types.js';
+import { fetchWithTimeout } from '../lib/http.js';
 
 export const whatsappSendMessageTool: Tool = {
   name: 'whatsapp_send_message',
@@ -28,8 +29,9 @@ export const whatsappSendMessageTool: Tool = {
     if (!phoneNumberId) {
       throw new Error('WhatsApp phone number ID is missing. Reconnect WhatsApp in Settings.');
     }
-    const response = await fetch(`${config.whatsappApiUrl}/${phoneNumberId}/messages`, {
+    const response = await fetchWithTimeout(`${config.whatsappApiUrl}/${phoneNumberId}/messages`, {
       method: 'POST',
+      timeoutMs: 10_000,
       headers: {
         authorization: `Bearer ${token}`,
         'content-type': 'application/json',

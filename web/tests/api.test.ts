@@ -162,4 +162,69 @@ describe('api client', () => {
 
     await expect(fetchMe('token')).rejects.toThrow('Request failed (500)');
   });
+
+  it('refreshes the access token and retries once on a 401', async () => {
+    setTokens('stale-access', 'stored-refresh');
+    const mePayload = {
+      user: { id: '1', email: 'a@b.c', displayName: null, avatarUrl: null, role: 'USER' },
+    };
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ error: { message: 'jwt expired' } }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse({ accessToken: 'new-access', refreshToken: 'new-refresh', user: {} }),
+      )
+      .mockResolvedValueOnce(jsonResponse(mePayload));
+
+    const result = await fetchMe('stale-access');
+
+    expect(result.user.email).toBe('a@b.c');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [refreshUrl] = fetchMock.mock.calls[1] as [string];
+    expect(refreshUrl).toContain('/auth/refresh');
+    const [, retryInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(retryInit.headers).toMatchObject({ authorization: 'Bearer new-access' });
+  });
+
+  it('clears tokens and throws when refresh fails after a 401', async () => {
+    setTokens('stale-access', 'bad-refresh');
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ error: { message: 'expired' } }, 401))
+      .mockResolvedValueOnce(jsonResponse({ error: { message: 'Invalid refresh token' } }, 401));
+
+    const error = await fetchMe('stale-access').catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 401, message: 'Session expired' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not attempt a refresh when login returns 401', async () => {
+    setTokens('access', 'stored-refresh');
+    fetchMock.mockResolvedValue(jsonResponse({ error: { message: 'Invalid credentials' } }, 401));
+
+    const error = await login('a@b.c', 'wrong').catch((err: unknown) => err);
+
+    expect(error).toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('dedupes concurrent 401 refreshes into a single request', async () => {
+    setTokens('stale-access', 'stored-refresh');
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ error: {} }, 401))
+      .mockResolvedValueOnce(jsonResponse({ error: {} }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse({ accessToken: 'new-access', refreshToken: 'new-refresh', user: {} }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ user: { id: '1', email: 'a@b.c' } }))
+      .mockResolvedValueOnce(jsonResponse({ providers: [] }));
+
+    await Promise.all([fetchMe('x'), fetchProviders()]);
+
+    const refreshCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('/auth/refresh'),
+    );
+    expect(refreshCalls).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
 });

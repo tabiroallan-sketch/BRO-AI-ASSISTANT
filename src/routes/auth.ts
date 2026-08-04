@@ -121,22 +121,34 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(409, 'Email already registered');
     }
 
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash: await hashPassword(password),
-        displayName,
-        role: config.adminEmails.includes(email) ? 'ADMIN' : undefined,
-      },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        avatarUrl: true,
-        role: true,
-        isActive: true,
-      },
-    });
+    let user;
+    try {
+      user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash: await hashPassword(password),
+          displayName,
+          role: config.adminEmails.includes(email) ? 'ADMIN' : undefined,
+        },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          avatarUrl: true,
+          role: true,
+          isActive: true,
+        },
+      });
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        (error as { code?: string }).code === 'P2002'
+      ) {
+        throw new HttpError(409, 'Email already registered');
+      }
+      throw error;
+    }
 
     const [accessToken, refreshToken] = await Promise.all([
       signAccessToken(user.id, user.role),

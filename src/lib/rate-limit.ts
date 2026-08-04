@@ -50,15 +50,20 @@ function inMemoryIncrement(key: string, windowMs: number): { count: number; rese
   return entry;
 }
 
-async function redisIncrement(key: string, windowMs: number): Promise<number> {
+async function redisIncrement(
+  key: string,
+  windowMs: number,
+): Promise<{ count: number; ttlMs: number }> {
   if (!redis) {
-    return 0;
+    return { count: 0, ttlMs: windowMs };
   }
   const count = await redis.incr(key);
   if (count === 1) {
     await redis.pexpire(key, windowMs);
+    return { count, ttlMs: windowMs };
   }
-  return count;
+  const ttlMs = await redis.pttl(key).catch(() => windowMs);
+  return { count, ttlMs: ttlMs > 0 ? ttlMs : windowMs };
 }
 
 export function createRateLimiter(
@@ -79,8 +84,9 @@ export function createRateLimiter(
     let resetAt: number;
     if (redis) {
       try {
-        count = await redisIncrement(cacheId, windowMs);
-        resetAt = Date.now() + windowMs;
+        const incremented = await redisIncrement(cacheId, windowMs);
+        count = incremented.count;
+        resetAt = Date.now() + incremented.ttlMs;
       } catch {
         const entry = inMemoryIncrement(cacheId, windowMs);
         count = entry.count;

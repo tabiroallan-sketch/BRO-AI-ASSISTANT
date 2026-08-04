@@ -1,5 +1,6 @@
 import { requireProviderToken } from '../integrations/access.js';
 import type { Tool } from './types.js';
+import { fetchWithTimeout } from '../lib/http.js';
 
 export const slackSendMessageTool: Tool = {
   name: 'slack_send_message',
@@ -23,8 +24,9 @@ export const slackSendMessageTool: Tool = {
       throw new Error('Missing "channel" or "text" argument');
     }
     const token = await requireProviderToken(context.userId, 'slack');
-    const response = await fetch('https://slack.com/api/chat.postMessage', {
+    const response = await fetchWithTimeout('https://slack.com/api/chat.postMessage', {
       method: 'POST',
+      timeoutMs: 10_000,
       headers: {
         authorization: `Bearer ${token}`,
         'content-type': 'application/json',

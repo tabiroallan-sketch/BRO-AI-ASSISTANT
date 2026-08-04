@@ -1,5 +1,6 @@
 import { getIntegrationRecord } from '../integrations/access.js';
 import type { Tool } from './types.js';
+import { fetchWithTimeout } from '../lib/http.js';
 
 export const discordSendMessageTool: Tool = {
   name: 'discord_send_message',
@@ -17,8 +18,9 @@ export const discordSendMessageTool: Tool = {
       throw new Error('Missing "content" argument');
     }
     const { token: webhookUrl } = await getIntegrationRecord(context.userId, 'discord');
-    const response = await fetch(`${webhookUrl}?wait=true`, {
+    const response = await fetchWithTimeout(`${webhookUrl}?wait=true`, {
       method: 'POST',
+      timeoutMs: 10_000,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ content }),
     });

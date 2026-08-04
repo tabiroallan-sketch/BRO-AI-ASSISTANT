@@ -36,21 +36,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
           setUser(current);
           setStatus('authenticated');
         }
-      } catch {
-        try {
-          const refreshed = await api.refresh();
-          const { user: current } = await api.fetchMe(refreshed.accessToken);
-          if (!cancelled) {
-            setTokens(refreshed.accessToken, refreshed.refreshToken);
-            setUser(current);
-            setStatus('authenticated');
-          }
-        } catch {
-          if (!cancelled) {
+      } catch (error) {
+        if (!cancelled) {
+          if (error instanceof api.ApiError && error.status === 401) {
             clearTokens();
             setUser(null);
-            setStatus('unauthenticated');
           }
+          setStatus('unauthenticated');
         }
       }
     }

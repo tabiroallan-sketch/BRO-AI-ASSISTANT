@@ -1,4 +1,5 @@
 import type { Tool } from './types.js';
+import { fetchJson } from '../lib/http.js';
 
 type GeocodingResponse = {
   results?: Array<{
@@ -57,20 +58,6 @@ const WEATHER_CODES: Record<number, string> = {
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-async function fetchJson(url: string): Promise<unknown> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    return (await response.json()) as unknown;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export const weatherTool: Tool = {
   name: 'get_weather',
   description:
@@ -92,14 +79,18 @@ export const weatherTool: Tool = {
     }
     try {
       const geocodingUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`;
-      const geocoding = (await fetchJson(geocodingUrl)) as GeocodingResponse;
+      const geocoding = (await fetchJson<GeocodingResponse>(geocodingUrl, {
+        timeoutMs: REQUEST_TIMEOUT_MS,
+      })) as GeocodingResponse;
       const place = geocoding.results?.[0];
       if (!place) {
         return `Could not find any location matching "${location}".`;
       }
 
       const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&timezone=auto&forecast_days=1`;
-      const forecast = (await fetchJson(forecastUrl)) as ForecastResponse;
+      const forecast = (await fetchJson<ForecastResponse>(forecastUrl, {
+        timeoutMs: REQUEST_TIMEOUT_MS,
+      })) as ForecastResponse;
       const current = forecast.current;
       if (!current) {
         return `Weather data unavailable for ${place.name}.`;

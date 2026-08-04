@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { mkdirSync } from 'node:fs';
 
 export function getSandboxRoot(): string {
@@ -9,8 +9,12 @@ export function getSandboxRoot(): string {
   return resolve(process.cwd(), 'data', 'sandbox');
 }
 
+function safeComponent(value: string): string {
+  return String(value).replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
 export function getUserSandboxDir(userId: string): string {
-  return resolve(getSandboxRoot(), userId);
+  return resolve(getSandboxRoot(), safeComponent(userId));
 }
 
 export function ensureSandboxDir(userId: string): string {
@@ -22,9 +26,8 @@ export function ensureSandboxDir(userId: string): string {
 export function resolveSandboxPath(userId: string, rawPath: string): string {
   const base = getUserSandboxDir(userId);
   const target = resolve(base, rawPath);
-  const relative = target.replace(/\\/g, '/');
-  const baseNorm = base.replace(/\\/g, '/');
-  if (relative !== baseNorm && !relative.startsWith(`${baseNorm}/`)) {
+  const rel = relative(base, target);
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     throw new Error(`Path "${rawPath}" escapes the sandbox`);
   }
   return target;

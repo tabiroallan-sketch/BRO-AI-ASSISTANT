@@ -1,4 +1,5 @@
 import { config } from '../config/index.js';
+import { fetchWithTimeout } from '../lib/http.js';
 
 export type OAuthProviderDef = {
   id: string;
@@ -53,7 +54,8 @@ function redirectUri(providerId: string): string {
 const GOOGLE_SCOPE_PREFIX = 'https://www.googleapis.com/auth';
 
 async function googleAccountName(accessToken: string): Promise<string | null> {
-  const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+  const response = await fetchWithTimeout('https://www.googleapis.com/oauth2/v3/userinfo', {
+    timeoutMs: 10_000,
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) {
@@ -169,7 +171,8 @@ const providers: ProviderDef[] = [
       });
     },
     async accountName(accessToken: string): Promise<string | null> {
-      const response = await fetch('https://api.github.com/user', {
+      const response = await fetchWithTimeout('https://api.github.com/user', {
+        timeoutMs: 10_000,
         headers: {
           authorization: `Bearer ${accessToken}`,
           accept: 'application/vnd.github+json',
@@ -225,7 +228,8 @@ const providers: ProviderDef[] = [
       });
     },
     async accountName(accessToken: string): Promise<string | null> {
-      const response = await fetch('https://slack.com/api/auth.test', {
+      const response = await fetchWithTimeout('https://slack.com/api/auth.test', {
+        timeoutMs: 10_000,
         headers: { authorization: `Bearer ${accessToken}` },
       });
       if (!response.ok) {
@@ -277,7 +281,8 @@ const providers: ProviderDef[] = [
       return new URLSearchParams();
     },
     async accountName(accessToken: string): Promise<string | null> {
-      const response = await fetch('https://api.notion.com/v1/users/me', {
+      const response = await fetchWithTimeout('https://api.notion.com/v1/users/me', {
+        timeoutMs: 10_000,
         headers: {
           authorization: `Bearer ${accessToken}`,
           'notion-version': '2022-06-28',

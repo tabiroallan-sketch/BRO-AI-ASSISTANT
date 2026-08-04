@@ -40,7 +40,8 @@ export function recordAudit(event: Omit<AuditEvent, 'id' | 'at'>): AuditEvent {
 }
 
 export function getAuditLogs(limit = 200): AuditEvent[] {
-  return events.slice(-limit).reverse();
+  const clamped = Math.min(Math.max(Math.floor(limit), 1), events.length || 1);
+  return events.slice(-clamped).reverse();
 }
 
 export function clearAuditLogs(): void {

@@ -7,9 +7,14 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'Shutting down');
-    await shutdownBrowser();
-    await app.close();
-    process.exit(0);
+    try {
+      await shutdownBrowser();
+      await app.close();
+      process.exit(0);
+    } catch (error) {
+      app.log.error({ err: error }, 'Failed to shut down cleanly');
+      process.exit(1);
+    }
   };
 
   process.on('SIGINT', () => void shutdown('SIGINT'));

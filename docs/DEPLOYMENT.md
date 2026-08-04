@@ -227,6 +227,10 @@ production:
 | `DATABASE_POOL_SIZE` / `DATABASE_POOL_TIMEOUT` | Prisma pool size (default 10) and wait timeout (5s) |
 | `CACHE_TTL_MS` / `ANALYTICS_CACHE_MS` | In-process TTL cache; analytics per-user staleness |
 | `AUTH_USER_CACHE_MS` | Cache auth user rows (`0` = off; role/isActive changes lag by TTL) |
+| `TRUST_PROXY` | `false` / `loopback` / hop count (e.g. `1`) / proxy IP or CIDR. Controls client IP detection (rate limiting, audit) and secure cookies behind a proxy. |
+| `CORS_ORIGIN` | Browser origins allowed cross-origin (default `http://localhost:3001`). Set it to your web app's public origin. |
+| `BRO_VERSION` | Version reported by `/health` and the web footer (default `0.1.0`). |
+| `LOG_LEVEL` | `trace`/`debug`/`info`/`warn`/`error`/`fatal`/`silent` (default `info`). |
 
 Secrets can also be injected via `<NAME>_FILE` (e.g. `JWT_SECRET_FILE=/run/secrets/jwt`),
 which is handy with Docker secrets or Kubernetes.

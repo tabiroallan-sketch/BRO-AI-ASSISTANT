@@ -1,6 +1,7 @@
 import { jwtVerify, SignJWT } from 'jose';
 import { config } from '../config/index.js';
-import { getProvider } from './providers.js';
+import { getProvider, type OAuthProviderDef } from './providers.js';
+import { fetchWithTimeout } from '../lib/http.js';
 
 const ALGORITHM = 'HS256';
 const encoder = new TextEncoder();
@@ -50,17 +51,15 @@ export type ProviderTokenResult = {
   scope: string | null;
 };
 
-export async function exchangeProviderCode(
-  providerId: string,
-  code: string,
-): Promise<ProviderTokenResult> {
-  const provider = getProvider(providerId);
-  if (!provider || provider.type !== 'oauth') {
-    throw new Error(`Provider "${providerId}" is not an OAuth provider`);
-  }
-  const params = provider.tokenParams(code, '');
-  const response = await fetch(provider.tokenUrl, {
+async function postTokenForm(
+  label: string,
+  tokenUrl: string,
+  params: URLSearchParams,
+  action: string,
+): Promise<Record<string, unknown>> {
+  const response = await fetchWithTimeout(tokenUrl, {
     method: 'POST',
+    timeoutMs: 10_000,
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
       accept: 'application/json',
@@ -75,18 +74,40 @@ export async function exchangeProviderCode(
         : typeof body.error === 'string'
           ? body.error
           : `status ${response.status}`;
-    throw new Error(`${provider.label} token exchange failed: ${detail}`);
+    throw new Error(`${label} token ${action} failed: ${detail}`);
   }
+  return body;
+}
+
+async function tokenResult(
+  provider: OAuthProviderDef,
+  body: Record<string, unknown>,
+  action: string,
+  refreshTokenFallback: string | null,
+): Promise<ProviderTokenResult> {
   const accessToken = provider.tokenResponseAccessToken(body);
   if (!accessToken) {
-    throw new Error(`${provider.label} token exchange returned no access token`);
+    throw new Error(`${provider.label} token ${action} returned no access token`);
   }
   return {
     accessToken,
-    refreshToken: provider.tokenResponseRefreshToken(body),
+    refreshToken: provider.tokenResponseRefreshToken(body) ?? refreshTokenFallback,
     expiresIn: provider.tokenResponseExpiresIn(body),
     scope: provider.tokenResponseScope(body),
   };
+}
+
+export async function exchangeProviderCode(
+  providerId: string,
+  code: string,
+): Promise<ProviderTokenResult> {
+  const provider = getProvider(providerId);
+  if (!provider || provider.type !== 'oauth') {
+    throw new Error(`Provider "${providerId}" is not an OAuth provider`);
+  }
+  const params = provider.tokenParams(code, '');
+  const body = await postTokenForm(provider.label, provider.tokenUrl, params, 'exchange');
+  return tokenResult(provider, body, 'exchange', null);
 }
 
 export async function refreshProviderToken(
@@ -98,34 +119,8 @@ export async function refreshProviderToken(
     throw new Error(`Refresh is not supported for provider "${providerId}"`);
   }
   const params = provider.refreshParams(refreshToken);
-  const response = await fetch(provider.tokenUrl, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      accept: 'application/json',
-    },
-    body: params.toString(),
-  });
-  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) {
-    const detail =
-      typeof body.error_description === 'string'
-        ? body.error_description
-        : typeof body.error === 'string'
-          ? body.error
-          : `status ${response.status}`;
-    throw new Error(`${provider.label} token refresh failed: ${detail}`);
-  }
-  const accessToken = provider.tokenResponseAccessToken(body);
-  if (!accessToken) {
-    throw new Error(`${provider.label} token refresh returned no access token`);
-  }
-  return {
-    accessToken,
-    refreshToken: provider.tokenResponseRefreshToken(body) ?? refreshToken,
-    expiresIn: provider.tokenResponseExpiresIn(body),
-    scope: provider.tokenResponseScope(body),
-  };
+  const body = await postTokenForm(provider.label, provider.tokenUrl, params, 'refresh');
+  return tokenResult(provider, body, 'refresh', refreshToken);
 }
 
 export async function fetchProviderAccountName(

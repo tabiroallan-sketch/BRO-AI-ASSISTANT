@@ -1,5 +1,5 @@
-import { API_BASE_URL, ApiError, request } from '@/lib/api';
-import { getAccessToken } from '@/lib/token-store';
+import { API_BASE_URL, ApiError, refresh as refreshTokens, request } from '@/lib/api';
+import { getAccessToken, setTokens } from '@/lib/token-store';
 
 export type MessageRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
 
@@ -144,18 +144,42 @@ function parseAll(text: string): StreamEvent[] {
   return events;
 }
 
+async function postChat(message: string, conversationId?: string): Promise<Response> {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    authorization: `Bearer ${getAccessToken() ?? ''}`,
+  };
+  const body = JSON.stringify({ message, ...(conversationId ? { conversationId } : {}) });
+
+  const response = await fetch(`${API_BASE_URL}/chat`, {
+    method: 'POST',
+    headers,
+    body,
+  });
+
+  if (response.status === 401) {
+    try {
+      const refreshed = await refreshTokens();
+      setTokens(refreshed.accessToken, refreshed.refreshToken);
+      headers.authorization = `Bearer ${refreshed.accessToken}`;
+      return await fetch(`${API_BASE_URL}/chat`, {
+        method: 'POST',
+        headers,
+        body,
+      });
+    } catch {
+      return response;
+    }
+  }
+
+  return response;
+}
+
 export async function streamChat(
   message: string,
   conversationId?: string,
 ): Promise<AsyncGenerator<StreamEvent>> {
-  const response = await fetch(`${API_BASE_URL}/chat`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${getAccessToken() ?? ''}`,
-    },
-    body: JSON.stringify({ message, ...(conversationId ? { conversationId } : {}) }),
-  });
+  const response = await postChat(message, conversationId);
 
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as {

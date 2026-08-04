@@ -5,27 +5,12 @@ import type { Tool } from './types.js';
 import { getPage, closeSession } from '../browser/sessions.js';
 import { browserUnavailableReason, isBrowserAvailable } from '../browser/index.js';
 import { ensureSandboxDir, resolveSandboxPath } from './sandbox.js';
+import { assertPublicHttpUrl } from '../lib/http.js';
+import { argNumber, argString, clampChars } from './args.js';
 
 function requireBrowser(): void {
   if (!isBrowserAvailable()) {
     throw new Error(browserUnavailableReason());
-  }
-}
-
-function argString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function argNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-function validUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
   }
 }
 
@@ -41,13 +26,6 @@ function sanitizeName(name: string): string {
     .trim()
     .replace(/^_+|_+$/g, '');
   return cleaned || 'download';
-}
-
-function clampChars(text: string, maxChars: number): string {
-  if (text.length <= maxChars) {
-    return text;
-  }
-  return `${text.slice(0, maxChars)}\n...[truncated, ${text.length - maxChars} more characters]`;
 }
 
 async function waitForSettle(page: Page, waitMs?: number): Promise<void> {
@@ -95,9 +73,7 @@ export const browserOpenTool: Tool = {
     if (!url) {
       throw new Error('A "url" is required, e.g. "https://example.com".');
     }
-    if (!validUrl(url)) {
-      throw new Error(`"${url}" is not a valid http(s) URL.`);
-    }
+    await assertPublicHttpUrl(url);
     requireBrowser();
     const page = await getPage(context.userId);
     await page.goto(url, {
@@ -143,9 +119,7 @@ export const browserNavigateTool: Tool = {
       if (!url) {
         throw new Error('An "url" is required when action is "goto".');
       }
-      if (!validUrl(url)) {
-        throw new Error(`"${url}" is not a valid http(s) URL.`);
-      }
+      await assertPublicHttpUrl(url);
     }
     requireBrowser();
     const page = await getPage(context.userId);
@@ -459,8 +433,8 @@ export const browserDownloadTool: Tool = {
     if (!url && !selector) {
       throw new Error('Provide either a "url" to download or a "selector" of a download link.');
     }
-    if (url && !validUrl(url)) {
-      throw new Error(`"${url}" is not a valid http(s) URL.`);
+    if (url) {
+      await assertPublicHttpUrl(url);
     }
     requireBrowser();
     const page = await getPage(context.userId);

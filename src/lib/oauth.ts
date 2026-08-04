@@ -1,4 +1,5 @@
 import { config } from '../config/index.js';
+import { fetchWithTimeout } from './http.js';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -30,8 +31,9 @@ export type GoogleTokenResponse = {
 };
 
 export async function exchangeGoogleCode(code: string): Promise<GoogleTokenResponse> {
-  const response = await fetch(GOOGLE_TOKEN_URL, {
+  const response = await fetchWithTimeout(GOOGLE_TOKEN_URL, {
     method: 'POST',
+    timeoutMs: 10_000,
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       code,
@@ -56,7 +58,8 @@ export type GoogleProfile = {
 };
 
 export async function fetchGoogleProfile(accessToken: string): Promise<GoogleProfile> {
-  const response = await fetch(GOOGLE_USERINFO_URL, {
+  const response = await fetchWithTimeout(GOOGLE_USERINFO_URL, {
+    timeoutMs: 10_000,
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) {

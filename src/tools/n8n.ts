@@ -1,4 +1,5 @@
 import type { Tool } from './types.js';
+import { argNumber, argString, clampChars } from './args.js';
 import {
   executeN8nWorkflow,
   getN8nExecution,
@@ -20,14 +21,6 @@ function requireN8n(): void {
   }
 }
 
-function argString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function argNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
 function parseVariables(raw: unknown): unknown {
   if (typeof raw !== 'string') {
     return raw ?? {};
@@ -41,13 +34,6 @@ function parseVariables(raw: unknown): unknown {
   } catch {
     return raw;
   }
-}
-
-function truncate(text: string, maxChars: number): string {
-  if (text.length <= maxChars) {
-    return text;
-  }
-  return `${text.slice(0, maxChars)}...[truncated, ${text.length - maxChars} more characters]`;
 }
 
 function workflowLine(workflow: N8nWorkflow): string {
@@ -92,7 +78,7 @@ function formatExecutionResults(execution: N8nExecution, maxItems: number): stri
             break;
           }
           if (item?.json !== undefined) {
-            lines.push(`${nodeName}: ${truncate(JSON.stringify(item.json), 600)}`);
+            lines.push(`${nodeName}: ${clampChars(JSON.stringify(item.json), 600)}`);
           }
         }
       }

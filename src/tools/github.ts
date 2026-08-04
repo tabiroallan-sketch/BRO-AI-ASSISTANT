@@ -1,5 +1,6 @@
 import { requireProviderToken } from '../integrations/access.js';
 import type { Tool } from './types.js';
+import { fetchJson } from '../lib/http.js';
 
 type GitHubRepo = {
   full_name?: string;
@@ -30,19 +31,19 @@ export const githubListReposTool: Tool = {
   },
   async execute(args, context) {
     const token = await requireProviderToken(context.userId, 'github');
-    const maxResults = typeof args.maxResults === 'string' ? args.maxResults : '10';
-    const params = new URLSearchParams({ sort: 'updated', per_page: maxResults });
-    const response = await fetch(`https://api.github.com/user/repos?${params.toString()}`, {
+    const parsed = Number.parseInt(
+      typeof args.maxResults === 'string' ? args.maxResults : '10',
+      10,
+    );
+    const maxResults = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 10;
+    const params = new URLSearchParams({ sort: 'updated', per_page: String(maxResults) });
+    const repos = await fetchJson<GitHubRepo[]>(`https://api.github.com/user/repos?${params}`, {
+      timeoutMs: 10_000,
       headers: {
         authorization: `Bearer ${token}`,
         accept: 'application/vnd.github+json',
-        'user-agent': 'bro-assistant',
       },
     });
-    if (!response.ok) {
-      throw new Error(`GitHub request failed with status ${response.status}`);
-    }
-    const repos = (await response.json()) as GitHubRepo[];
     if (repos.length === 0) {
       return 'No repositories found.';
     }
@@ -79,20 +80,16 @@ export const githubCreateIssueTool: Tool = {
     }
     const token = await requireProviderToken(context.userId, 'github');
     const body = typeof args.body === 'string' && args.body.trim() ? args.body.trim() : undefined;
-    const response = await fetch(`https://api.github.com/repos/${repo}/issues`, {
+    const issue = await fetchJson<GitHubIssue>(`https://api.github.com/repos/${repo}/issues`, {
       method: 'POST',
+      timeoutMs: 10_000,
       headers: {
         authorization: `Bearer ${token}`,
         accept: 'application/vnd.github+json',
-        'user-agent': 'bro-assistant',
         'content-type': 'application/json',
       },
       body: JSON.stringify({ title, ...(body ? { body } : {}) }),
     });
-    if (!response.ok) {
-      throw new Error(`GitHub request failed with status ${response.status}`);
-    }
-    const issue = (await response.json()) as GitHubIssue;
     return `Issue #${issue.number ?? '?'} created: "${issue.title}" (${issue.html_url ?? ''})`;
   },
 };

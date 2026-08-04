@@ -85,6 +85,27 @@ export async function getIntegration(
   };
 }
 
+export async function listUserIntegrations(
+  userId: string,
+): Promise<Map<string, IntegrationRecord>> {
+  if (!prisma) {
+    return new Map();
+  }
+  const records = await prisma.integration.findMany({
+    where: { userId },
+  });
+  return new Map(
+    records.map((record) => [
+      record.provider,
+      {
+        ...record,
+        accessToken: decryptValue(record.accessToken),
+        refreshToken: record.refreshToken ? decryptValue(record.refreshToken) : null,
+      },
+    ]),
+  );
+}
+
 export async function getValidAccessToken(
   userId: string,
   providerId: string,

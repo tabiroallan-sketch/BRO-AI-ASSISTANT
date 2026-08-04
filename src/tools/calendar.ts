@@ -1,5 +1,6 @@
 import { requireProviderToken } from '../integrations/access.js';
 import type { Tool } from './types.js';
+import { fetchWithTimeout } from '../lib/http.js';
 
 type CalendarEvent = {
   id?: string;
@@ -20,8 +21,9 @@ async function googleCalendarRequest(
   path: string,
   init: FetchInit = {},
 ): Promise<Response> {
-  return fetch(`https://www.googleapis.com/calendar/v3${path}`, {
+  return fetchWithTimeout(`https://www.googleapis.com/calendar/v3${path}`, {
     ...init,
+    timeoutMs: 10_000,
     headers: {
       authorization: `Bearer ${token}`,
       'content-type': 'application/json',

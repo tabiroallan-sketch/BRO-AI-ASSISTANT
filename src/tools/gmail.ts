@@ -1,5 +1,6 @@
 import { requireProviderToken } from '../integrations/access.js';
 import type { Tool } from './types.js';
+import { fetchWithTimeout } from '../lib/http.js';
 
 type GmailMessageHeader = { name?: string; value?: string };
 
@@ -16,8 +17,9 @@ type FetchInit = {
 };
 
 async function gmailRequest(token: string, path: string, init: FetchInit = {}): Promise<Response> {
-  return fetch(`https://gmail.googleapis.com/gmail/v1${path}`, {
+  return fetchWithTimeout(`https://gmail.googleapis.com/gmail/v1${path}`, {
     ...init,
+    timeoutMs: 10_000,
     headers: {
       authorization: `Bearer ${token}`,
       'content-type': 'application/json',

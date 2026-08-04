@@ -78,6 +78,12 @@ bro/
 | `npm run start` | Run production build |
 | `npm run test` | Run test suite |
 | `npm run test:watch` | Run tests in watch mode |
+| `npm run test:unit` | Run unit tests (`tests/unit`) |
+| `npm run test:integration` | Run integration tests (`tests/integration`) |
+| `npm run test:e2e` | Run E2E tests against a real database (`tests/e2e`, requires `TEST_E2E=1`) |
+| `npm run test:performance` | Run performance/benchmark tests (`tests/performance`) |
+| `npm run test:stress` | Run concurrency/stress tests (`tests/stress`) |
+| `npm run test:ci` | Run full suite in CI mode (`vitest run --maxWorkers=2`) |
 | `npm run lint` | Lint the codebase |
 | `npm run lint:fix` | Auto-fix linting issues |
 | `npm run format` | Format code with Prettier |

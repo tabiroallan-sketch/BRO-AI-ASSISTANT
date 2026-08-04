@@ -617,6 +617,40 @@ via `next.config.ts` `headers()`.
 The web dashboard shows an **Admin** page (visible only to `ADMIN` users) with user
 management and the audit log.
 
+## Deployment (Milestone 16)
+
+BRO ships as a containerized stack: a Fastify API (`bro`), a Next.js web app
+(`bro-web`), PostgreSQL, and Redis.
+
+```bash
+cp .env.example .env   # fill in secrets (see below)
+docker compose up -d --build
+open http://localhost:3001   # web UI
+open http://localhost:3000/docs   # Swagger API docs
+```
+
+For production (prebuilt images behind a TLS reverse proxy, resource limits,
+zero-published database ports) use the included override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull app web
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+Continuous integration and deployment workflows are included in
+`.github/workflows/` (lint → test → build → push to GHCR → SSH deploy).
+
+Guides:
+
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — full deployment guide
+  (local, production override, Caddy/TLS, CI/CD setup, troubleshooting)
+- **[docs/BACKUP.md](docs/BACKUP.md)** — Postgres/Redis/secrets backup & restore
+- **[docs/MONITORING.md](docs/MONITORING.md)** — health checks, logs, alerting
+
+Deployment-relevant variables (`NODE_ENV=production`, `ENCRYPTION_KEY`,
+`ADMIN_EMAILS`, `NEXT_PUBLIC_API_URL`, `REGISTRY`, `BRO_VERSION`, and the
+`<NAME>_FILE` secret convention) are documented in `.env.example`.
+
 ## Health Check
 
 `GET /health` — Returns the status of the application and its dependencies (database, Redis).

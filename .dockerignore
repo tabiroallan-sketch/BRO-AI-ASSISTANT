@@ -1,0 +1,17 @@
+node_modules
+dist
+web
+.github
+.git
+.env
+.env.*
+!.env.example
+*.log
+coverage
+.nyc_output
+.vscode
+.idea
+Dockerfile*
+docker-compose*.yml
+docs
+tests

@@ -33,11 +33,16 @@ export async function getBrowser(): Promise<Browser> {
   if (launchError) {
     throw new Error(launchError);
   }
-  browserPromise = chromium.launch({ headless: config.browserHeadless }).catch((error) => {
-    launchError = `Failed to launch Chromium: ${error instanceof Error ? error.message : String(error)}`;
-    browserPromise = null;
-    throw new Error(launchError);
-  });
+  browserPromise = chromium
+    .launch({
+      headless: config.browserHeadless,
+      ...(config.browserNoSandbox ? { args: ['--no-sandbox', '--disable-setuid-sandbox'] } : {}),
+    })
+    .catch((error) => {
+      launchError = `Failed to launch Chromium: ${error instanceof Error ? error.message : String(error)}`;
+      browserPromise = null;
+      throw new Error(launchError);
+    });
   return browserPromise;
 }
 

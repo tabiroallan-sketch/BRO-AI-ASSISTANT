@@ -29,6 +29,7 @@ export const config = {
   n8nApiKey: getSecret('N8N_API_KEY'),
   browserEnabled: process.env.BROWSER_ENABLED !== 'false',
   browserHeadless: process.env.BROWSER_HEADLESS !== 'false',
+  browserNoSandbox: process.env.BROWSER_NO_SANDBOX === 'true',
   browserTimeout: parseInt(process.env.BROWSER_TIMEOUT ?? '30000', 10),
   browserIdleTimeoutMs: parseInt(process.env.BROWSER_IDLE_TIMEOUT_MS ?? '600000', 10),
   integrationRedirectBase:

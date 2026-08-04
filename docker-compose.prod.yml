@@ -1,0 +1,58 @@
+# Production override. Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from the development compose file:
+#   - Pulls prebuilt images from a container registry instead of building.
+#   - Binds app/web to loopback only (put Caddy/Nginx in front with TLS).
+#   - Binds Postgres/Redis to loopback only (no public exposure).
+#   - Enforces resource limits (requires Docker Compose v2).
+#
+# Set BRO_VERSION (e.g. "sha-<commit>") and REGISTRY (e.g. "ghcr.io/your-org")
+# in your .env file. You must provide secrets via that same .env file:
+#   JWT_SECRET, JWT_REFRESH_SECRET, ENCRYPTION_KEY, ADMIN_EMAILS,
+#   OPENAI_API_KEY, OPENAI_BASE_URL, ... (see .env.example)
+
+services:
+  app:
+    image: ${REGISTRY:-ghcr.io/your-org}/bro:${BRO_VERSION:-latest}
+    build: !reset null
+    ports:
+      - '127.0.0.1:3000:3000'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: '1.0'
+
+  web:
+    image: ${REGISTRY:-ghcr.io/your-org}/bro-web:${BRO_VERSION:-latest}
+    build: !reset null
+    ports:
+      - '127.0.0.1:3001:3001'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: '0.5'
+
+  db:
+    image: postgres:16-alpine
+    ports:
+      - '127.0.0.1:5432:5432'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '127.0.0.1:6379:6379'
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m

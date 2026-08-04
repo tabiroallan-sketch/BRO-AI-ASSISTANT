@@ -18,7 +18,9 @@ services:
       - PORT=3000
       - TOOL_FS_ROOT=/app/data/sandbox
       - INTEGRATION_REDIRECT_BASE=${INTEGRATION_REDIRECT_BASE:-http://localhost:3000/api/v1/integrations}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - INTEGRATION_ENCRYPTION_KEY=${INTEGRATION_ENCRYPTION_KEY:-}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
       - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
@@ -26,6 +28,8 @@ services:
       - NOTION_CLIENT_ID=${NOTION_CLIENT_ID:-}
       - NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET:-}
       - WHATSAPP_API_URL=${WHATSAPP_API_URL:-https://graph.facebook.com/v18.0}
+      # Chromium runs as the unprivileged `node` user inside the container.
+      - BROWSER_NO_SANDBOX=true
     volumes:
       - bro_sandbox_data:/app/data
     depends_on:
@@ -33,6 +37,22 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        # Inlined at build time; the browser needs to reach this URL.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
+    ports:
+      - '3001:3001'
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    depends_on:
+      - app
     restart: unless-stopped
 
   db:

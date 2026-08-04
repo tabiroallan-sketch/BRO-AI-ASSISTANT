@@ -31,7 +31,7 @@ import {
 
 type OverviewData = {
   analytics: AnalyticsResponse;
-  automations: AutomationsResponse;
+  automations: AutomationsResponse | null;
   toolCount: number;
   pluginCount: number;
 };
@@ -67,19 +67,19 @@ function StatCard({
 
 export default function DashboardOverviewPage(): React.JSX.Element {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [data, setData] = React.useState<OverviewData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   async function load(): Promise<void> {
     try {
-      const [analytics, automations, tools, plugins] = await Promise.all([
+      const [analytics, tools, plugins] = await Promise.all([
         getAnalytics(),
-        getAutomations(),
         listTools(),
         listPlugins(),
       ]);
+      const automations = user?.role === 'ADMIN' ? await getAutomations() : null;
       setData({ analytics, automations, toolCount: tools.length, pluginCount: plugins.length });
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -94,9 +94,11 @@ export default function DashboardOverviewPage(): React.JSX.Element {
   }
 
   React.useEffect(() => {
-    void load();
+    if (user !== null) {
+      void load();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user]);
 
   if (loading) {
     return (
@@ -116,7 +118,7 @@ export default function DashboardOverviewPage(): React.JSX.Element {
   }
 
   const { analytics, automations, toolCount, pluginCount } = data;
-  const automationValue = automations.enabled ? String(automations.workflows.length) : 'Off';
+  const automationValue = automations?.enabled ? String(automations.workflows.length) : 'Off';
 
   return (
     <div>
@@ -168,13 +170,15 @@ export default function DashboardOverviewPage(): React.JSX.Element {
           hint="Extensions installed from the plugins directory"
           href="/dashboard/plugins"
         />
-        <StatCard
-          icon={Workflow}
-          title="Automations"
-          value={automationValue}
-          hint={automations.enabled ? 'n8n workflows monitored' : 'n8n not configured'}
-          href="/dashboard/automations"
-        />
+        {automations !== null && (
+          <StatCard
+            icon={Workflow}
+            title="Automations"
+            value={automationValue}
+            hint={automations.enabled ? 'n8n workflows monitored' : 'n8n not configured'}
+            href="/dashboard/automations"
+          />
+        )}
       </div>
 
       <Card className="mt-6">

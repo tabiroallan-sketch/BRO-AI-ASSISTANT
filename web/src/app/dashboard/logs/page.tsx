@@ -1,8 +1,9 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { Loader2, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
 import { DashboardPageHeader } from '@/components/dashboard-page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -57,7 +58,7 @@ function entrySummary(entry: LogEntry): string {
 
 export default function LogsPage(): React.JSX.Element {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [logs, setLogs] = React.useState<LogEntry[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<LevelFilter>('all');
@@ -78,13 +79,16 @@ export default function LogsPage(): React.JSX.Element {
   }
 
   React.useEffect(() => {
+    if (user?.role !== 'ADMIN') {
+      return;
+    }
     void load();
     const interval = window.setInterval(() => {
       void load();
     }, 5000);
     return () => window.clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.role]);
 
   async function handleClear(): Promise<void> {
     setClearing(true);
@@ -96,6 +100,25 @@ export default function LogsPage(): React.JSX.Element {
     } finally {
       setClearing(false);
     }
+  }
+
+  if (user === null || user.role !== 'ADMIN') {
+    return (
+      <div>
+        <DashboardPageHeader title="Logs" />
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 p-12 text-center">
+            <ShieldAlert className="h-8 w-8 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">
+              You do not have permission to view this page.
+            </p>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/dashboard">Back to dashboard</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const visible = logs?.filter((entry) => matchesFilter(entry, filter)) ?? [];

@@ -13,7 +13,7 @@ import { listPlugins, reloadPlugins, type PluginInfo } from '@/lib/dashboard';
 
 export default function PluginsPage(): React.JSX.Element {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [plugins, setPlugins] = React.useState<PluginInfo[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [reloading, setReloading] = React.useState(false);
@@ -71,21 +71,23 @@ export default function PluginsPage(): React.JSX.Element {
 
       <div className="mb-4 flex items-center justify-between">
         {error && <p className="text-sm text-destructive">{error}</p>}
-        <div className="ml-auto">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void handleReload()}
-            disabled={reloading}
-          >
-            {reloading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
-            )}
-            Reload plugins
-          </Button>
-        </div>
+        {user?.role === 'ADMIN' && (
+          <div className="ml-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleReload()}
+              disabled={reloading}
+            >
+              {reloading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Reload plugins
+            </Button>
+          </div>
+        )}
       </div>
 
       {plugins === null ? (

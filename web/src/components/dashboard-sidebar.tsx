@@ -26,18 +26,20 @@ const items: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: '/dashboard/accounts', label: 'Connected accounts', icon: Link2 },
   { href: '/dashboard/tools', label: 'Installed tools', icon: Wrench },
   { href: '/dashboard/plugins', label: 'Plugins', icon: Box },
-  { href: '/dashboard/automations', label: 'Automations', icon: Workflow },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/dashboard/logs', label: 'Logs', icon: ScrollText },
 ];
 
-const adminItem = { href: '/dashboard/admin', label: 'Admin', icon: ShieldCheck };
+const adminItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
+  { href: '/dashboard/automations', label: 'Automations', icon: Workflow },
+  { href: '/dashboard/logs', label: 'Logs', icon: ScrollText },
+  { href: '/dashboard/admin', label: 'Admin', icon: ShieldCheck },
+];
 
 export function DashboardSidebar(): React.JSX.Element {
   const pathname = usePathname();
   const { user } = useAuth();
 
-  const visibleItems = user?.role === 'ADMIN' ? [...items, adminItem] : items;
+  const visibleItems = user?.role === 'ADMIN' ? [...items, ...adminItems] : items;
 
   return (
     <nav className="glass flex w-full shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-2 md:flex-col md:overflow-visible">

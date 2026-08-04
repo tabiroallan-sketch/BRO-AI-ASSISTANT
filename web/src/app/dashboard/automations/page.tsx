@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2, ShieldAlert } from 'lucide-react';
 import { DashboardPageHeader } from '@/components/dashboard-page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -98,7 +98,7 @@ function ExecutionsCard({ executions }: { executions: ExecutionSummary[] }): Rea
 
 export default function AutomationsPage(): React.JSX.Element {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [data, setData] = React.useState<AutomationsResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -116,9 +116,31 @@ export default function AutomationsPage(): React.JSX.Element {
   }
 
   React.useEffect(() => {
+    if (user?.role !== 'ADMIN') {
+      return;
+    }
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.role]);
+
+  if (user === null || user.role !== 'ADMIN') {
+    return (
+      <div>
+        <DashboardPageHeader title="Automations" />
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 p-12 text-center">
+            <ShieldAlert className="h-8 w-8 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">
+              You do not have permission to view this page.
+            </p>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/dashboard">Back to dashboard</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (data === null) {
     return (

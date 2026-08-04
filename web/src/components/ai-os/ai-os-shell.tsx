@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { AiBackground } from '@/components/ai-os/background';
+import { BootSequence } from '@/components/ai-os/boot/boot-sequence';
 import { CommandConsole } from '@/components/ai-os/console/command-console';
 import { FloatingLayer } from '@/components/ai-os/floating/floating-layer';
 import { StatusToaster } from '@/components/ai-os/status/status-toaster';
@@ -68,6 +69,7 @@ export function AiOsShell({
       <StatusToaster />
       <CommandConsole />
       <StatusBar micMode={micMode} />
+      <BootSequence />
       <div className="relative z-10 mx-auto flex w-full max-w-[90rem] flex-1 flex-col gap-4 px-4 pb-6 pt-4 md:flex-row">
         {sidebar && <aside className="w-full shrink-0 md:w-56">{sidebar}</aside>}
         <main className="min-w-0 flex-1">{children}</main>

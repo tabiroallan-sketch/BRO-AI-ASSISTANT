@@ -10,6 +10,7 @@ import { HoloSphere } from './holo-sphere';
 import { NeuralNet } from './neural-net';
 import { OrbitRings } from './orbit-rings';
 import { ParticleField } from './particle-field';
+import { PerformanceGate } from './performance-gate';
 import { PostEffects } from './postprocessing';
 import { useAiState } from '@/lib/ai-state';
 import { STATE_COLORS, STATE_PARAMS } from './sphere-state';
@@ -123,6 +124,7 @@ export default function CoreScene(): React.JSX.Element {
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
     >
       <AdaptiveDpr pixelated={false} />
+      <PerformanceGate />
       <LightRig />
       <CameraRig />
       <HoloSphere />

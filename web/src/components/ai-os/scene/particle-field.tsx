@@ -112,6 +112,8 @@ export function ParticleField(): React.JSX.Element {
   const reduceMotion = useReducedMotion();
   const geometry = React.useMemo(() => buildGeometry(PARTICLE_COUNT), []);
 
+  React.useEffect(() => () => geometry.dispose(), [geometry]);
+
   const current = React.useRef({
     speed: STATE_PARAMS.idle.speed * 1.5,
     intensity: STATE_PARAMS.idle.intensity,

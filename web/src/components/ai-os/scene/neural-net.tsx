@@ -210,6 +210,14 @@ export function NeuralNet(): React.JSX.Element {
     return g;
   }, [geometry]);
 
+  React.useEffect(
+    () => () => {
+      synapseGeometry.dispose();
+      neuronGeometry.dispose();
+    },
+    [synapseGeometry, neuronGeometry],
+  );
+
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     const ai = useAiState.getState();

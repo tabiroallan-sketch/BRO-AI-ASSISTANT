@@ -2,6 +2,8 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { verifyAccessToken } from './jwt.js';
 import type { GoogleProfile, GoogleTokenResponse } from './oauth.js';
 import { prisma } from './prisma.js';
+import { cacheDelete, cacheGet, cacheSet } from './cache.js';
+import { config } from '../config/index.js';
 
 export class HttpError extends Error {
   statusCode: number;
@@ -45,6 +47,12 @@ const AUTH_USER_SELECT = {
   googleId: true,
 } as const;
 
+const authUserCacheKey = (userId: string): string => `authuser:${userId}`;
+
+export function invalidateCachedUser(userId: string): void {
+  cacheDelete(authUserCacheKey(userId));
+}
+
 export async function requireAuth(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
   const header = request.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
@@ -58,6 +66,17 @@ export async function requireAuth(request: FastifyRequest, _reply: FastifyReply)
     throw new HttpError(401, 'Invalid or expired access token');
   }
 
+  if (config.authUserCacheMs > 0) {
+    const cachedUser = cacheGet<AuthUser>(authUserCacheKey(payload.sub));
+    if (cachedUser) {
+      if (!cachedUser.isActive) {
+        throw new HttpError(401, 'Account not found or disabled');
+      }
+      request.user = cachedUser;
+      return;
+    }
+  }
+
   if (!prisma) {
     throw new HttpError(503, 'Database not configured');
   }
@@ -69,6 +88,10 @@ export async function requireAuth(request: FastifyRequest, _reply: FastifyReply)
 
   if (!user || !user.isActive) {
     throw new HttpError(401, 'Account not found or disabled');
+  }
+
+  if (config.authUserCacheMs > 0) {
+    cacheSet(authUserCacheKey(payload.sub), user, config.authUserCacheMs);
   }
 
   request.user = user;

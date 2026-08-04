@@ -140,18 +140,26 @@ export async function loadPluginsFromDisk(dir: string): Promise<PluginLoadResult
   const files = await findPluginFiles(dir);
   const result: PluginLoadResult = { loaded: [], skipped: [], failed: [] };
 
-  for (const file of files) {
-    try {
-      const outcome = await loadPluginFile(file);
-      if ('manifest' in outcome) {
-        result.loaded.push(outcome.summary);
-      } else {
-        result.skipped.push(outcome.summary.name);
+  const outcomes = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const outcome = await loadPluginFile(file);
+        return { file, outcome };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error({ err: error, file }, 'Failed to load plugin');
+        return { file, error: message };
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error({ err: error, file }, 'Failed to load plugin');
-      result.failed.push({ file, error: message });
+    }),
+  );
+
+  for (const { file, outcome, error } of outcomes) {
+    if (error) {
+      result.failed.push({ file, error });
+    } else if (outcome && 'manifest' in outcome) {
+      result.loaded.push(outcome.summary);
+    } else if (outcome) {
+      result.skipped.push(outcome.summary.name);
     }
   }
 

@@ -226,6 +226,28 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
       }
       return {};
     },
+    async deleteMany(args: {
+      where: { id?: string; userId?: string };
+    }): Promise<{ count: number }> {
+      const targets = [...conversations.values()].filter((conversation) => {
+        if (args.where.id && conversation.id !== args.where.id) {
+          return false;
+        }
+        if (args.where.userId && conversation.userId !== args.where.userId) {
+          return false;
+        }
+        return true;
+      });
+      for (const target of targets) {
+        conversations.delete(target.id);
+        for (const [id, message] of messages) {
+          if (message.conversationId === target.id) {
+            messages.delete(id);
+          }
+        }
+      }
+      return { count: targets.length };
+    },
   };
 
   const messageModel = {

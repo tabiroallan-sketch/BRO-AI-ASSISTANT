@@ -143,6 +143,25 @@ docker run -d --name caddy \
 > time**, rebuild the `bro-web` image with the correct argument (the CD
 > workflow does this automatically via `vars.NEXT_PUBLIC_API_URL`).
 
+### No-buffer for the chat stream
+
+`POST /api/v1/chat` is a server-sent-event stream; the client shows tokens as
+they arrive. Any proxy in front of the API must **not buffer** that route or
+chat will appear to "hang" until the whole answer is ready. Caddy flushes by
+default for `text/event-stream`; if you see buffering, add:
+
+```
+handle /api/v1/chat* {
+    reverse_proxy 127.0.0.1:3000 {
+        flush_interval -1
+    }
+}
+```
+
+For nginx, add `proxy_buffering off;` (and `proxy_cache off;`) to the
+`/api/v1/chat` location. The API already sends `Cache-Control: no-cache,
+no-transform` and `X-Accel-Buffering: no` on this route.
+
 ### Updates
 
 ```bash
@@ -205,9 +224,25 @@ production:
 | `REDIS_URL`               | Redis connection string                                     |
 | `OPENAI_API_KEY`/`BASE_URL`/`MODEL` | Chat backend                                   |
 | `INTEGRATION_REDIRECT_BASE` | Public base for OAuth callbacks                          |
+| `DATABASE_POOL_SIZE` / `DATABASE_POOL_TIMEOUT` | Prisma pool size (default 10) and wait timeout (5s) |
+| `CACHE_TTL_MS` / `ANALYTICS_CACHE_MS` | In-process TTL cache; analytics per-user staleness |
+| `AUTH_USER_CACHE_MS` | Cache auth user rows (`0` = off; role/isActive changes lag by TTL) |
 
 Secrets can also be injected via `<NAME>_FILE` (e.g. `JWT_SECRET_FILE=/run/secrets/jwt`),
 which is handy with Docker secrets or Kubernetes.
+
+### Performance notes
+
+- The analytics endpoint is cached per user for `ANALYTICS_CACHE_MS` (60s by
+  default) in a process-local TTL cache (bounded ~5000 entries, evicted when
+  expired or full). Cache is lost on restart and is **not** shared between
+  replicas; see `docs/BACKUP.md` for what that means for state.
+- `requireAuth` can cache user rows when `AUTH_USER_CACHE_MS > 0`; admin updates
+  and login-time admin promotion invalidate the cached row. Keep it `0` unless
+  your read:write ratio justifies slightly stale role/active state.
+- Plugins load in parallel at boot; `DATABASE_POOL_SIZE` bounds Postgres
+  connections per instance. For many replicas behind one database, lower it
+  (e.g. 2–4) and rely on the Redis-backed rate limiter rather than memory.
 
 ## Troubleshooting
 

@@ -130,12 +130,10 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(503, 'Database not configured');
     }
 
-    const existing = await prisma.memory.findFirst({ where: { id, userId } });
-    if (!existing) {
+    const deleted = await prisma.memory.deleteMany({ where: { id, userId } });
+    if (deleted.count === 0) {
       throw new HttpError(404, 'Memory not found');
     }
-
-    await prisma.memory.delete({ where: { id } });
     return reply.status(204).send();
   });
 }

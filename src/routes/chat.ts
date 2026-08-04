@@ -2,9 +2,9 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
   aiConfigured,
-  completeChat,
+  streamChatCompletion,
   type AiChatMessage,
-  type AiCompletionResult,
+  type AiStreamEvent,
   type AiTool,
   type AiToolCall,
 } from '../lib/ai.js';
@@ -107,43 +107,39 @@ function parseToolArguments(raw: string): Record<string, unknown> {
   }
 }
 
-function chunkText(text: string, size = 64): string[] {
-  if (!text) {
-    return [];
-  }
-  if (text.length <= size) {
-    return [text];
-  }
-  const chunks: string[] = [];
-  let current = '';
-  for (const word of text.split(/\s+/)) {
-    if (current && current.length + 1 + word.length > size) {
-      chunks.push(current);
-      current = word;
-    } else {
-      current = current ? `${current} ${word}` : word;
-    }
-  }
-  if (current) {
-    chunks.push(current);
-  }
-  return chunks;
-}
-
 async function runModel(
   messages: AiChatMessage[],
   tools: AiTool[],
-  signal?: AbortSignal,
-): Promise<AiCompletionResult> {
+  signal: AbortSignal,
+  onContent: (delta: string) => void,
+): Promise<{ content: string; toolCalls: AiToolCall[] }> {
+  let content = '';
+  let toolCalls: AiToolCall[] = [];
+
+  async function consume(events: AsyncGenerator<AiStreamEvent>): Promise<void> {
+    for await (const event of events) {
+      if (event.type === 'content') {
+        content += event.content;
+        onContent(event.content);
+      } else {
+        toolCalls = event.toolCalls;
+      }
+    }
+  }
+
   try {
-    return await completeChat(messages, tools, signal);
+    await consume(streamChatCompletion(messages, tools, signal));
   } catch (error) {
     // Some providers reject the tools array; fall back to a plain completion.
     if (tools.length > 0) {
-      return await completeChat(messages, [], signal);
+      toolCalls = [];
+      await consume(streamChatCompletion(messages, [], signal));
+    } else {
+      throw error;
     }
-    throw error;
   }
+
+  return { content, toolCalls };
 }
 
 async function executeTool(
@@ -233,7 +229,12 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const tools: AiTool[] = listTools().map(toAiTool);
 
       for (let round = 0; round <= TOOL_CALL_LIMIT; round += 1) {
-        const { content, toolCalls } = await runModel(aiMessages, tools, abortController.signal);
+        const { content, toolCalls } = await runModel(
+          aiMessages,
+          tools,
+          abortController.signal,
+          (delta) => sendEvent(reply, { type: 'delta', content: delta }),
+        );
         if (toolCalls.length === 0) {
           full = content;
           break;
@@ -259,9 +260,6 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       }
 
       full = sanitizeOutputText(full);
-      for (const delta of chunkText(full)) {
-        sendEvent(reply, { type: 'delta', content: delta });
-      }
 
       const assistantMessage = await prisma.message.create({
         data: { conversationId: conversation, role: 'ASSISTANT', content: full },

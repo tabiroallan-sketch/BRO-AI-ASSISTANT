@@ -122,7 +122,18 @@ docker compose events --filter event=oom
 - **Failed logins**: `401` from `/api/v1/auth/login` plus register events are
   all in the audit log.
 
-## 6. Alerting suggestions
+## 6. Cache awareness
+
+- `GET /api/v1/analytics` is served from a process-local TTL cache for up to
+  `ANALYTICS_CACHE_MS` (default 60s). When investigating activity numbers, a
+  fresh message may not appear until the TTL passes.
+- If `AUTH_USER_CACHE_MS > 0`, role/active-state changes can lag by that TTL
+  (admin updates and login promotion invalidate immediately).
+- Both caches are in-memory and reset on container restart, so a restart also
+  resets any metric you might derive from them. Keep TTLs small (minutes) to
+  limit stale data.
+
+## 7. Alerting suggestions
 
 | Condition                          | Severity | Recommended check                          |
 |------------------------------------|----------|--------------------------------------------|
@@ -133,7 +144,7 @@ docker compose events --filter event=oom
 | `ENCRYPTION_KEY` missing in prod   | critical | startup fails fast by design — log will show |
 | Unexpected `admin.user.update`     | warning  | poll `/api/v1/admin/audit`                 |
 
-## 7. Operational routines
+## 8. Operational routines
 
 - **Daily** — glance at `docker compose ps`, disk usage, and the audit log.
 - **Weekly** — review error-level logs for recurring failures.

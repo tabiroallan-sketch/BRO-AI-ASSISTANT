@@ -1,8 +1,26 @@
 import type { FastifyInstance } from 'fastify';
 import { HttpError, requireAuth } from '../lib/auth.js';
+import { cacheGet, cacheSet } from '../lib/cache.js';
+import { config } from '../config/index.js';
 import { prisma } from '../lib/prisma.js';
 
 const ACTIVITY_DAYS = 14;
+
+type AnalyticsTotals = {
+  conversations: number;
+  memories: number;
+  integrations: number;
+  notifications: number;
+  messages: number;
+};
+
+type AnalyticsResponse = {
+  totals: AnalyticsTotals;
+  messagesByRole: { user: number; assistant: number };
+  daily: { date: string; count: number }[];
+};
+
+const analyticsCacheKey = (userId: string): string => `analytics:${userId}`;
 
 export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);
@@ -14,6 +32,12 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.user?.id;
     if (!userId) {
       throw new HttpError(401, 'Unauthorized');
+    }
+
+    const cacheKey = analyticsCacheKey(userId);
+    const cached = cacheGet<AnalyticsResponse>(cacheKey);
+    if (cached) {
+      return cached;
     }
 
     const [
@@ -56,7 +80,7 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
       daily.push({ date: key, count: byDay.get(key) ?? 0 });
     }
 
-    return {
+    const result: AnalyticsResponse = {
       totals: {
         conversations: conversationCount,
         memories: memoryCount,
@@ -67,5 +91,8 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
       messagesByRole: { user: userMessages, assistant: assistantMessages },
       daily,
     };
+
+    cacheSet(cacheKey, result, config.analyticsCacheMs);
+    return result;
   });
 }

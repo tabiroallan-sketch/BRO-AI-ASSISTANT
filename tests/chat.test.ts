@@ -285,28 +285,31 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = 
   };
 });
 
-const { mockAiConfigured, mockCompleteChat } = vi.hoisted(() => ({
+const { mockAiConfigured, mockStreamChatCompletion } = vi.hoisted(() => ({
   mockAiConfigured: vi.fn<() => boolean>(),
-  mockCompleteChat: vi.fn<
+  mockStreamChatCompletion: vi.fn<
     (
       messages: unknown[],
       tools?: unknown[],
-    ) => Promise<{
-      content: string;
-      toolCalls: {
-        id: string;
-        name: string;
-        arguments: string;
-        extraContent?: Record<string, unknown>;
-      }[];
-    }>
+    ) => AsyncGenerator<
+      | { type: 'content'; content: string }
+      | {
+          type: 'tool_calls';
+          toolCalls: {
+            id: string;
+            name: string;
+            arguments: string;
+            extraContent?: Record<string, unknown>;
+          }[];
+        }
+    >
   >(),
 }));
 
 vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }));
 vi.mock('../src/lib/ai.js', () => ({
   aiConfigured: mockAiConfigured,
-  completeChat: mockCompleteChat,
+  streamChatCompletion: mockStreamChatCompletion,
 }));
 
 describe('chat', () => {
@@ -325,8 +328,10 @@ describe('chat', () => {
   beforeEach(() => {
     resetDb();
     mockAiConfigured.mockReturnValue(true);
-    mockCompleteChat.mockReset();
-    mockCompleteChat.mockImplementation(async () => ({ content: 'Hello world', toolCalls: [] }));
+    mockStreamChatCompletion.mockReset();
+    mockStreamChatCompletion.mockImplementation(async function* () {
+      yield { type: 'content', content: 'Hello world' };
+    });
   });
 
   async function authHeaders(email: string): Promise<{ authorization: string }> {
@@ -369,8 +374,8 @@ describe('chat', () => {
     expect(done.message.content).toBe('Hello world');
     expect(done.message.role).toBe('ASSISTANT');
 
-    expect(mockCompleteChat).toHaveBeenCalledTimes(1);
-    const aiMessages = mockCompleteChat.mock.calls[0]![0] as {
+    expect(mockStreamChatCompletion).toHaveBeenCalledTimes(1);
+    const aiMessages = mockStreamChatCompletion.mock.calls[0]![0] as {
       role: string;
       content: string;
     }[];
@@ -425,7 +430,7 @@ describe('chat', () => {
     expect(conversation.messages[0].content).toBe('First message');
     expect(conversation.messages[2].content).toBe('Second message');
 
-    const historyCall = mockCompleteChat.mock.calls[1]![0] as {
+    const historyCall = mockStreamChatCompletion.mock.calls[1]![0] as {
       role: string;
       content: string;
     }[];
@@ -454,7 +459,10 @@ describe('chat', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    const aiMessages = mockCompleteChat.mock.calls[0]![0] as { role: string; content: string }[];
+    const aiMessages = mockStreamChatCompletion.mock.calls[0]![0] as {
+      role: string;
+      content: string;
+    }[];
     expect(aiMessages[0]!.role).toBe('system');
     expect(aiMessages[0]!.content).toContain('- name: Alice');
     expect(aiMessages[0]!.content).toContain('- timezone: Europe/Berlin');
@@ -531,19 +539,23 @@ describe('chat', () => {
 
   it('executes a tool call and streams the final answer', async () => {
     const headers = await authHeaders('tools@example.com');
-    mockCompleteChat
-      .mockResolvedValueOnce({
-        content: '',
-        toolCalls: [
-          {
-            id: 'call_1',
-            name: 'echo',
-            arguments: '{"text":"hi"}',
-            extraContent: { google: { thought_signature: 'sig-abc' } },
-          },
-        ],
+    mockStreamChatCompletion
+      .mockImplementationOnce(async function* () {
+        yield {
+          type: 'tool_calls',
+          toolCalls: [
+            {
+              id: 'call_1',
+              name: 'echo',
+              arguments: '{"text":"hi"}',
+              extraContent: { google: { thought_signature: 'sig-abc' } },
+            },
+          ],
+        };
       })
-      .mockResolvedValueOnce({ content: 'hi', toolCalls: [] });
+      .mockImplementationOnce(async function* () {
+        yield { type: 'content', content: 'hi' };
+      });
 
     const response = await app.inject({
       method: 'POST',
@@ -571,8 +583,8 @@ describe('chat', () => {
     const done = events[events.length - 1]!;
     expect(done.message?.content).toBe('hi');
 
-    expect(mockCompleteChat).toHaveBeenCalledTimes(2);
-    const secondCall = mockCompleteChat.mock.calls[1]![0] as {
+    expect(mockStreamChatCompletion).toHaveBeenCalledTimes(2);
+    const secondCall = mockStreamChatCompletion.mock.calls[1]![0] as {
       role: string;
       content: string | null;
       tool_call_id?: string;
@@ -602,12 +614,16 @@ describe('chat', () => {
 
   it('feeds an unknown tool back as an error result', async () => {
     const headers = await authHeaders('unknowntool@example.com');
-    mockCompleteChat
-      .mockResolvedValueOnce({
-        content: '',
-        toolCalls: [{ id: 'call_2', name: 'nope', arguments: '{}' }],
+    mockStreamChatCompletion
+      .mockImplementationOnce(async function* () {
+        yield {
+          type: 'tool_calls',
+          toolCalls: [{ id: 'call_2', name: 'nope', arguments: '{}' }],
+        };
       })
-      .mockResolvedValueOnce({ content: 'done', toolCalls: [] });
+      .mockImplementationOnce(async function* () {
+        yield { type: 'content', content: 'done' };
+      });
 
     const response = await app.inject({
       method: 'POST',
@@ -622,7 +638,7 @@ describe('chat', () => {
     expect(toolResult).toMatchObject({ name: 'nope', ok: false });
     expect(toolResult?.output).toContain('unknown tool');
 
-    const secondCall = mockCompleteChat.mock.calls[1]![0] as {
+    const secondCall = mockStreamChatCompletion.mock.calls[1]![0] as {
       role: string;
       content: string;
     }[];
@@ -631,12 +647,16 @@ describe('chat', () => {
 
   it('uses a real tool to compute arithmetic', async () => {
     const headers = await authHeaders('calc@example.com');
-    mockCompleteChat
-      .mockResolvedValueOnce({
-        content: '',
-        toolCalls: [{ id: 'call_3', name: 'calculate', arguments: '{"expression":"6 * 7"}' }],
+    mockStreamChatCompletion
+      .mockImplementationOnce(async function* () {
+        yield {
+          type: 'tool_calls',
+          toolCalls: [{ id: 'call_3', name: 'calculate', arguments: '{"expression":"6 * 7"}' }],
+        };
       })
-      .mockResolvedValueOnce({ content: '42', toolCalls: [] });
+      .mockImplementationOnce(async function* () {
+        yield { type: 'content', content: '42' };
+      });
 
     const response = await app.inject({
       method: 'POST',
@@ -654,10 +674,12 @@ describe('chat', () => {
 
   it('stops after the maximum number of tool rounds', async () => {
     const headers = await authHeaders('loop@example.com');
-    mockCompleteChat.mockImplementation(async () => ({
-      content: '',
-      toolCalls: [{ id: 'call_x', name: 'echo', arguments: '{"text":"x"}' }],
-    }));
+    mockStreamChatCompletion.mockImplementation(async function* () {
+      yield {
+        type: 'tool_calls',
+        toolCalls: [{ id: 'call_x', name: 'echo', arguments: '{"text":"x"}' }],
+      };
+    });
 
     const response = await app.inject({
       method: 'POST',
@@ -670,6 +692,6 @@ describe('chat', () => {
     const events = parseEvents(response);
     expect(events[events.length - 1]!.type).toBe('done');
     expect(events.filter((event) => event.type === 'tool_start')).toHaveLength(5);
-    expect(mockCompleteChat).toHaveBeenCalledTimes(6);
+    expect(mockStreamChatCompletion).toHaveBeenCalledTimes(6);
   });
 });

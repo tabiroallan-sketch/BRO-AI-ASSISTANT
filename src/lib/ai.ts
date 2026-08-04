@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import type {
   ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionCreateParamsStreaming,
   ChatCompletionMessageFunctionToolCall,
   ChatCompletionMessageParam,
   ChatCompletionMessageToolCall,
@@ -37,38 +38,77 @@ export type AiCompletionResult = {
   toolCalls: AiToolCall[];
 };
 
+export type AiStreamEvent =
+  { type: 'content'; content: string } | { type: 'tool_calls'; toolCalls: AiToolCall[] };
+
 export function aiConfigured(): boolean {
   return config.openaiApiKey.length > 0;
 }
+
+let cachedClient: { client: OpenAI; apiKey: string; baseUrl: string } | null = null;
 
 function openaiClient(): OpenAI {
   if (!aiConfigured()) {
     throw new Error('OpenAI is not configured');
   }
-  return new OpenAI({
-    apiKey: config.openaiApiKey,
-    ...(config.openaiBaseUrl ? { baseURL: config.openaiBaseUrl } : {}),
+  const apiKey = config.openaiApiKey;
+  const baseUrl = config.openaiBaseUrl ?? '';
+  if (cachedClient && cachedClient.apiKey === apiKey && cachedClient.baseUrl === baseUrl) {
+    return cachedClient.client;
+  }
+  const client = new OpenAI({
+    apiKey,
+    ...(baseUrl ? { baseURL: baseUrl } : {}),
   });
+  cachedClient = { client, apiKey, baseUrl };
+  return client;
 }
 
 export async function* streamChatCompletion(
   messages: AiChatMessage[],
+  tools: AiTool[],
   signal?: AbortSignal,
-): AsyncGenerator<string> {
+): AsyncGenerator<AiStreamEvent> {
+  const params: ChatCompletionCreateParamsStreaming = {
+    model: config.openaiModel,
+    messages: toWireMessages(messages),
+    stream: true,
+    ...(tools.length > 0 ? { tools: tools as unknown as ChatCompletionTool[] } : {}),
+  };
   const stream = await openaiClient().chat.completions.create(
-    {
-      model: config.openaiModel,
-      messages: toWireMessages(messages),
-      stream: true,
-    },
+    params,
     signal ? { signal } : undefined,
   );
 
+  const toolCallAccumulators = new Map<number, { id: string; name: string; arguments: string }>();
   for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta?.content;
-    if (delta) {
-      yield delta;
+    const delta = chunk.choices[0]?.delta;
+    if (delta?.content) {
+      yield { type: 'content', content: delta.content };
     }
+    for (const call of delta?.tool_calls ?? []) {
+      const index = call.index ?? 0;
+      const accumulator = toolCallAccumulators.get(index) ?? { id: '', name: '', arguments: '' };
+      if (call.id) {
+        accumulator.id = call.id;
+      }
+      if (call.function?.name) {
+        accumulator.name += call.function.name;
+      }
+      if (call.function?.arguments) {
+        accumulator.arguments += call.function.arguments;
+      }
+      toolCallAccumulators.set(index, accumulator);
+    }
+  }
+
+  if (toolCallAccumulators.size > 0) {
+    const toolCalls: AiToolCall[] = [...toolCallAccumulators.entries()].map(([index, call]) => ({
+      id: call.id || `call_${index}`,
+      name: call.name,
+      arguments: call.arguments,
+    }));
+    yield { type: 'tool_calls', toolCalls };
   }
 }
 

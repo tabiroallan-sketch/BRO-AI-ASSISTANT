@@ -161,12 +161,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(503, 'Database not configured');
     }
 
-    const existing = await prisma.conversation.findFirst({ where: { id, userId } });
-    if (!existing) {
+    const deleted = await prisma.conversation.deleteMany({ where: { id, userId } });
+    if (deleted.count === 0) {
       throw new HttpError(404, 'Conversation not found');
     }
-
-    await prisma.conversation.delete({ where: { id } });
     return reply.status(204).send();
   });
 }

@@ -139,10 +139,12 @@ is set.
 
 `POST /api/v1/chat` — Send a `message` (and optional `conversationId`) and receive a
 server-sent-event (SSE) stream of `start`, `tool_start`, `tool_result`, `delta`,
-`done`, and `error` events. Conversations are titled automatically from the first
-message; the last 30 messages are sent as history. Up to 100 of the user's long-term
-memories are appended to the system prompt, so the assistant can answer from stored
-facts about the user.
+`done`, and `error` events. The model's answer is streamed as `delta` events in
+near real-time (token-by-token) instead of being buffered until completion, so
+the web UI shows text as it is generated. Conversations are titled automatically
+from the first message; the last 30 messages are sent as history. Up to 100 of
+the user's long-term memories are appended to the system prompt, so the assistant
+can answer from stored facts about the user.
 
 ## Tool Framework
 
@@ -416,6 +418,51 @@ and Logs. Each page is backed by an authenticated endpoint:
 - `DELETE /api/v1/logs` — Clears the in-memory log buffer. Returns `204`.
 
 All dashboard endpoints require `Authorization: Bearer <accessToken>`.
+
+## Performance & Caching
+
+### Streaming
+
+`POST /api/v1/chat` uses the provider's streaming API directly: `delta` events are
+written to the client as tokens arrive, and tool rounds stream `tool_start` /
+`tool_result` events between model calls. Only the final assistant message is
+persisted. Because responses stream through a hijacked socket, **reverse proxies
+must not buffer the response** — see the no-buffer note under Deployment.
+
+### In-process TTL cache
+
+`src/lib/cache.ts` is a small bounded TTL cache (a `Map`, max ~5000 entries,
+expired/oldest entries evicted) used for read-mostly, quickly-changing data:
+
+- **Analytics** (`GET /api/v1/analytics`) — the six count queries plus the
+  14-day activity scan are cached per user for `ANALYTICS_CACHE_MS` (default
+  60s). Cached analytics are stale until expiry, so a brand-new message may not
+  appear in the chart until the TTL passes.
+- **Authenticated users** — `requireAuth` can cache the user row for
+  `AUTH_USER_CACHE_MS` (default `0`, disabled). When enabled, role/`isActive`
+  changes apply after the TTL; admin updates and admin-promotion on login
+  invalidate the cached row immediately.
+
+The cache is process-local and lost on restart (nothing to back up). It is NOT a
+shared cross-instance cache; for horizontal scaling, put a Redis in front (the
+analytics key is `analytics:<userId>`, the user key is `authuser:<userId>`).
+
+### Database
+
+- Foreign-key indexes were added (migration `20260804090000_add_relationship_indexes`)
+  on `accounts`, `sessions`, `conversations`, `messages`, `memories`,
+  `integrations`, and `notifications` `userId`/`conversationId` columns so counts,
+  history loads, and deletes are index scans.
+- Deletes (`DELETE /conversations/:id`, `DELETE /memories/:id`) now run a single
+  `deleteMany` guarded by ownership (`{ id, userId }`) instead of two round trips.
+- The Prisma pool is sized with `DATABASE_POOL_SIZE` (Postgres
+  `connection_limit`, default 10) and `DATABASE_POOL_TIMEOUT` (default 5s). Lower
+  the pool size when running several replicas against one Postgres.
+
+### Startup
+
+- Plugins are imported and `setup`-ed **in parallel** (results are still reported
+  in scan order), so many plugins add little boot time.
 
 ## Plugin System
 

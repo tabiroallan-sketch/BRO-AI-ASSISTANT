@@ -2,7 +2,14 @@ import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config/index.js';
-import { HttpError, requireAuth, upsertGoogleUser, type AuthUser, type Role } from '../lib/auth.js';
+import {
+  HttpError,
+  invalidateCachedUser,
+  requireAuth,
+  upsertGoogleUser,
+  type AuthUser,
+  type Role,
+} from '../lib/auth.js';
 import { recordAudit } from '../lib/audit.js';
 import {
   generateRefreshToken,
@@ -91,6 +98,7 @@ async function ensureAdminRole(user: AuthUser): Promise<AuthUser> {
         isActive: true,
       },
     });
+    invalidateCachedUser(updated.id);
     return updated;
   }
   return user;

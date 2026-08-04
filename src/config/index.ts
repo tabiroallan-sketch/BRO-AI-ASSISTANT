@@ -54,6 +54,11 @@ export const config = {
   bodyLimit: parseInt(process.env.BODY_LIMIT_BYTES ?? '1048576', 10),
   maxRequestUrlLength: parseInt(process.env.MAX_REQUEST_URL_LENGTH ?? '2048', 10),
   adminEmails: csv(process.env.ADMIN_EMAILS),
+  cacheTtlMs: parseInt(process.env.CACHE_TTL_MS ?? '60000', 10),
+  analyticsCacheMs: parseInt(process.env.ANALYTICS_CACHE_MS ?? '60000', 10),
+  authUserCacheMs: parseInt(process.env.AUTH_USER_CACHE_MS ?? '0', 10),
+  connectionPoolSize: parseInt(process.env.DATABASE_POOL_SIZE ?? '10', 10),
+  poolTimeoutSeconds: parseInt(process.env.DATABASE_POOL_TIMEOUT ?? '5', 10),
   logLevel: (process.env.LOG_LEVEL ?? 'info') as
     'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent',
   pluginsDir: process.env.PLUGINS_DIR ?? path.join(process.cwd(), 'plugins'),

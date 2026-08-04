@@ -70,6 +70,14 @@ docker compose exec redis redis-cli SAVE
 docker compose cp redis:/data/dump.rdb ./backups/redis-dump.rdb
 ```
 
+> Redis is currently used only for rate-limit windows and the rate limiter
+> falls back to in-memory storage. The analytics / auth-user caches
+> (`ANALYTICS_CACHE_MS`, `AUTH_USER_CACHE_MS`) are **process-local in-memory
+> TTL caches** — they are never persisted, are lost on restart, and are not
+> stored in Postgres or Redis, so there is nothing extra to back up. The
+> trade-off is that cached data is stale until its TTL expires and caches are
+> not shared between replicas; a replica restart simply rebuilds them.
+
 ## Automating backups
 
 A cron job on the host (e.g. daily at 02:00) plus a retention policy:

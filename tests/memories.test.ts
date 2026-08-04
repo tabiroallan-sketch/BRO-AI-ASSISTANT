@@ -226,6 +226,23 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
       }
       return memory ?? ({} as MockMemory);
     },
+    async deleteMany(args: {
+      where: { id?: string; userId?: string };
+    }): Promise<{ count: number }> {
+      const targets = [...memories.values()].filter((memory) => {
+        if (args.where.id && memory.id !== args.where.id) {
+          return false;
+        }
+        if (args.where.userId && memory.userId !== args.where.userId) {
+          return false;
+        }
+        return true;
+      });
+      for (const target of targets) {
+        memories.delete(target.id);
+      }
+      return { count: targets.length };
+    },
   };
 
   async function registerAndLogin(email: string): Promise<string> {

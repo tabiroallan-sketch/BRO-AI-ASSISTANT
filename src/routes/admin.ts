@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { HttpError, requireAuth, requireRole, type Role } from '../lib/auth.js';
+import {
+  HttpError,
+  invalidateCachedUser,
+  requireAuth,
+  requireRole,
+  type Role,
+} from '../lib/auth.js';
 import { getAuditLogs, recordAudit } from '../lib/audit.js';
 import { prisma } from '../lib/prisma.js';
 
@@ -63,6 +69,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         isActive: true,
       },
     });
+
+    invalidateCachedUser(updated.id);
 
     recordAudit({
       actorId: request.user?.id,

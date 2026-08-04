@@ -7,6 +7,7 @@ import { useReducedMotion } from 'framer-motion';
 import { EnergyPulses } from './energy-pulses';
 import { HoloSphere } from './holo-sphere';
 import { OrbitRings } from './orbit-rings';
+import { ParticleField } from './particle-field';
 
 const NEON_CYAN = '#22d3ee';
 const NEON_BLUE = '#3b82f6';
@@ -60,6 +61,7 @@ export default function CoreScene(): React.JSX.Element {
       <HoloSphere />
       <OrbitRings />
       <EnergyPulses />
+      <ParticleField />
     </Canvas>
   );
 }

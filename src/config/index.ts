@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'node:path';
 
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
@@ -41,4 +42,5 @@ export const config = {
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '60000', 10),
   logLevel: (process.env.LOG_LEVEL ?? 'info') as
     'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent',
+  pluginsDir: process.env.PLUGINS_DIR ?? path.join(process.cwd(), 'plugins'),
 } as const;

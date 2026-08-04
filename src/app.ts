@@ -8,6 +8,7 @@ import { config } from './config/index.js';
 import { createPinoStream } from './config/logging.js';
 import { prisma } from './lib/prisma.js';
 import { redis } from './lib/redis.js';
+import { loadPluginsFromDisk } from './plugins/index.js';
 import { appRoutes } from './routes/index.js';
 import './tools/index.js';
 
@@ -56,6 +57,18 @@ export function buildApp(): FastifyInstance {
   });
 
   app.register(appRoutes);
+
+  app.addHook('onReady', async () => {
+    const result = await loadPluginsFromDisk(config.pluginsDir);
+    app.log.info(
+      {
+        loaded: result.loaded.map((plugin) => plugin.name),
+        skipped: result.skipped,
+        failed: result.failed.map(({ file }) => file),
+      },
+      'Plugin loading complete',
+    );
+  });
 
   app.addHook('onClose', async () => {
     try {

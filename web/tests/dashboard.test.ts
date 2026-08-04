@@ -15,7 +15,15 @@ globalThis.localStorage = {
 } as unknown as Storage;
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearLogs, getAnalytics, getAutomations, getLogs, listTools } from '@/lib/dashboard';
+import {
+  clearLogs,
+  getAnalytics,
+  getAutomations,
+  getLogs,
+  listPlugins,
+  listTools,
+  reloadPlugins,
+} from '@/lib/dashboard';
 import { setTokens } from '@/lib/token-store';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -117,5 +125,54 @@ describe('dashboard client', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('http://test.local/api/v1/logs');
     expect(init.method).toBe('DELETE');
+  });
+
+  it('lists plugins', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        count: 1,
+        plugins: [
+          {
+            name: 'example-hello',
+            version: '1.0.0',
+            state: 'loaded',
+            enabled: true,
+            tools: ['greet'],
+            loadedAt: '2026-08-03T00:00:00Z',
+          },
+        ],
+      }),
+    );
+
+    const plugins = await listPlugins();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://test.local/api/v1/plugins',
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer access-token' }),
+      }),
+    );
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0].name).toBe('example-hello');
+    expect(plugins[0].tools).toEqual(['greet']);
+  });
+
+  it('reloads plugins with a POST request', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        reloaded: true,
+        loaded: [{ name: 'example-hello' }],
+        skipped: [],
+        failed: [],
+      }),
+    );
+
+    const result = await reloadPlugins();
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://test.local/api/v1/plugins/reload');
+    expect(init.method).toBe('POST');
+    expect(result.loaded).toEqual(['example-hello']);
+    expect(result.failed).toBe(0);
   });
 });

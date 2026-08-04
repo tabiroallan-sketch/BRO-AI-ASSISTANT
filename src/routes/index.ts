@@ -9,6 +9,7 @@ import { protectedIntegrationRoutes, publicIntegrationRoutes } from './integrati
 import { logRoutes } from './logs.js';
 import { memoryRoutes } from './memories.js';
 import { notificationRoutes } from './notifications.js';
+import { pluginRoutes } from './plugins.js';
 import { toolRoutes } from './tools.js';
 
 export async function appRoutes(app: FastifyInstance): Promise<void> {
@@ -26,6 +27,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       await v1.register(automationRoutes);
       await v1.register(analyticsRoutes);
       await v1.register(logRoutes);
+      await v1.register(pluginRoutes);
     },
     { prefix: '/api/v1' },
   );

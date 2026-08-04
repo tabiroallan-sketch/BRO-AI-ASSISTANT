@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
+  Box,
   Brain,
   LayoutDashboard,
   Link2,
@@ -22,6 +23,7 @@ const items: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: '/dashboard/memories', label: 'Memories', icon: Brain },
   { href: '/dashboard/accounts', label: 'Connected accounts', icon: Link2 },
   { href: '/dashboard/tools', label: 'Installed tools', icon: Wrench },
+  { href: '/dashboard/plugins', label: 'Plugins', icon: Box },
   { href: '/dashboard/automations', label: 'Automations', icon: Workflow },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/dashboard/logs', label: 'Logs', icon: ScrollText },

@@ -49,6 +49,18 @@ export type LogEntry = {
   res?: Record<string, unknown> | null;
 };
 
+export type PluginInfo = {
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  enabled: boolean;
+  state: 'loaded' | 'error';
+  error?: string;
+  tools: string[];
+  loadedAt: string;
+};
+
 function authToken(): string {
   const token = getAccessToken();
   if (!token) {
@@ -79,4 +91,18 @@ export async function getLogs(limit = 200): Promise<LogEntry[]> {
 
 export async function clearLogs(): Promise<void> {
   await request<void>('/logs', { method: 'DELETE', token: authToken() });
+}
+
+export async function listPlugins(): Promise<PluginInfo[]> {
+  const result = await request<{ plugins: PluginInfo[] }>('/plugins', { token: authToken() });
+  return result.plugins;
+}
+
+export async function reloadPlugins(): Promise<{ loaded: string[]; failed: number }> {
+  const result = await request<{
+    loaded: Array<{ name: string }>;
+    skipped: string[];
+    failed: Array<{ file: string; error: string }>;
+  }>('/plugins/reload', { method: 'POST', token: authToken() });
+  return { loaded: result.loaded.map((plugin) => plugin.name), failed: result.failed.length };
 }

@@ -20,10 +20,13 @@ bro/
 │   ├── config/          # Configuration management
 │   ├── generated/       # Prisma client output
 │   ├── lib/             # Shared utilities
+│   ├── plugins/         # Plugin system (registry, loader, manifest)
 │   ├── routes/          # Modular route handlers
 │   ├── middleware/       # Shared middleware
 │   ├── app.ts           # Fastify app factory
 │   └── server.ts        # Server bootstrap
+├── plugins/             # Installed plugins (drop-in, no core changes)
+│   └── example-hello/   # Sample plugin: bro.plugin.mjs
 ├── prisma/              # Database schema & migrations
 ├── tests/               # Test files
 ├── docker/              # Docker build context
@@ -371,8 +374,9 @@ The feature degrades gracefully: buttons are hidden when the browser lacks
 ## Frontend
 
 The `web/` directory contains the Next.js frontend (React, Tailwind CSS, shadcn-style
-components) with a landing page, login, registration, dashboard, settings, a chat page,
-a memories page, and dark mode.
+components) with a landing page, login, registration, dashboard (Overview,
+Conversations, Memories, Connected accounts, Installed tools, Plugins, Automations,
+Analytics, Logs), settings, a chat page, a memories page, and dark mode.
 
 ```bash
 cd web
@@ -412,6 +416,140 @@ and Logs. Each page is backed by an authenticated endpoint:
 - `DELETE /api/v1/logs` — Clears the in-memory log buffer. Returns `204`.
 
 All dashboard endpoints require `Authorization: Bearer <accessToken>`.
+
+## Plugin System
+
+BRO can be extended with plugins that add new capabilities (tools the assistant can
+call) and run lifecycle hooks — **without modifying core code**. A plugin is a folder
+(or a single file) dropped into the `plugins/` directory; it is discovered and loaded
+automatically at startup.
+
+### Installing a plugin
+
+1. Create a folder under `plugins/` (the directory can be changed with `PLUGINS_DIR`).
+2. Add a manifest file named `bro.plugin.ts`, `bro.plugin.js`, `bro.plugin.mjs`, or
+   `bro.plugin.cjs` (`.mjs`/`.js` run in any environment; `.ts` runs when the server is
+   started with `tsx`, e.g. `npm run dev`).
+3. Restart the server, or reload at runtime without a restart:
+   `POST /api/v1/plugins/reload`.
+
+Plugins can be added, updated, or removed at any time — the loader picks up the new
+state on reload. Installed plugins are listed at `GET /api/v1/plugins` and on the
+**Dashboard → Plugins** page (which also has a "Reload plugins" button).
+
+### Anatomy of a plugin
+
+Each plugin exports a manifest. The shipped `plugins/example-hello/bro.plugin.mjs`
+is a complete, minimal example:
+
+```js
+export default {
+  name: 'example-hello',          // required, unique
+  version: '1.0.0',               // required
+  description: 'Adds a greeting tool.',
+  author: 'BRO Team',             // optional
+  enabled: true,                  // optional, default true
+  setup(context) {                // optional, called once when loaded
+    context.log.info(`Plugin loaded from ${context.basePath}`);
+  },
+  teardown(context) {             // optional, called when unloaded/reloaded
+    context.log.info('Plugin unloaded');
+  },
+  tools: [
+    {
+      name: 'greet',              // tool name the assistant sees
+      description: 'Return a friendly greeting.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Who to greet.' },
+        },
+        required: ['name'],
+      },
+      async execute(args, context) {
+        return `Hello, ${args.name}!`;
+      },
+    },
+  ],
+};
+```
+
+### Plugin manifest reference
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | `string` | yes | Unique plugin id (e.g. `my-plugin`). |
+| `version` | `string` | yes | Semver string (e.g. `1.0.0`). |
+| `description` | `string` | no | Shown in the dashboard and plugin list. |
+| `author` | `string` | no | Who maintains the plugin. |
+| `enabled` | `boolean` | no | Set `false` to skip loading the plugin (it is then not registered and its tools are not added). |
+| `tools` | `Tool[]` | no | Tools registered with the assistant. See [Tool framework](#tool-framework). |
+| `setup(context)` | `fn` | no | Called once after the manifest is validated and before tools are registered. Throw to fail loading with an error. |
+| `teardown(context)` | `fn` | no | Called when the plugin is unloaded or reloaded. |
+
+The `setup`/`teardown` functions receive a context with:
+
+- `context.basePath` — the plugin's directory, for reading config or data files
+- `context.log` — `info` / `warn` / `error` methods that write to the server log
+  (visible on **Dashboard → Logs**)
+
+A manifest that fails validation, throws during `setup`, or has a broken import does
+not stop the server — the failure is recorded and surfaced in
+`GET /api/v1/plugins` and in the loader's `failed` list.
+
+### Tool shape
+
+A plugin tool has the same shape as the built-in tools in `src/tools/`:
+
+- `name` — unique identifier (e.g. `my_search`)
+- `description` — what the tool does; the model uses this to decide when to call it
+- `parameters` — a JSON-Schema-style object: `{ type: 'object', properties, required }`
+  with `type` and optional `description` per property
+- `execute(args, context)` — called with the model's parsed arguments and a
+  `{ userId }` context; returns a `string` (or a promise of one) that is returned to
+  the model
+
+### Authoring a plugin in TypeScript
+
+`.ts` plugins can import the types and `definePlugin` helper for editor support:
+
+```ts
+import { definePlugin } from '../../src/plugins/index.js';
+
+export default definePlugin({
+  name: 'my-ts-plugin',
+  version: '1.0.0',
+  tools: [
+    {
+      name: 'my_tool',
+      description: 'A typed tool',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => 'done',
+    },
+  ],
+});
+```
+
+Plain JavaScript plugins (`.js`/`.mjs`) need no imports — the manifest is validated
+against the schema at load time. For production (`node dist/server.js`) use `.js` or
+`.mjs`; `.ts` files are not compiled by the build and require the `tsx` runtime.
+
+### Plugin API endpoints
+
+All plugin endpoints require `Authorization: Bearer <accessToken>`:
+
+- `GET /api/v1/plugins` — List installed plugins with their manifest metadata, load
+  state (`loaded`/`error`), and the names of the tools they contributed.
+- `POST /api/v1/plugins/reload` — Unload every loaded plugin (running `teardown`),
+  rescan the plugins directory, and load it again. Returns
+  `{ reloaded: true, loaded, skipped, failed }`.
+
+### Security note
+
+Plugins are **trusted server-side code** — they run with the same privileges as the
+core application and their tools can be called by the model on the user's behalf.
+Only install plugins you trust. `PLUGINS_DIR` defaults to `<cwd>/plugins`; the Docker
+image copies `plugins/` into the container (or mount it as a volume).
 
 ## Health Check
 

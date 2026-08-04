@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   BarChart3,
+  Box,
   Brain,
   Link2,
   Loader2,
@@ -22,6 +23,7 @@ import { useAuth } from '@/lib/auth';
 import {
   getAnalytics,
   getAutomations,
+  listPlugins,
   listTools,
   type AnalyticsResponse,
   type AutomationsResponse,
@@ -31,6 +33,7 @@ type OverviewData = {
   analytics: AnalyticsResponse;
   automations: AutomationsResponse;
   toolCount: number;
+  pluginCount: number;
 };
 
 function StatCard({
@@ -71,12 +74,13 @@ export default function DashboardOverviewPage(): React.JSX.Element {
 
   async function load(): Promise<void> {
     try {
-      const [analytics, automations, tools] = await Promise.all([
+      const [analytics, automations, tools, plugins] = await Promise.all([
         getAnalytics(),
         getAutomations(),
         listTools(),
+        listPlugins(),
       ]);
-      setData({ analytics, automations, toolCount: tools.length });
+      setData({ analytics, automations, toolCount: tools.length, pluginCount: plugins.length });
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         await logout();
@@ -111,7 +115,7 @@ export default function DashboardOverviewPage(): React.JSX.Element {
     );
   }
 
-  const { analytics, automations, toolCount } = data;
+  const { analytics, automations, toolCount, pluginCount } = data;
   const automationValue = automations.enabled ? String(automations.workflows.length) : 'Off';
 
   return (
@@ -156,6 +160,13 @@ export default function DashboardOverviewPage(): React.JSX.Element {
           value={String(toolCount)}
           hint="Capabilities available to BRO"
           href="/dashboard/tools"
+        />
+        <StatCard
+          icon={Box}
+          title="Plugins"
+          value={String(pluginCount)}
+          hint="Extensions installed from the plugins directory"
+          href="/dashboard/plugins"
         />
         <StatCard
           icon={Workflow}

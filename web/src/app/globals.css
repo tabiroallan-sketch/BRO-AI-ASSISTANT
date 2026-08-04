@@ -24,27 +24,32 @@
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.625rem;
+
+  --neon-cyan: oklch(0.76 0.15 215);
+  --neon-blue: oklch(0.65 0.17 255);
+  --neon-purple: oklch(0.66 0.22 300);
+  --neon-pink: oklch(0.7 0.2 340);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.115 0.028 262);
+  --foreground: oklch(0.96 0.012 250);
+  --card: oklch(0.17 0.035 262 / 0.55);
+  --card-foreground: oklch(0.96 0.012 250);
+  --popover: oklch(0.15 0.03 262 / 0.92);
+  --popover-foreground: oklch(0.96 0.012 250);
+  --primary: oklch(0.82 0.14 215);
+  --primary-foreground: oklch(0.13 0.02 262);
+  --secondary: oklch(0.22 0.035 262 / 0.6);
+  --secondary-foreground: oklch(0.92 0.015 250);
+  --muted: oklch(0.22 0.035 262 / 0.6);
+  --muted-foreground: oklch(0.72 0.025 250);
+  --accent: oklch(0.24 0.05 262 / 0.7);
+  --accent-foreground: oklch(0.96 0.012 250);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --border: oklch(0.72 0.09 235 / 0.16);
+  --input: oklch(0.72 0.09 235 / 0.18);
+  --ring: oklch(0.82 0.14 215);
 }
 
 @theme inline {
@@ -70,10 +75,24 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  --color-neon-cyan: var(--neon-cyan);
+  --color-neon-blue: var(--neon-blue);
+  --color-neon-purple: var(--neon-purple);
+  --color-neon-pink: var(--neon-pink);
 }
 
 * {
   border-color: var(--border);
+}
+
+html {
+  color-scheme: light;
+}
+
+.dark html,
+html.dark {
+  color-scheme: dark;
 }
 
 body {
@@ -90,4 +109,196 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--neon-cyan) 30%, transparent);
+}
+
+/* ---------- Futuristic scrollbars ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--neon-cyan) 35%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--neon-cyan) 30%, transparent);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- Glassmorphism panels ---------- */
+.glass {
+  background: color-mix(in oklab, var(--card) 65%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.05),
+    0 12px 40px rgb(0 0 0 / 0.35);
+}
+
+.glass-strong {
+  background: color-mix(in oklab, var(--card) 85%, transparent);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.07),
+    0 20px 60px rgb(0 0 0 / 0.45);
+}
+
+.glass-hover {
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    transform 0.3s ease;
+}
+.glass-hover:hover {
+  border-color: color-mix(in oklab, var(--neon-cyan) 45%, var(--border));
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.07),
+    0 0 24px color-mix(in oklab, var(--neon-cyan) 22%, transparent),
+    0 16px 44px rgb(0 0 0 / 0.45);
+}
+
+/* ---------- Neon text ---------- */
+.neon-text {
+  text-shadow:
+    0 0 10px color-mix(in oklab, var(--neon-cyan) 70%, transparent),
+    0 0 30px color-mix(in oklab, var(--neon-cyan) 35%, transparent);
+}
+
+/* ---------- HUD grid backdrop ---------- */
+.hud-grid {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--neon-cyan) 7%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--neon-cyan) 7%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 48px 48px;
+  -webkit-mask-image: radial-gradient(ellipse at center, black 25%, transparent 78%);
+  mask-image: radial-gradient(ellipse at center, black 25%, transparent 78%);
+}
+
+/* ---------- Keyframes ---------- */
+@keyframes float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -16px, 0);
+  }
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(24px, -18px, 0) scale(1.06);
+  }
+  66% {
+    transform: translate3d(-18px, 14px, 0) scale(0.98);
+  }
+}
+
+@keyframes hud-pan {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 48px 48px;
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes scanline {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+/* ---------- Motion utilities ---------- */
+.animate-float {
+  animation: float 7s ease-in-out infinite;
+}
+.animate-drift {
+  animation: drift 24s ease-in-out infinite;
+}
+.animate-hud-pan {
+  animation: hud-pan 60s linear infinite;
+}
+.animate-pulse-glow {
+  animation: pulse-glow 3.2s ease-in-out infinite;
+}
+.animate-spin-slow {
+  animation: spin-slow 18s linear infinite;
+}
+.animate-scanline {
+  animation: scanline 9s linear infinite;
+}
+
+/* ---------- Shimmer text/panel ---------- */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--neon-cyan) 25%, transparent),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: shimmer 3.5s linear infinite;
+}
+
+/* ---------- Accessibility: respect reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

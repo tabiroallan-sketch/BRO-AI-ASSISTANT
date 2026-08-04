@@ -40,7 +40,7 @@ export function DashboardSidebar(): React.JSX.Element {
   const visibleItems = user?.role === 'ADMIN' ? [...items, adminItem] : items;
 
   return (
-    <nav className="flex w-full shrink-0 gap-1 overflow-x-auto md:w-56 md:flex-col md:gap-1 md:overflow-visible">
+    <nav className="glass flex w-full shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-2 md:flex-col md:overflow-visible">
       {visibleItems.map((item) => {
         const active = pathname === item.href;
         return (
@@ -48,13 +48,24 @@ export function DashboardSidebar(): React.JSX.Element {
             key={item.href}
             href={item.href}
             className={cn(
-              'flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'group relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition-all duration-300',
               active
-                ? 'bg-accent text-accent-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                ? 'bg-neon-cyan/10 text-neon-cyan'
+                : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
             )}
           >
-            <item.icon className="h-4 w-4 shrink-0" />
+            <span
+              className={cn(
+                'absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-neon-cyan shadow-[0_0_8px_var(--neon-cyan)] transition-opacity duration-300',
+                active ? 'opacity-100' : 'opacity-0',
+              )}
+            />
+            <item.icon
+              className={cn(
+                'h-4 w-4 shrink-0 transition-colors',
+                active ? 'text-neon-cyan' : 'text-muted-foreground group-hover:text-foreground',
+              )}
+            />
             {item.label}
           </Link>
         );

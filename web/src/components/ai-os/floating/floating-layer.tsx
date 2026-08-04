@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react';
 import { CorePanelContent } from './core-panel';
 import { FloatingPanel } from './floating-panel';
 import { TelemetryPanelContent } from './telemetry-panel';
+import { StatusPanelContent } from '@/components/ai-os/status/status-panel';
 import { useHud, type PanelId } from '@/lib/hud-state';
 
 interface PanelDef {
@@ -16,14 +17,19 @@ interface PanelDef {
 const PANELS: PanelDef[] = [
   { id: 'telemetry', title: 'Telemetry', accent: 'text-neon-cyan' },
   { id: 'core', title: 'Core', accent: 'text-neon-purple' },
+  { id: 'status', title: 'Status', accent: 'text-emerald-400' },
 ];
 
 function initialPosition(index: number): { x: number; y: number } {
   const width = typeof window !== 'undefined' ? window.innerWidth : 1280;
+  const height = typeof window !== 'undefined' ? window.innerHeight : 800;
   if (index === 0) {
     return { x: 16, y: 76 };
   }
-  return { x: width - 264 - 16, y: 76 };
+  if (index === 1) {
+    return { x: width - 264 - 16, y: 76 };
+  }
+  return { x: 16, y: height - 300 };
 }
 
 /**
@@ -43,6 +49,7 @@ export function FloatingLayer(): React.JSX.Element | null {
     setPositions({
       telemetry: initialPosition(0),
       core: initialPosition(1),
+      status: initialPosition(2),
     });
     setReady(true);
   }, []);
@@ -64,7 +71,13 @@ export function FloatingLayer(): React.JSX.Element | null {
             defaultPosition={positions[panel.id] ?? initialPosition(index)}
             onClose={() => togglePanel(panel.id)}
           >
-            {panel.id === 'telemetry' ? <TelemetryPanelContent /> : <CorePanelContent />}
+            {panel.id === 'telemetry' ? (
+              <TelemetryPanelContent />
+            ) : panel.id === 'status' ? (
+              <StatusPanelContent />
+            ) : (
+              <CorePanelContent />
+            )}
           </FloatingPanel>
         ) : null,
       )}

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type PanelId = 'telemetry' | 'core';
+export type PanelId = 'telemetry' | 'core' | 'status';
 
 type HudState = {
   panels: Record<PanelId, boolean>;
@@ -8,6 +8,6 @@ type HudState = {
 };
 
 export const useHud = create<HudState>((set) => ({
-  panels: { telemetry: true, core: true },
+  panels: { telemetry: true, core: true, status: true },
   togglePanel: (id) => set((state) => ({ panels: { ...state.panels, [id]: !state.panels[id] } })),
 }));

@@ -23,6 +23,7 @@ export {
   DEFAULT_PROVIDER_ID,
 } from './registry/index.js';
 export { ModelManager, modelManager } from './model-manager/index.js';
+export { AiConfigStore, aiConfigStore, type AiConfigRow } from './config-store/index.js';
 export {
   ProviderFallback,
   providerFallback,

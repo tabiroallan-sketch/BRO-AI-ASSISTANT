@@ -136,6 +136,21 @@ model Memory {
   @@map("memories")
 }
 
+model AiConfig {
+  id            String    @id
+  providerId    String?
+  model         String?
+  apiKey        String?
+  lastStatus    String?
+  lastMessage   String?
+  lastLatencyMs Int?
+  lastTestedAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("ai_config")
+}
+
 model Notification {
   id        String   @id @default(uuid())
   userId    String

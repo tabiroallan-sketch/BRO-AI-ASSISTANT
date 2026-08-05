@@ -45,6 +45,10 @@ export function registerSecret(name: string, value: string): void {
   }
 }
 
+export function clearSecret(name: string): void {
+  registered.delete(name);
+}
+
 export function hasSecret(name: string): boolean {
   return getSecret(name).length > 0;
 }

@@ -32,8 +32,15 @@ export class ProviderFallback {
     this.enabled = options.enabled ?? true;
   }
 
-  async execute<T>(fn: (provider: LLMProvider) => Promise<T>): Promise<T> {
-    const order = this.enabled ? this.effectiveOrder() : this.effectiveOrder().slice(0, 1);
+  /**
+   * Runs `fn` against each provider until one succeeds. A preferred provider id
+   * (e.g. the user's saved active provider) is tried first, ahead of the
+   * configured order, without replacing it.
+   */
+  async execute<T>(fn: (provider: LLMProvider) => Promise<T>, preferFirst?: string): Promise<T> {
+    const order = this.enabled
+      ? this.effectiveOrder(preferFirst)
+      : this.effectiveOrder().slice(0, 1);
     const failures: FallbackFailure[] = [];
     let lastError: LLMError | undefined;
 
@@ -75,9 +82,13 @@ export class ProviderFallback {
     });
   }
 
-  private effectiveOrder(): string[] {
+  private effectiveOrder(preferFirst?: string): string[] {
     const seen = new Set<string>();
     const order: string[] = [];
+    if (preferFirst && this.registry.has(preferFirst) && !seen.has(preferFirst)) {
+      order.push(preferFirst);
+      seen.add(preferFirst);
+    }
     for (const id of this.preferredOrder) {
       if (this.registry.has(id) && !seen.has(id)) {
         order.push(id);

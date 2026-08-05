@@ -10,6 +10,7 @@ import { HttpError } from './lib/auth.js';
 import { prisma } from './lib/prisma.js';
 import { applyRateLimits } from './lib/rate-limit.js';
 import { redis } from './lib/redis.js';
+import { aiConfigStore } from './llm/index.js';
 import { loadPluginsFromDisk } from './plugins/index.js';
 import { appRoutes } from './routes/index.js';
 import './tools/index.js';
@@ -86,6 +87,12 @@ export function buildApp(): FastifyInstance {
       },
       'Plugin loading complete',
     );
+    try {
+      await aiConfigStore.loadIntoRuntime();
+      app.log.info('AI config loaded into runtime');
+    } catch (error) {
+      app.log.warn({ err: error }, 'Failed to load AI config into runtime');
+    }
   });
 
   app.addHook('onClose', async () => {

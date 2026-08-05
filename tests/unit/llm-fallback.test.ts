@@ -76,6 +76,27 @@ describe('ProviderFallback', () => {
     await expect(fallback.execute(run)).resolves.toBe('secondary');
   });
 
+  it('tries a preferred provider first without replacing the order', async () => {
+    const registry = new ProviderRegistry();
+    registry.register(
+      fakeProvider(
+        'primary',
+        new LLMError({ code: 'network', providerId: 'primary', message: 'down' }),
+      ),
+    );
+    registry.register(fakeProvider('secondary'));
+    registry.register(fakeProvider('tertiary'));
+    const fallback = new ProviderFallback(registry, { order: ['tertiary', 'secondary'] });
+    await expect(fallback.execute(run, 'primary')).resolves.toBe('tertiary');
+  });
+
+  it('ignores a preferred provider that is not registered', async () => {
+    const registry = new ProviderRegistry();
+    registry.register(fakeProvider('secondary'));
+    const fallback = new ProviderFallback(registry);
+    await expect(fallback.execute(run, 'ghost')).resolves.toBe('secondary');
+  });
+
   it('rethrows the sole failure when only one provider is tried', async () => {
     const registry = new ProviderRegistry();
     registry.register(

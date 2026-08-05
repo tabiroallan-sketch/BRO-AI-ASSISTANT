@@ -6,7 +6,7 @@ import { prisma } from '../lib/prisma.js';
 import { getSecret } from '../lib/secrets.js';
 import { getTool, listTools } from '../tools/registry.js';
 import type { Tool } from '../tools/types.js';
-import { modelManager, providerFallback, providerRegistry } from '../llm/index.js';
+import { aiConfigStore, modelManager, providerFallback, providerRegistry } from '../llm/index.js';
 import type {
   LLMMessage,
   LLMProvider,
@@ -223,11 +223,12 @@ async function runModelWithFallback(
   tools: LLMTool[],
   signal: AbortSignal,
   onContent: (delta: string) => void,
+  preferredProviderId?: string,
 ): Promise<{ content: string; toolCalls: LLMToolCall[] }> {
   return providerFallback.execute(async (provider) => {
     await provider.initialize(envSettingsFor(provider));
     return runModel(provider, messages, tools, signal, onContent);
-  });
+  }, preferredProviderId);
 }
 
 async function executeTool(
@@ -316,6 +317,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         })),
       ];
       const tools: LLMTool[] = listTools().map(toLLMTool);
+      const preferredProviderId = (await aiConfigStore.get()).providerId ?? undefined;
 
       for (let round = 0; round <= TOOL_CALL_LIMIT; round += 1) {
         const { content, toolCalls } = await runModelWithFallback(
@@ -323,6 +325,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           tools,
           abortController.signal,
           (delta) => sendEvent(reply, { type: 'delta', content: sanitizeOutputText(delta) }),
+          preferredProviderId,
         );
         if (toolCalls.length === 0) {
           full = content;

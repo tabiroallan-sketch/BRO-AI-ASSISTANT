@@ -81,9 +81,10 @@ async function readResponse(response: Response): Promise<unknown> {
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = options.token ?? getAccessToken();
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-  };
+  const headers: Record<string, string> = {};
+  if (options.body !== undefined) {
+    headers['content-type'] = 'application/json';
+  }
   if (token) {
     headers.authorization = `Bearer ${token}`;
   }
@@ -94,7 +95,6 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
-
   let response = await doFetch();
 
   if (response.status === 401 && !options.skipAuthRetry && !NO_RETRY_PATHS.has(path)) {

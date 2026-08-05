@@ -27,6 +27,17 @@ export type LLMConnectionResult = {
   model?: string;
 };
 
+export type LLMSettings = {
+  providerId: string | null;
+  model: string | null;
+  hasApiKey: boolean;
+  activeProvider: LLMProviderInfo | null;
+  status: string | null;
+  message: string | null;
+  latencyMs: number | null;
+  lastTestedAt: string | null;
+};
+
 export function listLLMProviders(): Promise<{ providers: LLMProviderInfo[] }> {
   return request<{ providers: LLMProviderInfo[] }>('/llm/providers');
 }
@@ -53,5 +64,26 @@ export function testLLMProvider(
   return request<LLMConnectionResult>(`/llm/providers/${encodeURIComponent(providerId)}/test`, {
     method: 'POST',
     body: settings,
+  });
+}
+
+export function getLLMSettings(): Promise<LLMSettings> {
+  return request<LLMSettings>('/llm/settings');
+}
+
+export function saveLLMSettings(input: {
+  providerId?: string;
+  model?: string;
+  apiKey?: string;
+}): Promise<LLMSettings> {
+  return request<LLMSettings>('/llm/settings', {
+    method: 'PUT',
+    body: input,
+  });
+}
+
+export function clearLLMApiKey(): Promise<LLMSettings> {
+  return request<LLMSettings>('/llm/settings/api-key', {
+    method: 'DELETE',
   });
 }

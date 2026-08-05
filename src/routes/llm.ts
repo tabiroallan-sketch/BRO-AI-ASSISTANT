@@ -1,11 +1,84 @@
 import type { FastifyInstance } from 'fastify';
-import { HttpError, requireAuth } from '../lib/auth.js';
+import { HttpError, requireAuth, requireRole } from '../lib/auth.js';
 import { getSecret, hasSecret } from '../lib/secrets.js';
-import { modelManager, providerRegistry } from '../llm/index.js';
+import { aiConfigStore, modelManager, providerRegistry } from '../llm/index.js';
 import type { ProviderSettings } from '../llm/index.js';
+
+type LLMSettingsResponse = {
+  providerId: string | null;
+  model: string | null;
+  hasApiKey: boolean;
+  activeProvider: {
+    id: string;
+    label: string;
+    description: string;
+    requiresApiKey: boolean;
+    envVar: string;
+    configured: boolean;
+    defaultModel: string | null;
+    defaultBaseUrl: string | null;
+  } | null;
+  status: string | null;
+  message: string | null;
+  latencyMs: number | null;
+  lastTestedAt: Date | null;
+};
+
+async function settingsResponse(): Promise<LLMSettingsResponse> {
+  const row = await aiConfigStore.get();
+  const descriptor = row.providerId ? providerRegistry.get(row.providerId)?.descriptor : undefined;
+  return {
+    providerId: row.providerId,
+    model: row.model,
+    hasApiKey: row.apiKey !== null,
+    activeProvider: descriptor
+      ? {
+          id: descriptor.id,
+          label: descriptor.label,
+          description: descriptor.description,
+          requiresApiKey: descriptor.requiresApiKey,
+          envVar: descriptor.envVar,
+          configured: descriptor.requiresApiKey ? hasSecret(descriptor.envVar) : true,
+          defaultModel: descriptor.defaultModel ?? null,
+          defaultBaseUrl: descriptor.defaultBaseUrl ?? null,
+        }
+      : null,
+    status: row.lastStatus,
+    message: row.lastMessage,
+    latencyMs: row.lastLatencyMs,
+    lastTestedAt: row.lastTestedAt,
+  };
+}
 
 export async function llmRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);
+  app.addHook('preHandler', requireRole('ADMIN'));
+
+  app.get('/llm/settings', async () => settingsResponse());
+
+  app.put('/llm/settings', async (request) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const providerId = typeof body.providerId === 'string' ? body.providerId.trim() : undefined;
+    const model = typeof body.model === 'string' ? body.model.trim() : undefined;
+    const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : undefined;
+    if (providerId && !providerRegistry.has(providerId)) {
+      throw new HttpError(400, 'Unknown LLM provider');
+    }
+    if (apiKey && !providerId) {
+      throw new HttpError(400, 'A provider is required to save an API key');
+    }
+    await aiConfigStore.save({
+      ...(providerId !== undefined ? { providerId } : {}),
+      ...(model !== undefined ? { model } : {}),
+      ...(apiKey !== undefined ? { apiKey } : {}),
+    });
+    return settingsResponse();
+  });
+
+  app.delete('/llm/settings/api-key', async () => {
+    await aiConfigStore.clearApiKey();
+    return settingsResponse();
+  });
 
   app.get('/llm/providers', async () => {
     const providers = providerRegistry.list().map((provider) => {
@@ -43,7 +116,7 @@ export async function llmRoutes(app: FastifyInstance): Promise<void> {
     if (!model) {
       throw new HttpError(400, 'A model id is required');
     }
-    modelManager.setModel(id, model);
+    await aiConfigStore.save({ providerId: id, model });
     return { model };
   });
 
@@ -72,6 +145,7 @@ export async function llmRoutes(app: FastifyInstance): Promise<void> {
       settings.baseUrl = body.baseUrl.trim();
     }
     const result = await provider.testConnection(settings);
+    await aiConfigStore.recordTestResult(result);
     return reply.send(result);
   });
 }

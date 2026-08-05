@@ -1,4 +1,4 @@
-import { requireProviderToken } from '../integrations/access.js';
+import { requirePermission } from '../integrations/access.js';
 import type { Tool } from './types.js';
 import { fetchWithTimeout } from '../lib/http.js';
 
@@ -10,11 +10,30 @@ type GmailMessage = {
   payload?: { headers?: GmailMessageHeader[] };
 };
 
+type GmailMessagePart = {
+  mimeType?: string;
+  body?: { data?: string };
+  parts?: GmailMessagePart[];
+  headers?: GmailMessageHeader[];
+};
+
 type FetchInit = {
   method?: string;
   headers?: Record<string, string>;
   body?: string;
 };
+
+function decodeBase64(data: string): string {
+  return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+}
+
+function extractTextPart(part: GmailMessagePart): string {
+  const text = decodeBase64(part.body?.data ?? '');
+  if (text) {
+    return text;
+  }
+  return (part.parts ?? []).map(extractTextPart).join('\n');
+}
 
 async function gmailRequest(token: string, path: string, init: FetchInit = {}): Promise<Response> {
   return fetchWithTimeout(`https://gmail.googleapis.com/gmail/v1${path}`, {
@@ -56,7 +75,7 @@ export const gmailSearchTool: Tool = {
     if (!query) {
       throw new Error('Missing "query" argument');
     }
-    const token = await requireProviderToken(context.userId, 'google-gmail');
+    const token = await requirePermission(context.userId, 'google-gmail', 'gmail.read');
     const maxResults = typeof args.maxResults === 'string' ? args.maxResults : '5';
     const searchParams = new URLSearchParams({
       q: query,
@@ -95,6 +114,51 @@ export const gmailSearchTool: Tool = {
   },
 };
 
+export const gmailReadTool: Tool = {
+  name: 'gmail_read',
+  description:
+    'Read a single Gmail message by its ID and return its sender, recipients, subject, date, and text body.',
+  parameters: {
+    type: 'object',
+    properties: {
+      messageId: {
+        type: 'string',
+        description: 'Gmail message ID (from gmail_search).',
+      },
+    },
+    required: ['messageId'],
+  },
+  async execute(args, context) {
+    const messageId = typeof args.messageId === 'string' ? args.messageId.trim() : '';
+    if (!messageId) {
+      throw new Error('Missing "messageId" argument');
+    }
+    const token = await requirePermission(context.userId, 'google-gmail', 'gmail.read');
+    const response = await gmailRequest(
+      token,
+      `/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
+    );
+    if (!response.ok) {
+      throw new Error(`Gmail request failed with status ${response.status}`);
+    }
+    const message = (await response.json()) as { payload?: GmailMessagePart };
+    const payload = message.payload ?? {};
+    const headers = payload.headers ?? [];
+    const findHeader = (name: string): string =>
+      headers.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value ?? '';
+    const body = extractTextPart(payload).trim();
+    const lines = [
+      `From: ${findHeader('From')}`,
+      `To: ${findHeader('To')}`,
+      `Subject: ${findHeader('Subject')}`,
+      `Date: ${findHeader('Date')}`,
+      '',
+      body || '(no text body)',
+    ];
+    return lines.join('\n');
+  },
+};
+
 export const gmailSendTool: Tool = {
   name: 'gmail_send',
   description:
@@ -117,7 +181,7 @@ export const gmailSendTool: Tool = {
       throw new Error('Missing "to", "subject", or "body" argument');
     }
     const cc = typeof args.cc === 'string' ? args.cc.trim() : '';
-    const token = await requireProviderToken(context.userId, 'google-gmail');
+    const token = await requirePermission(context.userId, 'google-gmail', 'gmail.send');
 
     const headers = [`To: ${to}`, `Subject: ${subject}`];
     if (cc) {

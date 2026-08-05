@@ -17,6 +17,7 @@
 export default {
   name: 'example-hello',
   version: '1.0.0',
+  enabled: false,
   description: 'Adds a greeting tool and a startup log message.',
   author: 'BRO Team',
   setup(context) {

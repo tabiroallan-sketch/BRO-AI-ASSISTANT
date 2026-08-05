@@ -8,15 +8,50 @@ process.env.JWT_REFRESH_SECRET = 'journey-test-refresh-secret';
 process.env.JWT_EXPIRES_IN = '15m';
 process.env.JWT_REFRESH_EXPIRES_IN = '7d';
 
-const { mockAiConfigured, mockStreamChatCompletion } = vi.hoisted(() => ({
-  mockAiConfigured: vi.fn<() => boolean>(),
-  mockStreamChatCompletion:
-    vi.fn<(messages: unknown[], tools?: unknown[]) => AsyncGenerator<Record<string, unknown>>>(),
-}));
+const { mockStreamChatCompletion, mockProvidersList, mockFallbackExecute } = vi.hoisted(() => {
+  const fakeProvider = {
+    descriptor: {
+      id: 'test',
+      label: 'Test',
+      requiresApiKey: false,
+      envVar: 'TEST_API_KEY',
+      defaultBaseUrl: '',
+      defaultModel: 'test-model',
+    },
+    initialize: async (): Promise<void> => undefined,
+    streamChat: async function* (request: {
+      messages: unknown[];
+      tools?: unknown[];
+    }): AsyncGenerator<Record<string, unknown>> {
+      yield* mockStreamChatCompletion(request.messages, request.tools);
+    },
+  };
+  return {
+    mockStreamChatCompletion:
+      vi.fn<(messages: unknown[], tools?: unknown[]) => AsyncGenerator<Record<string, unknown>>>(),
+    mockProvidersList: vi.fn<() => unknown[]>(),
+    mockFallbackExecute: vi.fn(
+      async <T>(fn: (provider: typeof fakeProvider) => Promise<T>): Promise<T> => fn(fakeProvider),
+    ),
+  };
+});
 
-vi.mock('../../src/lib/ai.js', () => ({
-  aiConfigured: mockAiConfigured,
-  streamChatCompletion: mockStreamChatCompletion,
+vi.mock('../../src/llm/index.js', () => ({
+  aiConfigStore: {
+    get: async () => ({
+      providerId: null,
+      model: null,
+      apiKey: null,
+      lastStatus: null,
+      lastMessage: null,
+      lastLatencyMs: null,
+      lastTestedAt: null,
+    }),
+    loadIntoRuntime: async (): Promise<void> => undefined,
+  },
+  modelManager: { resolveModel: async () => undefined },
+  providerFallback: { execute: mockFallbackExecute },
+  providerRegistry: { list: mockProvidersList, get: () => undefined },
 }));
 
 vi.mock('../../src/lib/prisma.js', async () => {
@@ -44,7 +79,7 @@ describe('full user journey', () => {
     ]);
     db = mockDb.getMockDb();
     app = buildApp();
-    mockAiConfigured.mockReturnValue(true);
+    mockProvidersList.mockReturnValue([{ descriptor: { requiresApiKey: false } }]);
     mockStreamChatCompletion.mockImplementation(async function* () {
       yield { type: 'content', content: 'Hello from BRO' };
     });

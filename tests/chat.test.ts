@@ -56,12 +56,24 @@ type MockMemory = {
   updatedAt: Date;
 };
 
+type MockAiConfig = {
+  id: string;
+  providerId: string | null;
+  model: string | null;
+  apiKey: string | null;
+  lastStatus: string | null;
+  lastMessage: string | null;
+  lastLatencyMs: number | null;
+  lastTestedAt: Date | null;
+};
+
 const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = vi.hoisted(() => {
   const users = new Map<string, MockUser>();
   const sessions = new Map<string, MockSession>();
   const conversations = new Map<string, MockConversation>();
   const messages = new Map<string, MockMessage>();
   const memories = new Map<string, MockMemory>();
+  const aiConfigs = new Map<string, MockAiConfig>();
   let lastMessageAt = 0;
 
   function nextCreatedAt(): Date {
@@ -207,6 +219,52 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = 
     },
   };
 
+  const aiConfigModel = {
+    async findUnique(args: { where: { id: string } }): Promise<MockAiConfig | null> {
+      return aiConfigs.get(args.where.id) ?? null;
+    },
+    async upsert(args: {
+      where: { id: string };
+      create: Partial<MockAiConfig>;
+      update: Partial<MockAiConfig>;
+    }): Promise<MockAiConfig> {
+      const existing = aiConfigs.get(args.where.id);
+      const merged: MockAiConfig = {
+        id: args.where.id,
+        providerId: null,
+        model: null,
+        apiKey: null,
+        lastStatus: null,
+        lastMessage: null,
+        lastLatencyMs: null,
+        lastTestedAt: null,
+        ...existing,
+        ...args.create,
+        ...args.update,
+      };
+      aiConfigs.set(merged.id, merged);
+      return merged;
+    },
+    async update(args: {
+      where: { id: string };
+      data: Partial<MockAiConfig>;
+    }): Promise<MockAiConfig> {
+      const existing = aiConfigs.get(args.where.id) ?? {
+        id: args.where.id,
+        providerId: null,
+        model: null,
+        apiKey: null,
+        lastStatus: null,
+        lastMessage: null,
+        lastLatencyMs: null,
+        lastTestedAt: null,
+      };
+      const merged: MockAiConfig = { ...existing, ...args.data, id: args.where.id };
+      aiConfigs.set(merged.id, merged);
+      return merged;
+    },
+  };
+
   async function registerAndLogin(email: string): Promise<string> {
     const now = new Date();
     const user: MockUser = {
@@ -269,6 +327,7 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = 
       conversation: conversationModel,
       message: messageModel,
       memory: memoryModel,
+      aiConfig: aiConfigModel,
       $disconnect: async (): Promise<void> => undefined,
     },
     resetDb: (): void => {
@@ -277,6 +336,7 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = 
       conversations.clear();
       messages.clear();
       memories.clear();
+      aiConfigs.clear();
       lastMessageAt = 0;
     },
     registerAndLogin,
@@ -285,31 +345,67 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory } = 
   };
 });
 
-const { mockAiConfigured, mockStreamChatCompletion } = vi.hoisted(() => ({
-  mockAiConfigured: vi.fn<() => boolean>(),
-  mockStreamChatCompletion: vi.fn<
-    (
-      messages: unknown[],
-      tools?: unknown[],
-    ) => AsyncGenerator<
-      | { type: 'content'; content: string }
-      | {
-          type: 'tool_calls';
-          toolCalls: {
-            id: string;
-            name: string;
-            arguments: string;
-            extraContent?: Record<string, unknown>;
-          }[];
-        }
-    >
-  >(),
-}));
+const { mockStreamChatCompletion, mockProvidersList, mockFallbackExecute } = vi.hoisted(() => {
+  const fakeProvider = {
+    descriptor: {
+      id: 'test',
+      label: 'Test',
+      requiresApiKey: false,
+      envVar: 'TEST_API_KEY',
+      defaultBaseUrl: '',
+      defaultModel: 'test-model',
+    },
+    initialize: async (): Promise<void> => undefined,
+    streamChat: async function* (request: {
+      messages: unknown[];
+      tools?: unknown[];
+    }): AsyncGenerator<unknown> {
+      yield* mockStreamChatCompletion(request.messages, request.tools);
+    },
+  };
+  return {
+    mockStreamChatCompletion: vi.fn<
+      (
+        messages: unknown[],
+        tools?: unknown[],
+      ) => AsyncGenerator<
+        | { type: 'content'; content: string }
+        | {
+            type: 'tool_calls';
+            toolCalls: {
+              id: string;
+              name: string;
+              arguments: string;
+              extraContent?: Record<string, unknown>;
+            }[];
+          }
+      >
+    >(),
+    mockProvidersList: vi.fn<() => unknown[]>(),
+    mockFallbackExecute: vi.fn(
+      async <T>(fn: (provider: typeof fakeProvider) => Promise<T>): Promise<T> => fn(fakeProvider),
+    ),
+  };
+});
 
 vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }));
-vi.mock('../src/lib/ai.js', () => ({
-  aiConfigured: mockAiConfigured,
-  streamChatCompletion: mockStreamChatCompletion,
+vi.mock('../src/llm/index.js', () => ({
+  aiConfigStore: {
+    get: async () => ({
+      id: 'global',
+      providerId: null,
+      model: null,
+      apiKey: null,
+      lastStatus: null,
+      lastMessage: null,
+      lastLatencyMs: null,
+      lastTestedAt: null,
+    }),
+    loadIntoRuntime: async (): Promise<void> => undefined,
+  },
+  modelManager: { resolveModel: async () => undefined },
+  providerFallback: { execute: mockFallbackExecute },
+  providerRegistry: { list: mockProvidersList, get: () => undefined },
 }));
 
 describe('chat', () => {
@@ -327,7 +423,7 @@ describe('chat', () => {
 
   beforeEach(() => {
     resetDb();
-    mockAiConfigured.mockReturnValue(true);
+    mockProvidersList.mockReturnValue([{ descriptor: { requiresApiKey: false } }]);
     mockStreamChatCompletion.mockReset();
     mockStreamChatCompletion.mockImplementation(async function* () {
       yield { type: 'content', content: 'Hello world' };
@@ -394,6 +490,24 @@ describe('chat', () => {
     expect(conversation.messages[0].content).toBe('Hi there');
     expect(conversation.messages[1].role).toBe('ASSISTANT');
     expect(conversation.messages[1].content).toBe('Hello world');
+  });
+
+  it('serves the SSE stream with CORS headers for cross-origin browsers', async () => {
+    const headers = await authHeaders('cors@example.com');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers: { ...headers, origin: 'http://localhost:3001' },
+      payload: { message: 'Hi there' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/event-stream');
+    // The chat route hijacks the reply, which bypasses the @fastify/cors
+    // onSend hook; without these headers a browser silently drops the stream.
+    expect(response.headers['access-control-allow-origin']).toBe('http://localhost:3001');
+    expect(response.headers['access-control-allow-credentials']).toBe('true');
   });
 
   it('appends to an existing conversation', async () => {
@@ -483,7 +597,7 @@ describe('chat', () => {
   });
 
   it('returns 503 when the AI provider is not configured', async () => {
-    mockAiConfigured.mockReturnValue(false);
+    mockProvidersList.mockReturnValue([]);
     const headers = await authHeaders('noai@example.com');
 
     const response = await app.inject({

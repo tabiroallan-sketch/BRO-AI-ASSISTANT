@@ -1,4 +1,4 @@
-import { requireProviderToken } from '../integrations/access.js';
+import { requirePermission } from '../integrations/access.js';
 import type { Tool } from './types.js';
 import { fetchWithTimeout } from '../lib/http.js';
 
@@ -51,7 +51,7 @@ export const calendarListEventsTool: Tool = {
     },
   },
   async execute(args, context) {
-    const token = await requireProviderToken(context.userId, 'google-calendar');
+    const token = await requirePermission(context.userId, 'google-calendar', 'calendar.read');
     const maxResults = typeof args.maxResults === 'string' ? args.maxResults : '10';
     const timeMin = typeof args.timeMin === 'string' ? args.timeMin : new Date().toISOString();
     const params = new URLSearchParams({
@@ -109,7 +109,7 @@ export const calendarCreateEventTool: Tool = {
     if (!summary || !start || !end) {
       throw new Error('Missing "summary", "start", or "end" argument');
     }
-    const token = await requireProviderToken(context.userId, 'google-calendar');
+    const token = await requirePermission(context.userId, 'google-calendar', 'calendar.write');
     const description =
       typeof args.description === 'string' && args.description.trim()
         ? args.description.trim()

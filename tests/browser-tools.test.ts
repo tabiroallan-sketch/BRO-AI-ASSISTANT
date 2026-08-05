@@ -127,7 +127,7 @@ describe('browser tools', () => {
   });
 
   it('rejects an invalid URL when opening', async () => {
-    await expect(browserOpenTool.execute({ url: 'not a url' }, context)).rejects.toThrow(
+    await expect(browserOpenTool.execute({ url: 'ftp://example.com' }, context)).rejects.toThrow(
       'not a valid http(s) URL',
     );
   });

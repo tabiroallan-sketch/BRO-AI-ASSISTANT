@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../config/index.js';
+import { prisma } from './prisma.js';
 import { redactText } from './secrets.js';
 
 export type AuditAction =
@@ -25,6 +26,25 @@ export type AuditEvent = {
 
 const events: AuditEvent[] = [];
 
+function persistAuditEvent(event: AuditEvent): void {
+  if (!prisma || typeof prisma.auditLog?.create !== 'function') {
+    return;
+  }
+  void prisma.auditLog
+    .create({
+      data: {
+        actorId: event.actorId ?? null,
+        actorEmail: event.actorEmail ?? null,
+        action: event.action,
+        target: event.target ?? null,
+        detail: event.detail ?? null,
+        ip: event.ip ?? null,
+        userAgent: event.userAgent ?? null,
+      },
+    })
+    .catch(() => undefined);
+}
+
 export function recordAudit(event: Omit<AuditEvent, 'id' | 'at'>): AuditEvent {
   const record: AuditEvent = {
     ...event,
@@ -36,7 +56,29 @@ export function recordAudit(event: Omit<AuditEvent, 'id' | 'at'>): AuditEvent {
   if (events.length > config.auditLogMax) {
     events.splice(0, events.length - config.auditLogMax);
   }
+  persistAuditEvent(record);
   return record;
+}
+
+export async function readAuditLogs(limit = 200): Promise<AuditEvent[]> {
+  if (!prisma || typeof prisma.auditLog?.findMany !== 'function') {
+    return getAuditLogs(limit);
+  }
+  const rows = await prisma.auditLog.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    at: row.createdAt.toISOString(),
+    ...(row.actorId ? { actorId: row.actorId } : {}),
+    ...(row.actorEmail ? { actorEmail: row.actorEmail } : {}),
+    action: row.action as AuditAction,
+    ...(row.target ? { target: row.target } : {}),
+    ...(row.detail ? { detail: row.detail } : {}),
+    ...(row.ip ? { ip: row.ip } : {}),
+    ...(row.userAgent ? { userAgent: row.userAgent } : {}),
+  }));
 }
 
 export function getAuditLogs(limit = 200): AuditEvent[] {

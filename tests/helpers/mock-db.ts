@@ -59,6 +59,17 @@ export type MockNotification = {
   createdAt: Date;
 };
 
+export type MockAiConfig = {
+  id: string;
+  providerId: string | null;
+  model: string | null;
+  apiKey: string | null;
+  lastStatus: string | null;
+  lastMessage: string | null;
+  lastLatencyMs: number | null;
+  lastTestedAt: Date | null;
+};
+
 export type MockDb = {
   mockPrisma: unknown;
   registerAndLogin: (email: string, role?: MockRole) => Promise<string>;
@@ -97,6 +108,7 @@ export function createMockDb(): MockDb {
   const messages = new Map<string, MockMessage>();
   const memories = new Map<string, MockMemory>();
   const notifications = new Map<string, MockNotification>();
+  const aiConfigs = new Map<string, MockAiConfig>();
   let lastMessageAt = 0;
 
   function nextCreatedAt(): Date {
@@ -700,6 +712,7 @@ export function createMockDb(): MockDb {
     messages.clear();
     memories.clear();
     notifications.clear();
+    aiConfigs.clear();
     lastMessageAt = 0;
   }
 
@@ -721,6 +734,37 @@ export function createMockDb(): MockDb {
     };
   }
 
+  const aiConfigModel = {
+    async findUnique(args: { where: { id: string } }): Promise<MockAiConfig | null> {
+      return aiConfigs.get(args.where.id) ?? null;
+    },
+    async upsert(args: {
+      where: { id: string };
+      create: Partial<MockAiConfig>;
+      update: Partial<MockAiConfig>;
+    }): Promise<MockAiConfig> {
+      const base: MockAiConfig = {
+        id: args.where.id,
+        providerId: null,
+        model: null,
+        apiKey: null,
+        lastStatus: null,
+        lastMessage: null,
+        lastLatencyMs: null,
+        lastTestedAt: null,
+      };
+      const merged: MockAiConfig = {
+        ...base,
+        ...(aiConfigs.get(args.where.id) ?? {}),
+        ...args.create,
+        ...args.update,
+        id: args.where.id,
+      };
+      aiConfigs.set(merged.id, merged);
+      return merged;
+    },
+  };
+
   const mockPrisma = {
     user: userModel,
     session: sessionModel,
@@ -729,6 +773,7 @@ export function createMockDb(): MockDb {
     memory: memoryModel,
     notification: notificationModel,
     integration: integrationModel,
+    aiConfig: aiConfigModel,
     $disconnect: async (): Promise<void> => undefined,
   };
 

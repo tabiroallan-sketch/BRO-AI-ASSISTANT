@@ -43,7 +43,7 @@ BRO can store facts about you and use them to personalize answers.
 Connect services so BRO can act on your behalf.
 
 - Open **Settings → Integrations**.
-- **OAuth providers** (Google Calendar/Gmail/Drive, GitHub, Slack, Notion):
+- **OAuth providers** (Google Calendar/Gmail/Drive/Docs/Sheets/Tasks/Contacts, GitHub, Slack, Notion):
   click **Connect** and authorize in the provider's window.
 - **Discord**: paste a channel **webhook URL** and click Save.
 - **WhatsApp**: paste a WhatsApp Business **access token** and **phone number

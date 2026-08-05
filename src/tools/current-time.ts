@@ -4,6 +4,7 @@ const timeZones = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
 
 export const currentTimeTool: Tool = {
   name: 'get_current_time',
+  answerFinal: true,
   description:
     'Return the current date and time in UTC as an ISO 8601 string, and as a human-readable local time in the requested time zone (optional). Use this whenever the user asks what time it is or what the current date is. Time zones are IANA names such as "UTC", "America/New_York", "Europe/London" or "Asia/Tokyo".',
   parameters: {

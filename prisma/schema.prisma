@@ -27,6 +27,7 @@ model User {
   sessions      Session[]
   notifications Notification[]
   integrations  Integration[]
+  auditLogs     AuditLog[]
 
   @@map("users")
 }
@@ -50,24 +51,101 @@ model Account {
 }
 
 model Integration {
-  id             String   @id @default(uuid())
-  userId         String
-  provider       String
-  accountName    String?
-  externalId     String?
-  accessToken    String
-  refreshToken   String?
-  tokenExpiresAt DateTime?
-  scopes         String?
-  metadata       Json?    @default("{}")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String   @id @default(uuid())
+  userId            String
+  provider          String
+  accountKey        String   @default("default")
+  accountName       String?
+  externalId        String?
+  accessToken       String
+  refreshToken      String?
+  refreshTokenHash  String?
+  tokenExpiresAt    DateTime?
+  scopes            String?
+  metadata          Json?    @default("{}")
+  isPrimary         Boolean  @default(false)
+  lastRefreshedAt   DateTime?
+  refreshCount      Int      @default(0)
+  revokedAt         DateTime?
+  revokedReason     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        IntegrationStatus?
+  permissionSet PermissionSet?
+  syncHistory   SyncHistory[]
 
-  @@unique([userId, provider])
-  @@index([userId])
+  @@unique([userId, provider, accountKey])
+  @@index([userId, provider])
   @@map("integrations")
+}
+
+model IntegrationStatus {
+  id                String    @id @default(uuid())
+  integrationId     String    @unique
+  status            String
+  ok                Boolean   @default(true)
+  latencyMs         Int?
+  lastMessage       String?
+  lastHealthCheckAt DateTime  @default(now())
+  lastSuccessAt     DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("integration_statuses")
+}
+
+model PermissionSet {
+  id            String   @id @default(uuid())
+  integrationId String   @unique
+  scopes        Json     @default("[]")
+  permissionIds Json     @default("[]")
+  grantedAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("permission_sets")
+}
+
+model SyncHistory {
+  id            String   @id @default(uuid())
+  integrationId String
+  kind          String   @default("health")
+  status        String
+  startedAt     DateTime @default(now())
+  finishedAt    DateTime?
+  itemCount     Int?
+  error         String?
+  detail        Json?
+  createdAt     DateTime @default(now())
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId])
+  @@index([createdAt])
+  @@map("sync_history")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorEmail String?
+  action     String
+  target     String?
+  detail     String?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
 model Session {

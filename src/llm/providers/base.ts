@@ -31,6 +31,7 @@ export type BaseProviderOptions = {
   hooks?: ProviderHooks;
   maxRetries?: number;
   retryInitialDelayMs?: number;
+  requestTimeoutMs?: number;
 };
 
 type OpenAIUsage = {
@@ -61,6 +62,7 @@ export abstract class BaseProvider implements LLMProvider {
   protected readonly hooks: ProviderHooks;
   protected readonly maxRetries: number;
   protected readonly retryInitialDelayMs: number;
+  protected readonly requestTimeoutMs: number;
 
   private client: OpenAI | null = null;
   private clientKey = '';
@@ -70,6 +72,7 @@ export abstract class BaseProvider implements LLMProvider {
     this.hooks = createHooks(options.hooks);
     this.maxRetries = options.maxRetries ?? 3;
     this.retryInitialDelayMs = options.retryInitialDelayMs ?? 1000;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? 120000;
   }
 
   isConfigured(settings?: ProviderSettings): boolean {
@@ -160,7 +163,12 @@ export abstract class BaseProvider implements LLMProvider {
           maxRetries: this.maxRetries,
           initialDelayMs: this.retryInitialDelayMs,
           signal,
-          isRetryable: (error) => isRetryableError(this.toLLMError(error)),
+          // Retrying a slow stream just multiplies the wait; the caller applies
+          // its own round timeout. Timeouts surface as errors immediately.
+          isRetryable: (error) => {
+            const llmError = this.toLLMError(error);
+            return llmError.code !== 'timeout' && isRetryableError(llmError);
+          },
         },
       );
 
@@ -368,6 +376,8 @@ export abstract class BaseProvider implements LLMProvider {
     return new OpenAI({
       apiKey,
       ...(baseUrl ? { baseURL: baseUrl } : {}),
+      timeout: this.requestTimeoutMs,
+      maxRetries: 0,
     });
   }
 

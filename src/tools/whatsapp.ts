@@ -1,5 +1,5 @@
 import { config } from '../config/index.js';
-import { getIntegrationRecord } from '../integrations/access.js';
+import { getIntegrationRecord, requirePermission } from '../integrations/access.js';
 import type { Tool } from './types.js';
 import { fetchWithTimeout } from '../lib/http.js';
 
@@ -24,6 +24,7 @@ export const whatsappSendMessageTool: Tool = {
     if (!to || !body) {
       throw new Error('Missing "to" or "body" argument');
     }
+    await requirePermission(context.userId, 'whatsapp', 'whatsapp.send');
     const { token, metadata } = await getIntegrationRecord(context.userId, 'whatsapp');
     const phoneNumberId = typeof metadata.phoneNumberId === 'string' ? metadata.phoneNumberId : '';
     if (!phoneNumberId) {

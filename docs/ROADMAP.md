@@ -32,7 +32,7 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 
 - ✅ Web search, weather, filesystem sandbox, PDF reading, clipboard,
   notifications.
-- ✅ Google Calendar/Gmail/Drive, GitHub, Slack, Discord, Notion, WhatsApp.
+- ✅ Google Calendar/Gmail/Drive/Docs/Sheets/Tasks/Contacts, GitHub, Slack, Discord, Notion, WhatsApp.
 - ✅ n8n workflow orchestration and browser automation.
 - 🎯 More providers: Microsoft 365, Telegram, Linear, Jira, Todoist, Teams.
 - 🎯 Scheduled/triggered automations driven by n8n webhooks into BRO.

@@ -82,4 +82,6 @@ export const config = {
   logLevel: (process.env.LOG_LEVEL ?? 'info') as
     'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent',
   pluginsDir: process.env.PLUGINS_DIR ?? path.join(process.cwd(), 'plugins'),
+  integrationProvidersDir:
+    process.env.INTEGRATION_PROVIDERS_DIR ?? path.join(process.cwd(), 'integrations'),
 } as const;

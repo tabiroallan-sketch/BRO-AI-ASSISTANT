@@ -7,7 +7,7 @@ import {
   requireRole,
   type Role,
 } from '../lib/auth.js';
-import { getAuditLogs, recordAudit } from '../lib/audit.js';
+import { getAuditLogs, readAuditLogs, recordAudit } from '../lib/audit.js';
 import { prisma } from '../lib/prisma.js';
 
 const updateUserSchema = z
@@ -101,7 +101,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const query = request.query as { limit?: string };
     const parsed = Number.parseInt(query.limit ?? '200', 10);
     const limit = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 1000) : 200;
-    const events = getAuditLogs(limit);
+    const events =
+      prisma && typeof prisma.auditLog?.findMany === 'function'
+        ? await readAuditLogs(limit)
+        : getAuditLogs(limit);
     return { count: events.length, events };
   });
 }

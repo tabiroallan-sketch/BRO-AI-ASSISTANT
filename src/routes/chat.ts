@@ -1,12 +1,19 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { config } from '../config/index.js';
 import { HttpError, requireAuth } from '../lib/auth.js';
 import { sanitizeOutputText, validateToolOutput } from '../lib/output-validate.js';
 import { prisma } from '../lib/prisma.js';
 import { getSecret } from '../lib/secrets.js';
 import { getTool, listTools } from '../tools/registry.js';
 import type { Tool } from '../tools/types.js';
-import { aiConfigStore, modelManager, providerFallback, providerRegistry } from '../llm/index.js';
+import {
+  aiConfigStore,
+  LLMError,
+  modelManager,
+  providerFallback,
+  providerRegistry,
+} from '../llm/index.js';
 import type {
   LLMMessage,
   LLMProvider,
@@ -24,10 +31,17 @@ const HISTORY_LIMIT = 30;
 const TITLE_MAX = 60;
 const MEMORY_LIMIT = 100;
 const TOOL_CALL_LIMIT = 5;
+const ROUND_TIMEOUT_MS = 90_000;
 
 const SYSTEM_PROMPT =
   'You are BRO, a helpful, concise AI assistant. Answer the user directly and ' +
-  'accurately. Prefer short answers unless detail is requested.';
+  'accurately. Prefer short answers unless detail is requested.\n' +
+  'Use tools sparingly. Never call a tool for casual conversation, greetings, or ' +
+  'questions you can answer from your own knowledge. Only call a tool when the ' +
+  'user asks for something that genuinely requires fetching live data or ' +
+  'performing an action. When you do use a tool, never describe the tool call ' +
+  'itself: use its output to answer the user naturally, in your own words, as if ' +
+  'you performed the action yourself.';
 
 type MemoryFact = { key: string; value: string; category: string | null };
 
@@ -192,6 +206,11 @@ async function runModel(
     if (signal.aborted) {
       throw error;
     }
+    // A slow provider is not going to get faster by retrying the same prompt;
+    // surface the timeout so the route can answer from tool output or error.
+    if ((error as { code?: string }).code === 'timeout') {
+      throw error;
+    }
     // Some OpenAI-compatible providers (e.g. Gemini) reject requests whose
     // final turn is a tool result or an assistant tool_call. Retry once with a
     // closing user turn so the model can produce its answer.
@@ -294,6 +313,11 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
+      // reply.hijack() bypasses @fastify/cors (which attaches headers in its
+      // onSend hook), so the hijacked SSE response must carry the CORS headers
+      // itself or the browser will drop the stream for cross-origin requests.
+      'Access-Control-Allow-Origin': config.corsOrigin,
+      'Access-Control-Allow-Credentials': 'true',
     });
     sendEvent(reply, { type: 'start', conversationId: conversation, messageId: userMessage.id });
 
@@ -319,38 +343,110 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const tools: LLMTool[] = listTools().map(toLLMTool);
       const preferredProviderId = (await aiConfigStore.get()).providerId ?? undefined;
 
-      for (let round = 0; round <= TOOL_CALL_LIMIT; round += 1) {
-        const { content, toolCalls } = await runModelWithFallback(
-          llmMessages,
-          tools,
-          abortController.signal,
-          (delta) => sendEvent(reply, { type: 'delta', content: sanitizeOutputText(delta) }),
-          preferredProviderId,
-        );
-        if (toolCalls.length === 0) {
-          full = content;
-          break;
-        }
-        if (round === TOOL_CALL_LIMIT) {
-          full = content || 'I could not finish before running out of tool calls. Try again.';
-          break;
-        }
+      const toolOutputs: string[] = [];
 
-        llmMessages.push({ role: 'assistant', content: null, tool_calls: toolCalls });
-        for (const call of toolCalls) {
-          if (abortController.signal.aborted) {
-            throw abortController.signal.reason ?? new Error('Client disconnected');
+      for (let round = 0; round <= TOOL_CALL_LIMIT; round += 1) {
+        const roundTools = round === 0 ? tools : [];
+        const roundController = new AbortController();
+        const forwardAbort = (): void => roundController.abort();
+        abortController.signal.addEventListener('abort', forwardAbort, { once: true });
+
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let timedOut = false;
+        const timeoutPromise = new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            roundController.abort();
+            reject(
+              new LLMError({
+                code: 'timeout',
+                providerId: 'unknown',
+                message: 'The AI provider timed out.',
+                retryable: false,
+              }),
+            );
+          }, ROUND_TIMEOUT_MS);
+        });
+
+        try {
+          const modelCall = runModelWithFallback(
+            llmMessages,
+            roundTools,
+            roundController.signal,
+            (delta) => sendEvent(reply, { type: 'delta', content: sanitizeOutputText(delta) }),
+            preferredProviderId,
+          );
+          const { content, toolCalls } = await Promise.race([modelCall, timeoutPromise]);
+          if (toolCalls.length === 0) {
+            full = content;
+            break;
           }
-          const args = parseToolArguments(call.arguments);
-          sendEvent(reply, { type: 'tool_start', name: call.name, args });
-          const result = await executeTool(call, args, userId);
-          sendEvent(reply, {
-            type: 'tool_result',
-            name: call.name,
-            ok: result.ok,
-            output: result.output,
-          });
-          llmMessages.push({ role: 'tool', tool_call_id: call.id, content: result.output });
+          if (round === TOOL_CALL_LIMIT) {
+            full = content || 'I could not finish before running out of tool calls. Try again.';
+            break;
+          }
+
+          llmMessages.push({ role: 'assistant', content: null, tool_calls: toolCalls });
+          for (const toolCall of toolCalls) {
+            if (abortController.signal.aborted) {
+              throw abortController.signal.reason ?? new Error('Client disconnected');
+            }
+            const args = parseToolArguments(toolCall.arguments);
+            sendEvent(reply, { type: 'tool_start', name: toolCall.name, args });
+            const result = await executeTool(toolCall, args, userId);
+            sendEvent(reply, {
+              type: 'tool_result',
+              name: toolCall.name,
+              ok: result.ok,
+              output: result.output,
+            });
+            toolOutputs.push(result.output);
+            llmMessages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: result.output,
+            });
+          }
+          const executedTools = toolCalls.map((call) => getTool(call.name));
+          const allAnswerFinal =
+            executedTools.length > 0 && executedTools.every((tool) => Boolean(tool?.answerFinal));
+          if (allAnswerFinal) {
+            full = toolOutputs.join('\n');
+            break;
+          }
+        } catch (error) {
+          if (abortController.signal.aborted) {
+            throw error;
+          }
+          if (timedOut) {
+            request.log.warn(
+              { err: error, round },
+              `Model round timed out after ${ROUND_TIMEOUT_MS}ms`,
+            );
+            if (toolOutputs.length > 0) {
+              request.log.warn(
+                { round },
+                'Final answer not generated; replying with tool output instead',
+              );
+              full = toolOutputs.join('\n');
+              break;
+            }
+            throw error;
+          }
+          if (toolOutputs.length > 0) {
+            request.log.warn(
+              { err: error, round },
+              'Final answer not generated; replying with tool output instead',
+            );
+            full = toolOutputs.join('\n');
+            break;
+          }
+          throw error;
+        } finally {
+          if (timer) {
+            clearTimeout(timer);
+          }
+          abortController.signal.removeEventListener('abort', forwardAbort);
         }
       }
 

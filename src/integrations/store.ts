@@ -1,23 +1,41 @@
 import { Prisma, prisma } from '../lib/prisma.js';
 import { decryptValue, encryptValue } from '../lib/encryption.js';
+import { emitIntegrationEvent } from './events.js';
+import {
+  REFRESH_WINDOW_MS,
+  hashToken,
+  refreshAccessToken,
+  secureEqual,
+  withRefreshFlight,
+} from './oauth-engine.js';
+import { getGrantedPermissions } from './permissions.js';
 import { getProvider, type ProviderDef } from './providers.js';
-import { refreshProviderToken } from './oauth.js';
+import { savePermissionSet } from './trust-store.js';
 
 export type IntegrationRecord = {
   id: string;
   userId: string;
   provider: string;
+  accountKey: string;
   accountName: string | null;
   externalId: string | null;
   accessToken: string;
   refreshToken: string | null;
+  refreshTokenHash: string | null;
   tokenExpiresAt: Date | null;
   scopes: string | null;
   metadata: Prisma.JsonValue;
+  isPrimary: boolean;
+  lastRefreshedAt: Date | null;
+  refreshCount: number;
+  revokedAt: Date | null;
+  revokedReason: string | null;
+  createdAt: Date;
 };
 
 export type UpsertIntegrationInput = {
   provider: string;
+  accountKey?: string;
   accountName?: string | null;
   externalId?: string | null;
   accessToken: string;
@@ -27,14 +45,22 @@ export type UpsertIntegrationInput = {
   metadata?: Record<string, unknown>;
 };
 
-export async function upsertIntegration(
-  userId: string,
-  input: UpsertIntegrationInput,
-): Promise<void> {
-  if (!prisma) {
-    throw new Error('Database not configured');
-  }
-  const data = {
+function resolveAccountKey(input: UpsertIntegrationInput): string {
+  return input.accountKey ?? input.externalId ?? 'default';
+}
+
+type IntegrationWriteFields = {
+  accountName: string | null;
+  externalId: string | null;
+  accessToken: string;
+  refreshToken: string | null;
+  tokenExpiresAt: Date | null;
+  scopes: string | null;
+  metadata: Prisma.InputJsonValue;
+};
+
+function encryptionData(input: UpsertIntegrationInput): IntegrationWriteFields {
+  return {
     accountName: input.accountName ?? null,
     externalId: input.externalId ?? null,
     accessToken: encryptValue(input.accessToken),
@@ -43,46 +69,116 @@ export async function upsertIntegration(
     scopes: input.scopes ?? null,
     metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
   };
-  await prisma.integration.upsert({
+}
+
+function decryptRecord(record: IntegrationRecord): IntegrationRecord {
+  return {
+    ...record,
+    accessToken: decryptValue(record.accessToken),
+    refreshToken: record.refreshToken ? decryptValue(record.refreshToken) : null,
+  };
+}
+
+export async function upsertIntegration(
+  userId: string,
+  input: UpsertIntegrationInput,
+): Promise<void> {
+  if (!prisma) {
+    throw new Error('Database not configured');
+  }
+  const accountKey = resolveAccountKey(input);
+  const data = encryptionData(input);
+
+  let record: IntegrationRecord;
+  const existing = await prisma.integration.findUnique({
     where: {
-      userId_provider: { userId, provider: input.provider },
-    },
-    update: data,
-    create: {
-      userId,
-      provider: input.provider,
-      ...data,
+      userId_provider_accountKey: { userId, provider: input.provider, accountKey },
     },
   });
+
+  if (existing) {
+    const primaryExists = await prisma.integration.findFirst({
+      where: { userId, provider: input.provider, isPrimary: true },
+      select: { id: true },
+    });
+    record = await prisma.integration.update({
+      where: { id: existing.id },
+      data: {
+        ...data,
+        refreshTokenHash: input.refreshToken ? hashToken(input.refreshToken) : null,
+        lastRefreshedAt: null,
+        refreshCount: 0,
+        revokedAt: null,
+        revokedReason: null,
+        ...(primaryExists ? {} : { isPrimary: true }),
+      },
+    });
+  } else {
+    const count = await prisma.integration.count({
+      where: { userId, provider: input.provider },
+    });
+    record = await prisma.integration.create({
+      data: {
+        userId,
+        provider: input.provider,
+        accountKey,
+        ...data,
+        refreshTokenHash: input.refreshToken ? hashToken(input.refreshToken) : null,
+        isPrimary: count === 0,
+      },
+    });
+  }
+
+  if (input.scopes) {
+    const provider = getProvider(input.provider);
+    const granted = provider
+      ? getGrantedPermissions(provider, input.scopes)
+          .filter((permission) => permission.enabled)
+          .map((permission) => permission.id)
+      : [];
+    await savePermissionSet(record.id, input.scopes, granted);
+  }
 }
 
 export async function deleteIntegration(userId: string, providerId: string): Promise<void> {
   if (!prisma) {
     throw new Error('Database not configured');
   }
-  await prisma.integration.deleteMany({
+  const result = await prisma.integration.deleteMany({
     where: { userId, provider: providerId },
   });
+  if (result.count > 0) {
+    emitIntegrationEvent({ type: 'disconnected', provider: providerId, userId });
+  }
 }
 
 export async function getIntegration(
   userId: string,
   providerId: string,
+  accountKey?: string,
 ): Promise<IntegrationRecord | null> {
   if (!prisma) {
     return null;
   }
-  const record = await prisma.integration.findUnique({
-    where: { userId_provider: { userId, provider: providerId } },
-  });
+  let record: IntegrationRecord | null;
+  if (accountKey) {
+    record = await prisma.integration.findUnique({
+      where: { userId_provider_accountKey: { userId, provider: providerId, accountKey } },
+    });
+  } else {
+    record =
+      (await prisma.integration.findFirst({
+        where: { userId, provider: providerId, isPrimary: true },
+      })) ??
+      (await prisma.integration.findFirst({
+        where: { userId, provider: providerId },
+        orderBy: { createdAt: 'desc' },
+      }));
+  }
   if (!record) {
     return null;
   }
-  return {
-    ...record,
-    accessToken: decryptValue(record.accessToken),
-    refreshToken: record.refreshToken ? decryptValue(record.refreshToken) : null,
-  };
+  return decryptRecord(record);
 }
 
 export async function listUserIntegrations(
@@ -94,51 +190,202 @@ export async function listUserIntegrations(
   const records = await prisma.integration.findMany({
     where: { userId },
   });
-  return new Map(
-    records.map((record) => [
-      record.provider,
-      {
-        ...record,
-        accessToken: decryptValue(record.accessToken),
-        refreshToken: record.refreshToken ? decryptValue(record.refreshToken) : null,
-      },
-    ]),
-  );
+  const byProvider = new Map<string, IntegrationRecord[]>();
+  for (const record of records) {
+    const list = byProvider.get(record.provider) ?? [];
+    list.push(decryptRecord(record));
+    byProvider.set(record.provider, list);
+  }
+  const primary = new Map<string, IntegrationRecord>();
+  for (const [provider, list] of byProvider) {
+    const chosen = list.find((record) => record.isPrimary) ?? list[0];
+    if (chosen) {
+      primary.set(provider, chosen);
+    }
+  }
+  return primary;
+}
+
+export async function listProviderAccounts(
+  userId: string,
+  providerId: string,
+): Promise<IntegrationRecord[]> {
+  if (!prisma) {
+    return [];
+  }
+  const records = await prisma.integration.findMany({
+    where: { userId, provider: providerId },
+    orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }],
+  });
+  return records.map(decryptRecord);
+}
+
+export async function setPrimaryIntegration(
+  userId: string,
+  providerId: string,
+  accountId: string,
+): Promise<boolean> {
+  if (!prisma) {
+    return false;
+  }
+  const target = await prisma.integration.findFirst({
+    where: { id: accountId, userId, provider: providerId },
+    select: { id: true },
+  });
+  if (!target) {
+    return false;
+  }
+  await prisma.$transaction([
+    prisma.integration.updateMany({
+      where: { userId, provider: providerId },
+      data: { isPrimary: false },
+    }),
+    prisma.integration.update({
+      where: { id: accountId },
+      data: { isPrimary: true },
+    }),
+  ]);
+  return true;
 }
 
 export async function getValidAccessToken(
   userId: string,
   providerId: string,
+  accountKey?: string,
 ): Promise<string | null> {
-  const integration = await getIntegration(userId, providerId);
+  const integration = await getIntegration(userId, providerId, accountKey);
   if (!integration) {
+    return null;
+  }
+  if (integration.revokedAt) {
     return null;
   }
   const provider = getProvider(providerId) as ProviderDef | undefined;
   const needsRefresh =
     integration.tokenExpiresAt !== null &&
-    integration.tokenExpiresAt.getTime() - 60_000 < Date.now() &&
+    integration.tokenExpiresAt.getTime() - REFRESH_WINDOW_MS < Date.now() &&
     Boolean(integration.refreshToken) &&
     provider?.type === 'oauth' &&
     provider.supportsRefresh;
 
   if (needsRefresh && integration.refreshToken) {
-    try {
-      const refreshed = await refreshProviderToken(providerId, integration.refreshToken);
-      await upsertIntegration(userId, {
-        provider: providerId,
-        accessToken: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken ?? integration.refreshToken,
-        tokenExpiresAt: refreshed.expiresIn
-          ? new Date(Date.now() + refreshed.expiresIn * 1000)
-          : null,
-        scopes: refreshed.scope,
-      });
-      return refreshed.accessToken;
-    } catch {
-      return null;
-    }
+    return withRefreshFlight(integration.id, async () => {
+      if (
+        integration.refreshTokenHash &&
+        !secureEqual(hashToken(integration.refreshToken as string), integration.refreshTokenHash)
+      ) {
+        await revokeIntegration(integration.id, 'refresh_token_reuse');
+        emitIntegrationEvent({
+          type: 'token_revoked',
+          provider: providerId,
+          userId,
+          reason: 'refresh_token_reuse',
+        });
+        return null;
+      }
+      try {
+        const refreshed = await refreshAccessToken(providerId, integration.refreshToken as string);
+        await rotateIntegrationTokens(integration.id, {
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken ?? (integration.refreshToken as string),
+          expiresIn: refreshed.expiresIn,
+          scope: refreshed.scope ?? undefined,
+          refreshCount: (integration.refreshCount ?? 0) + 1,
+        });
+        emitIntegrationEvent({ type: 'token_refreshed', provider: providerId, userId });
+        return refreshed.accessToken;
+      } catch {
+        return null;
+      }
+    });
   }
 
   return integration.accessToken;
+}
+
+export type RotateTokensInput = {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn?: number;
+  scope?: string;
+  refreshCount: number;
+};
+
+export async function rotateIntegrationTokens(
+  integrationId: string,
+  input: RotateTokensInput,
+): Promise<void> {
+  if (!prisma) {
+    return;
+  }
+  const data: Prisma.IntegrationUpdateInput = {
+    accessToken: encryptValue(input.accessToken),
+    refreshToken: encryptValue(input.refreshToken),
+    refreshTokenHash: hashToken(input.refreshToken),
+    tokenExpiresAt: input.expiresIn ? new Date(Date.now() + input.expiresIn * 1000) : null,
+    lastRefreshedAt: new Date(),
+    refreshCount: input.refreshCount,
+    revokedAt: null,
+    revokedReason: null,
+  };
+  if (input.scope !== undefined) {
+    data.scopes = input.scope;
+  }
+  await prisma.integration.update({ where: { id: integrationId }, data });
+}
+
+export async function revokeIntegration(integrationId: string, reason: string): Promise<void> {
+  if (!prisma) {
+    return;
+  }
+  await prisma.integration.update({
+    where: { id: integrationId },
+    data: {
+      accessToken: '',
+      refreshToken: null,
+      refreshTokenHash: null,
+      revokedAt: new Date(),
+      revokedReason: reason,
+    },
+  });
+}
+
+export async function deleteIntegrationAccount(
+  userId: string,
+  providerId: string,
+  accountId: string,
+  revokeToken?: (token: string) => Promise<void>,
+): Promise<boolean> {
+  if (!prisma) {
+    return false;
+  }
+  const target = await prisma.integration.findFirst({
+    where: { id: accountId, userId, provider: providerId },
+  });
+  if (!target) {
+    return false;
+  }
+  if (revokeToken && target.accessToken) {
+    try {
+      await revokeToken(decryptValue(target.accessToken));
+    } catch {
+      // Provider-side revocation is best-effort; local removal always proceeds.
+    }
+  }
+  const others = await prisma.integration.findMany({
+    where: { userId, provider: providerId },
+    orderBy: { createdAt: 'desc' },
+  });
+  await prisma.integration.delete({ where: { id: accountId } });
+  if (target.isPrimary) {
+    const successor = others.find((record) => record.id !== accountId);
+    if (successor) {
+      await prisma.integration.update({
+        where: { id: successor.id },
+        data: { isPrimary: true },
+      });
+    }
+  }
+  emitIntegrationEvent({ type: 'disconnected', provider: providerId, userId });
+  return true;
 }

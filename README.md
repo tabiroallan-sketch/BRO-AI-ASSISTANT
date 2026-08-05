@@ -217,14 +217,39 @@ Built-in tools:
 - `calendar_list_events` — lists upcoming events on the user's Google Calendar
 - `calendar_create_event` — creates a Google Calendar event
 - `gmail_search` — searches the user's Gmail inbox
+- `gmail_read` — reads a single Gmail message by ID
 - `gmail_send` — sends email from the user's Gmail account
 - `drive_list_files` — lists the user's Google Drive files
+- `drive_read_file` — reads a file's contents from the user's Google Drive
+- `drive_upload_file` — uploads a text file to the user's Google Drive
+- `docs_search` — finds the user's Google Documents by name
+- `docs_read` — reads the text content of a Google Document by ID
+- `sheets_list` — finds the user's Google Sheets by name
+- `sheets_read` — reads cell values from a Google Sheet
+- `tasks_list` — lists the user's Google Tasks lists, or tasks in a list
+- `tasks_create` — creates a task in the user's Google Tasks
+- `contacts_search` — searches the user's Google Contacts
 - `github_list_repos` — lists the user's GitHub repositories
 - `github_create_issue` — creates a GitHub issue
-- `slack_send_message` — posts a message to a Slack channel/DM
+- `github_list_issues` — lists issues on a GitHub repository (open/closed/all)
+- `github_list_pulls` — lists pull requests on a GitHub repository
+- `github_list_workflow_runs` — lists recent GitHub Actions workflow runs with status
+- `github_list_commits` — lists recent commits on a repository (optionally per branch)
+- `github_list_releases` — lists releases on a GitHub repository
+- `github_profile` — shows the connected GitHub username, repository count, and permissions
+- `slack_send_message` — posts a message to a Slack channel/DM (or replies in a thread)
+- `slack_list_channels` — lists the public channels in the user's Slack workspace
+- `slack_read_messages` — reads recent messages from a Slack channel
+- `slack_list_users` — lists members of the user's Slack workspace with their status
+- `slack_read_thread` — reads a Slack thread's parent message and replies
+- `slack_get_status` — shows the authenticated Slack user's status
+- `slack_set_status` — sets the Slack status (text, emoji, optional expiry)
 - `discord_send_message` — posts a message via a Discord webhook
-- `notion_search_pages` — searches the user's Notion workspace
+- `notion_workspace` — shows which Notion workspace is connected (name, ID, integration)
+- `notion_search_pages` — searches the user's Notion workspace for pages
+- `notion_search_databases` — searches the user's Notion workspace for databases with their properties
 - `notion_create_page` — creates a Notion page under a parent page
+- `notion_update_page` — updates a Notion page (title and/or archive)
 - `whatsapp_send_message` — sends a WhatsApp Business message
 - `n8n_list_workflows` — lists the workflows in the n8n instance (optionally active only)
 - `n8n_get_workflow` — details of one workflow: active state, triggers, node names
@@ -303,7 +328,8 @@ before expiry when the provider supports refresh tokens.
 
 Three connection types are supported:
 
-- **OAuth** — `google-calendar`, `google-gmail`, `google-drive` (reuse the Google OAuth
+- **OAuth** — `google-calendar`, `google-gmail`, `google-drive`, `google-docs`,
+  `google-sheets`, `google-tasks`, `google-contacts` (all reuse the Google OAuth
   client), `github`, `slack`, and `notion`
 - **Webhook** — `discord` (paste a channel webhook URL)
 - **Token** — `whatsapp` (paste a WhatsApp Business API token + phone number ID)
@@ -420,10 +446,17 @@ origin (`http://localhost:3001`).
 ## Dashboard & Monitoring
 
 The web app has a dashboard under `/dashboard` with a sidebar of pages: Overview,
-Conversations, Memories, Connected accounts, Installed tools, Automations, Analytics,
-and Logs. Each page is backed by an authenticated endpoint:
+Conversations, Memories, Connected accounts, Permissions, Installed tools,
+Automations, Analytics, and Logs. Each page is backed by an authenticated endpoint:
 
 - `GET /api/v1/tools` — Lists installed tools (`count` + `[{ name, description }]`).
+- `GET /api/v1/integrations/permissions` — Lists every provider and permission for the
+  Permission Center: each permission reports `granted` (scope-derived) and `enabled`
+  (user preference, persisted in the trust store).
+- `PUT /api/v1/integrations/:provider/permissions` — Sets the enabled permission ids
+  for a connected provider. Body: `{ "permissions": ["gmail.read", ...] }`.
+  Disabled permissions are enforced at tool execution time: the corresponding tools
+  (e.g. `gmail_send` behind `gmail.send`) reject calls until the permission is re-enabled.
 - `GET /api/v1/automations` — **Admin only.** n8n status: `enabled`, `configured`, `workflows`
   (id/name/active) and recent `executions` (workflow name, status, timestamps). When
   n8n is unreachable it returns `error` instead of failing.

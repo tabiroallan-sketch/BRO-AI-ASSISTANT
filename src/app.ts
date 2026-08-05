@@ -12,6 +12,7 @@ import { applyRateLimits } from './lib/rate-limit.js';
 import { redis } from './lib/redis.js';
 import { aiConfigStore } from './llm/index.js';
 import { loadPluginsFromDisk } from './plugins/index.js';
+import { loadProvidersFromDisk } from './integrations/providers/loader.js';
 import { appRoutes } from './routes/index.js';
 import './tools/index.js';
 
@@ -86,6 +87,14 @@ export function buildApp(): FastifyInstance {
         failed: result.failed.map(({ file }) => file),
       },
       'Plugin loading complete',
+    );
+    const providerResult = await loadProvidersFromDisk(config.integrationProvidersDir);
+    app.log.info(
+      {
+        loaded: providerResult.loaded,
+        failed: providerResult.failed.map(({ file }) => file),
+      },
+      'Integration provider loading complete',
     );
     try {
       await aiConfigStore.loadIntoRuntime();

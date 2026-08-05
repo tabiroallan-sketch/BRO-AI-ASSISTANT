@@ -1,4 +1,4 @@
-import { getIntegrationRecord } from '../integrations/access.js';
+import { getIntegrationRecord, requirePermission } from '../integrations/access.js';
 import type { Tool } from './types.js';
 import { fetchWithTimeout } from '../lib/http.js';
 
@@ -17,6 +17,7 @@ export const discordSendMessageTool: Tool = {
     if (!content) {
       throw new Error('Missing "content" argument');
     }
+    await requirePermission(context.userId, 'discord', 'discord.send');
     const { token: webhookUrl } = await getIntegrationRecord(context.userId, 'discord');
     const response = await fetchWithTimeout(`${webhookUrl}?wait=true`, {
       method: 'POST',

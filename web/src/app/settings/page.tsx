@@ -1,3 +1,4 @@
+import { AiProvidersCard } from '@/components/ai-providers-card';
 import { IntegrationsCard } from '@/components/integrations-card';
 import { RequireAuth } from '@/components/require-auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +14,10 @@ export default function SettingsPage(): React.JSX.Element {
 
         <div className="mb-8">
           <IntegrationsCard />
+        </div>
+
+        <div className="mb-8">
+          <AiProvidersCard />
         </div>
 
         <Card>

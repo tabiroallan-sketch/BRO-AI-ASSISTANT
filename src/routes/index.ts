@@ -8,6 +8,7 @@ import { conversationRoutes } from './conversations.js';
 import { healthRoute } from './health.js';
 import { protectedIntegrationRoutes, publicIntegrationRoutes } from './integrations.js';
 import { logRoutes } from './logs.js';
+import { llmRoutes } from './llm.js';
 import { memoryRoutes } from './memories.js';
 import { notificationRoutes } from './notifications.js';
 import { pluginRoutes } from './plugins.js';
@@ -24,6 +25,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       await v1.register(chatRoutes);
       await v1.register(notificationRoutes);
       await v1.register(protectedIntegrationRoutes);
+      await v1.register(llmRoutes);
       await v1.register(toolRoutes);
       await v1.register(automationRoutes);
       await v1.register(analyticsRoutes);

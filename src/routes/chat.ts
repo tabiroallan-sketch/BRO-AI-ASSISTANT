@@ -1,18 +1,19 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import {
-  aiConfigured,
-  streamChatCompletion,
-  type AiChatMessage,
-  type AiStreamEvent,
-  type AiTool,
-  type AiToolCall,
-} from '../lib/ai.js';
 import { HttpError, requireAuth } from '../lib/auth.js';
 import { sanitizeOutputText, validateToolOutput } from '../lib/output-validate.js';
 import { prisma } from '../lib/prisma.js';
+import { getSecret } from '../lib/secrets.js';
 import { getTool, listTools } from '../tools/registry.js';
 import type { Tool } from '../tools/types.js';
+import { modelManager, providerFallback, providerRegistry } from '../llm/index.js';
+import type {
+  LLMMessage,
+  LLMProvider,
+  LLMTool,
+  LLMToolCall,
+  ProviderSettings,
+} from '../llm/index.js';
 
 const chatSchema = z.object({
   conversationId: z.string().uuid().optional(),
@@ -79,7 +80,7 @@ function sendEvent(reply: FastifyReply, event: Record<string, unknown>): void {
   reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
-function toAiRole(role: 'USER' | 'ASSISTANT' | 'SYSTEM'): AiChatMessage['role'] {
+function toLLMRole(role: 'USER' | 'ASSISTANT' | 'SYSTEM'): LLMMessage['role'] {
   switch (role) {
     case 'USER':
       return 'user';
@@ -90,7 +91,7 @@ function toAiRole(role: 'USER' | 'ASSISTANT' | 'SYSTEM'): AiChatMessage['role'] 
   }
 }
 
-function toAiTool(tool: Tool): AiTool {
+function toLLMTool(tool: Tool): LLMTool {
   return {
     type: 'function',
     function: {
@@ -99,6 +100,19 @@ function toAiTool(tool: Tool): AiTool {
       parameters: tool.parameters,
     },
   };
+}
+
+function envSettingsFor(provider: LLMProvider): ProviderSettings {
+  return provider.descriptor.requiresApiKey
+    ? { apiKey: getSecret(provider.descriptor.envVar) }
+    : {};
+}
+
+function anyProviderConfigured(): boolean {
+  return providerRegistry.list().some((provider) => {
+    const descriptor = provider.descriptor;
+    return !descriptor.requiresApiKey || getSecret(descriptor.envVar).length > 0;
+  });
 }
 
 function parseToolArguments(raw: string): Record<string, unknown> {
@@ -110,37 +124,92 @@ function parseToolArguments(raw: string): Record<string, unknown> {
   }
 }
 
+function attemptStatus(error: unknown): number | undefined {
+  return (error as { status?: number }).status;
+}
+
+function deriveErrorMessage(error: unknown): string {
+  const status = attemptStatus(error);
+  if (status === 429) {
+    return 'The AI provider is rate-limiting requests (429). Please wait a moment and try again.';
+  }
+  if (status === 401 || status === 403) {
+    return 'The AI provider rejected the API key (unauthorized). Check the provider key and quota.';
+  }
+  const code = (error as { code?: string }).code;
+  if (code === 'rate_limited') {
+    return 'The AI provider is rate-limiting requests. Please wait a moment and try again.';
+  }
+  if (code === 'auth_failed') {
+    return 'The AI provider rejected the API key (unauthorized). Check the provider key and quota.';
+  }
+  if (code === 'timeout') {
+    return 'The AI provider timed out. Please try again.';
+  }
+  if (code === 'network' || code === 'stream_interrupted') {
+    return 'Network error while contacting the AI provider.';
+  }
+  if (code === 'model_unavailable') {
+    return 'The requested AI model is unavailable.';
+  }
+  return 'Failed to generate a response';
+}
+
 async function runModel(
-  messages: AiChatMessage[],
-  tools: AiTool[],
+  provider: LLMProvider,
+  messages: LLMMessage[],
+  tools: LLMTool[],
   signal: AbortSignal,
   onContent: (delta: string) => void,
-): Promise<{ content: string; toolCalls: AiToolCall[] }> {
+): Promise<{ content: string; toolCalls: LLMToolCall[] }> {
   let content = '';
-  let toolCalls: AiToolCall[] = [];
+  let toolCalls: LLMToolCall[] = [];
 
-  async function consume(events: AsyncGenerator<AiStreamEvent>): Promise<void> {
-    for await (const event of events) {
+  async function consume(currentMessages: LLMMessage[], currentTools: LLMTool[]): Promise<void> {
+    const model = await modelManager.resolveModel(provider.descriptor.id);
+    const stream = provider.streamChat(
+      {
+        messages: currentMessages,
+        ...(currentTools.length > 0 ? { tools: currentTools } : {}),
+        ...(model ? { model } : {}),
+      },
+      { signal },
+    );
+    for await (const event of stream) {
       if (event.type === 'content') {
         content += event.content;
         onContent(event.content);
-      } else {
+      } else if (event.type === 'tool_calls') {
         toolCalls = event.toolCalls;
       }
     }
   }
 
   try {
-    await consume(streamChatCompletion(messages, tools, signal));
+    await consume(messages, tools);
   } catch (error) {
     // The client disconnected: do not retry and do not keep generating.
     if (signal.aborted) {
       throw error;
     }
+    // Some OpenAI-compatible providers (e.g. Gemini) reject requests whose
+    // final turn is a tool result or an assistant tool_call. Retry once with a
+    // closing user turn so the model can produce its answer.
+    const last = messages[messages.length - 1];
+    const endsOnToolTurn =
+      last?.role === 'tool' || (last?.role === 'assistant' && (last.tool_calls?.length ?? 0) > 0);
+    if (endsOnToolTurn) {
+      try {
+        await consume([...messages, { role: 'user', content: 'Continue.' }], tools);
+        return { content, toolCalls };
+      } catch {
+        // Fall through to the plain-completion fallback below.
+      }
+    }
     // Some providers reject the tools array; fall back to a plain completion.
     if (tools.length > 0) {
       toolCalls = [];
-      await consume(streamChatCompletion(messages, [], signal));
+      await consume(messages, []);
     } else {
       throw error;
     }
@@ -149,8 +218,20 @@ async function runModel(
   return { content, toolCalls };
 }
 
+async function runModelWithFallback(
+  messages: LLMMessage[],
+  tools: LLMTool[],
+  signal: AbortSignal,
+  onContent: (delta: string) => void,
+): Promise<{ content: string; toolCalls: LLMToolCall[] }> {
+  return providerFallback.execute(async (provider) => {
+    await provider.initialize(envSettingsFor(provider));
+    return runModel(provider, messages, tools, signal, onContent);
+  });
+}
+
 async function executeTool(
-  call: AiToolCall,
+  call: LLMToolCall,
   args: Record<string, unknown>,
   userId: string,
 ): Promise<{ ok: boolean; output: string }> {
@@ -179,11 +260,12 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     if (!userId) {
       throw new HttpError(401, 'Unauthorized');
     }
-    if (!aiConfigured()) {
-      throw new HttpError(503, 'AI is not configured');
-    }
     if (!prisma) {
       throw new HttpError(503, 'Database not configured');
+    }
+
+    if (!anyProviderConfigured()) {
+      throw new HttpError(503, 'AI is not configured');
     }
 
     const { conversationId, message } = parsed.data;
@@ -226,18 +308,18 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         select: { key: true, value: true, category: true },
       });
 
-      const aiMessages: AiChatMessage[] = [
+      const llmMessages: LLMMessage[] = [
         { role: 'system', content: buildSystemPrompt(memories) },
         ...history.map((entry) => ({
-          role: toAiRole(entry.role),
+          role: toLLMRole(entry.role),
           content: entry.content,
         })),
       ];
-      const tools: AiTool[] = listTools().map(toAiTool);
+      const tools: LLMTool[] = listTools().map(toLLMTool);
 
       for (let round = 0; round <= TOOL_CALL_LIMIT; round += 1) {
-        const { content, toolCalls } = await runModel(
-          aiMessages,
+        const { content, toolCalls } = await runModelWithFallback(
+          llmMessages,
           tools,
           abortController.signal,
           (delta) => sendEvent(reply, { type: 'delta', content: sanitizeOutputText(delta) }),
@@ -251,7 +333,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           break;
         }
 
-        aiMessages.push({ role: 'assistant', content: null, tool_calls: toolCalls });
+        llmMessages.push({ role: 'assistant', content: null, tool_calls: toolCalls });
         for (const call of toolCalls) {
           if (abortController.signal.aborted) {
             throw abortController.signal.reason ?? new Error('Client disconnected');
@@ -265,7 +347,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
             ok: result.ok,
             output: result.output,
           });
-          aiMessages.push({ role: 'tool', tool_call_id: call.id, content: result.output });
+          llmMessages.push({ role: 'tool', tool_call_id: call.id, content: result.output });
         }
       }
 
@@ -316,7 +398,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           // Nothing left to do; the error event below still surfaces the failure.
         }
       }
-      sendEvent(reply, { type: 'error', message: 'Failed to generate a response' });
+      sendEvent(reply, { type: 'error', message: deriveErrorMessage(error) });
     } finally {
       request.raw.off('close', onAbort);
       reply.raw.end();

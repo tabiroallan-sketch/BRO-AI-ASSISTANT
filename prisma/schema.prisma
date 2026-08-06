@@ -90,6 +90,9 @@ model IntegrationStatus {
   lastMessage       String?
   lastHealthCheckAt DateTime  @default(now())
   lastSuccessAt     DateTime?
+  code              String?
+  apiStatus         String?
+  quota             Json?
   updatedAt         DateTime  @updatedAt
 
   integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)

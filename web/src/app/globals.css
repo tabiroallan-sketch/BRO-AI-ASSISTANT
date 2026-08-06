@@ -259,6 +259,58 @@ body {
   }
 }
 
+/* ---------- Micro-interaction / status keyframes ---------- */
+@keyframes sweep {
+  0% {
+    transform: translateX(-140%) skewX(-14deg);
+  }
+  100% {
+    transform: translateX(260%) skewX(-14deg);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(2.3);
+    opacity: 0;
+  }
+}
+
+@keyframes gradient-x {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 /* ---------- Motion utilities ---------- */
 .animate-float {
   animation: float 7s ease-in-out infinite;
@@ -277,6 +329,70 @@ body {
 }
 .animate-scanline {
   animation: scanline 9s linear infinite;
+}
+.animate-sweep {
+  animation: sweep 1.15s ease-in-out infinite;
+}
+.animate-pulse-ring {
+  animation: pulse-ring 1.6s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x 6s ease infinite;
+}
+.animate-pop-in {
+  animation: pop-in 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+/* ---------- Skeleton loading blocks ---------- */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--muted) 80%, transparent);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--neon-cyan) 16%, transparent),
+    transparent
+  );
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+/* ---------- Glow helpers ---------- */
+.glow-primary {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--neon-cyan) 55%, transparent),
+    0 0 18px color-mix(in oklab, var(--neon-cyan) 38%, transparent);
+}
+.glow-primary-soft {
+  box-shadow: 0 0 14px color-mix(in oklab, var(--neon-cyan) 24%, transparent);
+}
+.glow-success {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, oklch(0.75 0.18 160) 55%, transparent),
+    0 0 20px color-mix(in oklab, oklch(0.75 0.18 160) 35%, transparent);
+}
+.glow-danger {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--destructive) 50%, transparent),
+    0 0 18px color-mix(in oklab, var(--destructive) 30%, transparent);
+}
+
+/* ---------- Chat-specific glass ---------- */
+.glass-chat {
+  background: color-mix(in oklab, var(--background) 55%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.05),
+    0 12px 44px rgb(0 0 0 / 0.28);
 }
 
 /* ---------- Shimmer text/panel ---------- */

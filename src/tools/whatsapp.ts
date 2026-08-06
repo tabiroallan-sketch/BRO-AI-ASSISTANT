@@ -5,6 +5,7 @@ import { fetchWithTimeout } from '../lib/http.js';
 
 export const whatsappSendMessageTool: Tool = {
   name: 'whatsapp_send_message',
+  providerId: 'whatsapp',
   description:
     'Send a WhatsApp message to a phone number using the user\u2019s WhatsApp Business API credentials. The recipient number must be in E.164 format, e.g. "+15551234567".',
   parameters: {

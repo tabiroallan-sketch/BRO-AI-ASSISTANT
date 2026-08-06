@@ -81,6 +81,7 @@ function firstLine(message: string | undefined): string {
 
 export const githubListReposTool: Tool = {
   name: 'github_list_repos',
+  providerId: 'github',
   description:
     'List the user\u2019s GitHub repositories, most recently updated first, with description and default branch.',
   parameters: {
@@ -120,6 +121,7 @@ export const githubListReposTool: Tool = {
 
 export const githubCreateIssueTool: Tool = {
   name: 'github_create_issue',
+  providerId: 'github',
   description:
     'Create an issue on a GitHub repository. Provide the repo in "owner/repo" format, a title, and optional body.',
   parameters: {
@@ -159,6 +161,7 @@ export const githubCreateIssueTool: Tool = {
 
 export const githubListIssuesTool: Tool = {
   name: 'github_list_issues',
+  providerId: 'github',
   description:
     'List the issues on a GitHub repository, optionally filtered by state (open, closed, or all).',
   parameters: {
@@ -206,6 +209,7 @@ export const githubListIssuesTool: Tool = {
 
 export const githubListPullsTool: Tool = {
   name: 'github_list_pulls',
+  providerId: 'github',
   description:
     'List the pull requests on a GitHub repository, optionally filtered by state (open, closed, or all).',
   parameters: {
@@ -252,6 +256,7 @@ export const githubListPullsTool: Tool = {
 
 export const githubListWorkflowRunsTool: Tool = {
   name: 'github_list_workflow_runs',
+  providerId: 'github',
   description:
     'List the most recent GitHub Actions workflow runs for a repository with their status and conclusion.',
   parameters: {
@@ -295,6 +300,7 @@ export const githubListWorkflowRunsTool: Tool = {
 
 export const githubListCommitsTool: Tool = {
   name: 'github_list_commits',
+  providerId: 'github',
   description:
     'List the most recent commits on a GitHub repository, optionally restricted to a branch.',
   parameters: {
@@ -344,6 +350,7 @@ export const githubListCommitsTool: Tool = {
 
 export const githubListReleasesTool: Tool = {
   name: 'github_list_releases',
+  providerId: 'github',
   description: 'List the releases on a GitHub repository with their tag, title, and publish date.',
   parameters: {
     type: 'object',
@@ -385,6 +392,7 @@ export const githubListReleasesTool: Tool = {
 
 export const githubProfileTool: Tool = {
   name: 'github_profile',
+  providerId: 'github',
   description:
     'Show the connected GitHub user\u2019s username, repository count, and granted permissions.',
   parameters: {

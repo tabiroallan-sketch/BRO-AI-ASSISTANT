@@ -54,6 +54,7 @@ function headerValue(message: GmailMessage, name: string): string {
 
 export const gmailSearchTool: Tool = {
   name: 'gmail_search',
+  providerId: 'google-gmail',
   description:
     'Search the user\u2019s Gmail inbox and return the matching messages with sender, subject, and snippet.',
   parameters: {
@@ -116,6 +117,7 @@ export const gmailSearchTool: Tool = {
 
 export const gmailReadTool: Tool = {
   name: 'gmail_read',
+  providerId: 'google-gmail',
   description:
     'Read a single Gmail message by its ID and return its sender, recipients, subject, date, and text body.',
   parameters: {
@@ -161,6 +163,7 @@ export const gmailReadTool: Tool = {
 
 export const gmailSendTool: Tool = {
   name: 'gmail_send',
+  providerId: 'google-gmail',
   description:
     'Send an email from the user\u2019s Gmail account to one or more recipients with a subject and body.',
   parameters: {

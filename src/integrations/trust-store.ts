@@ -1,5 +1,5 @@
 import { Prisma, prisma } from '../lib/prisma.js';
-import type { ConnectionStatus } from './types.js';
+import type { ConnectionStatus, HealthIssue, QuotaInfo } from './types.js';
 
 export type StoredIntegrationStatus = {
   id: string;
@@ -10,6 +10,9 @@ export type StoredIntegrationStatus = {
   lastMessage: string | null;
   lastHealthCheckAt: Date;
   lastSuccessAt: Date | null;
+  code: string | null;
+  apiStatus: string | null;
+  quota: QuotaInfo | null;
   updatedAt: Date;
 };
 
@@ -37,6 +40,18 @@ export type StoredSyncRecord = {
 
 type Db = NonNullable<typeof prisma>;
 
+/**
+ * Sentinel used to clear a nullable JSON column. Vitest mocks that omit the
+ * `Prisma` export throw when the binding is touched, so the read is guarded.
+ */
+const PRISMA_DB_NULL: Prisma.NullTypes.DbNull = (() => {
+  try {
+    return (Prisma?.DbNull ?? null) as unknown as Prisma.NullTypes.DbNull;
+  } catch {
+    return null as unknown as Prisma.NullTypes.DbNull;
+  }
+})();
+
 function prismaWith(model: string): Db | null {
   if (prisma === null) {
     return null;
@@ -49,9 +64,13 @@ export async function recordIntegrationStatus(
   integrationId: string,
   input: {
     status: ConnectionStatus;
+    issue?: HealthIssue | null;
     ok: boolean;
     latencyMs: number | null;
     message: string | null;
+    code?: string | null;
+    apiStatus?: string | null;
+    quota?: QuotaInfo | null;
   },
 ): Promise<void> {
   const db = prismaWith('integrationStatus');
@@ -59,6 +78,8 @@ export async function recordIntegrationStatus(
     return;
   }
   const now = new Date();
+  const code = input.code ?? input.issue ?? null;
+  const quota = input.quota ?? PRISMA_DB_NULL;
   await db.integrationStatus.upsert({
     where: { integrationId },
     update: {
@@ -68,6 +89,9 @@ export async function recordIntegrationStatus(
       lastMessage: input.message,
       lastHealthCheckAt: now,
       lastSuccessAt: input.ok ? now : undefined,
+      code,
+      apiStatus: input.apiStatus ?? null,
+      quota,
     },
     create: {
       integrationId,
@@ -77,6 +101,9 @@ export async function recordIntegrationStatus(
       lastMessage: input.message,
       lastHealthCheckAt: now,
       lastSuccessAt: input.ok ? now : null,
+      code,
+      apiStatus: input.apiStatus ?? null,
+      quota,
     },
   });
 }
@@ -92,9 +119,14 @@ export async function getIntegrationStatus(
   if (!row) {
     return null;
   }
+  const quota =
+    typeof row.quota === 'object' && row.quota !== null ? (row.quota as QuotaInfo) : null;
   return {
     ...row,
     status: row.status as ConnectionStatus,
+    code: row.code ?? null,
+    apiStatus: row.apiStatus ?? null,
+    quota,
   };
 }
 

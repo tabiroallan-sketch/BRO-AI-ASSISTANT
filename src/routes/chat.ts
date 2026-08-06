@@ -14,6 +14,13 @@ import {
   providerFallback,
   providerRegistry,
 } from '../llm/index.js';
+import {
+  buildIntegrationAwareness,
+  formatIntegrationAwareness,
+} from '../llm/integration-awareness.js';
+import { isProviderError } from '../integrations/errors.js';
+import { toUserMessage } from '../integrations/errors.js';
+import { getProvider } from '../integrations/providers.js';
 import type {
   LLMMessage,
   LLMProvider,
@@ -45,16 +52,25 @@ const SYSTEM_PROMPT =
 
 type MemoryFact = { key: string; value: string; category: string | null };
 
-function buildSystemPrompt(memories: MemoryFact[]): string {
-  if (memories.length === 0) {
-    return SYSTEM_PROMPT;
+function buildSystemPrompt(
+  memories: MemoryFact[],
+  integrationAwareness: ReturnType<typeof formatIntegrationAwareness>,
+): string {
+  const parts = [SYSTEM_PROMPT];
+
+  if (memories.length > 0) {
+    const lines = memories.map((memory) => `- ${memory.key}: ${memory.value}`).join('\n');
+    parts.push(
+      `You have these stored facts about the user. Use them to personalize your ` +
+        `answers; do not repeat them unless relevant.\n${lines}`,
+    );
   }
-  const lines = memories.map((memory) => `- ${memory.key}: ${memory.value}`).join('\n');
-  return (
-    `${SYSTEM_PROMPT}\n\n` +
-    `You have these stored facts about the user. Use them to personalize your ` +
-    `answers; do not repeat them unless relevant.\n${lines}`
-  );
+
+  if (integrationAwareness) {
+    parts.push(integrationAwareness);
+  }
+
+  return parts.join('\n\n');
 }
 
 function deriveTitle(message: string): string {
@@ -250,11 +266,20 @@ async function runModelWithFallback(
   }, preferredProviderId);
 }
 
+type ToolExecutionResult = {
+  ok: boolean;
+  output: string;
+  /** Present when the tool failed because the account is not connected. */
+  connectProviderId?: string;
+  connectLabel?: string;
+  permissionDenied?: boolean;
+};
+
 async function executeTool(
   call: LLMToolCall,
   args: Record<string, unknown>,
   userId: string,
-): Promise<{ ok: boolean; output: string }> {
+): Promise<ToolExecutionResult> {
   const tool = getTool(call.name);
   if (!tool) {
     return { ok: false, output: `Error: unknown tool "${call.name}"` };
@@ -263,6 +288,26 @@ async function executeTool(
     const output = validateToolOutput(await tool.execute(args, { userId }));
     return { ok: true, output };
   } catch (error) {
+    if (isProviderError(error)) {
+      const provider = getProvider(error.providerId);
+      const label = provider?.label ?? error.providerId;
+      if (error.code === 'TOKEN_MISSING') {
+        return {
+          ok: false,
+          connectProviderId: error.providerId,
+          connectLabel: label,
+          output:
+            `The user's ${label} account is not connected. Tell the user you need permission to ` +
+            `connect their ${label} account to do this, and name the service; a Connect button will ` +
+            `appear in the interface. Do not call this tool again.`,
+        };
+      }
+      return {
+        ok: false,
+        output: toUserMessage(error),
+        permissionDenied: error.code === 'PERMISSION_DENIED',
+      };
+    }
     return {
       ok: false,
       output: `Error: ${error instanceof Error ? error.message : String(error)}`,
@@ -327,14 +372,21 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
     let full = '';
     try {
-      const memories = await prisma.memory.findMany({
+      const memoriesPromise = prisma.memory.findMany({
         where: { userId },
         take: MEMORY_LIMIT,
         select: { key: true, value: true, category: true },
       });
+      const [memories, integrationAwareness] = await Promise.all([
+        memoriesPromise,
+        buildIntegrationAwareness(userId),
+      ]);
 
       const llmMessages: LLMMessage[] = [
-        { role: 'system', content: buildSystemPrompt(memories) },
+        {
+          role: 'system',
+          content: buildSystemPrompt(memories, formatIntegrationAwareness(integrationAwareness)),
+        },
         ...history.map((entry) => ({
           role: toLLMRole(entry.role),
           content: entry.content,
@@ -399,6 +451,13 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
               name: toolCall.name,
               ok: result.ok,
               output: result.output,
+              ...(result.connectProviderId
+                ? {
+                    connectProviderId: result.connectProviderId,
+                    connectLabel: result.connectLabel,
+                  }
+                : {}),
+              ...(result.permissionDenied ? { permissionDenied: true } : {}),
             });
             toolOutputs.push(result.output);
             llmMessages.push({

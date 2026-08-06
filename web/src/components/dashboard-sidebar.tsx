@@ -3,7 +3,9 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { motion } from 'framer-motion';
 import {
+  Activity,
   BarChart3,
   Box,
   Brain,
@@ -13,6 +15,7 @@ import {
   MessageSquare,
   ScrollText,
   ShieldCheck,
+  Store,
   Wrench,
   Workflow,
   type LucideIcon,
@@ -25,6 +28,8 @@ const items: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: '/dashboard/conversations', label: 'Conversations', icon: MessageSquare },
   { href: '/dashboard/memories', label: 'Memories', icon: Brain },
   { href: '/dashboard/accounts', label: 'Connected accounts', icon: Link2 },
+  { href: '/dashboard/integrations', label: 'Marketplace', icon: Store },
+  { href: '/dashboard/health', label: 'Health', icon: Activity },
   { href: '/dashboard/permissions', label: 'Permissions', icon: KeyRound },
   { href: '/dashboard/tools', label: 'Installed tools', icon: Wrench },
   { href: '/dashboard/plugins', label: 'Plugins', icon: Box },
@@ -58,6 +63,13 @@ export function DashboardSidebar(): React.JSX.Element {
                 : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
             )}
           >
+            {active && (
+              <motion.span
+                layoutId="sidebar-active-pill"
+                className="absolute inset-0 rounded-xl bg-neon-cyan/10 ring-1 ring-neon-cyan/30 shadow-[0_0_18px_-6px_var(--neon-cyan)]"
+                transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+              />
+            )}
             <span
               className={cn(
                 'absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-neon-cyan shadow-[0_0_8px_var(--neon-cyan)] transition-opacity duration-300',
@@ -66,11 +78,11 @@ export function DashboardSidebar(): React.JSX.Element {
             />
             <item.icon
               className={cn(
-                'h-4 w-4 shrink-0 transition-colors',
+                'relative h-4 w-4 shrink-0 transition-colors',
                 active ? 'text-neon-cyan' : 'text-muted-foreground group-hover:text-foreground',
               )}
             />
-            {item.label}
+            <span className="relative">{item.label}</span>
           </Link>
         );
       })}

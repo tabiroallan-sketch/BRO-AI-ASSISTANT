@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { shutdownBrowser } from './browser/sessions.js';
 import { config } from './config/index.js';
+import { migrateLegacyGoogleAccountTokens } from './lib/migrations.js';
 
 async function main(): Promise<void> {
   const app = buildApp();
@@ -19,6 +20,12 @@ async function main(): Promise<void> {
 
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
+
+  try {
+    await migrateLegacyGoogleAccountTokens();
+  } catch (error) {
+    app.log.error({ err: error }, 'Legacy token migration failed - continuing without it');
+  }
 
   try {
     await app.listen({

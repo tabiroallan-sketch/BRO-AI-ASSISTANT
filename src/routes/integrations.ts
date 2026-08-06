@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { HttpError, requireAuth } from '../lib/auth.js';
+import { recordAudit } from '../lib/audit.js';
 import { config } from '../config/index.js';
 import { emitIntegrationEvent } from '../integrations/events.js';
 import {
@@ -10,6 +11,7 @@ import {
 } from '../integrations/oauth-engine.js';
 import { getGrantedPermissions, getProviderPermissionDefs } from '../integrations/permissions.js';
 import { getProvider, listProviders } from '../integrations/providers.js';
+import { getLastHealthSweep } from '../integrations/monitor.js';
 import {
   deleteIntegration,
   deleteIntegrationAccount,
@@ -17,10 +19,16 @@ import {
   getValidAccessToken,
   listProviderAccounts,
   listUserIntegrations,
+  setAutoReconnect,
   setPrimaryIntegration,
   upsertIntegration,
 } from '../integrations/store.js';
-import { computeConnectionStatus, testConnection } from '../integrations/status.js';
+import {
+  classifyHealthIssue,
+  computeConnectionStatus,
+  issueLabel,
+  testConnection,
+} from '../integrations/status.js';
 import {
   getIntegrationStatus,
   getPermissionSet,
@@ -33,6 +41,8 @@ const CONNECTED_REDIRECT = (providerId: string): string =>
   `${config.corsOrigin}/settings?integration=${encodeURIComponent(providerId)}&status=connected`;
 const ERROR_REDIRECT = (providerId: string, reason: string): string =>
   `${config.corsOrigin}/settings?integration=${encodeURIComponent(providerId)}&status=error&reason=${encodeURIComponent(reason)}`;
+
+const INTEGRATION_OAUTH_RATE_LIMIT = { max: 20, windowMs: 60_000 } as const;
 
 function splitScopes(value: unknown): string[] | undefined {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -106,59 +116,104 @@ async function buildPermissionCenterProvider(
 }
 
 export async function publicIntegrationRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/integrations/:provider/callback', async (request, reply) => {
-    const { code, state } = request.query as { code?: string; state?: string };
-    const { provider } = request.params as { provider: string };
-    if (!code) {
-      throw new HttpError(400, 'Missing authorization code');
-    }
+  app.get(
+    '/integrations/:provider/callback',
+    { config: { rateLimit: INTEGRATION_OAUTH_RATE_LIMIT } },
+    async (request, reply) => {
+      const { code, state } = request.query as { code?: string; state?: string };
+      const { provider } = request.params as { provider: string };
+      if (!code) {
+        throw new HttpError(400, 'Missing authorization code');
+      }
 
-    let payload;
-    try {
-      payload = await verifyOAuthState(state ?? '');
-    } catch {
-      return reply.redirect(ERROR_REDIRECT('unknown', 'invalid_state'));
-    }
+      let payload;
+      try {
+        payload = await verifyOAuthState(state ?? '');
+      } catch {
+        return reply.redirect(ERROR_REDIRECT('unknown', 'invalid_state'));
+      }
 
-    if (payload.provider !== provider) {
-      return reply.redirect(ERROR_REDIRECT(provider, 'invalid_state'));
-    }
+      if (payload.provider !== provider) {
+        return reply.redirect(ERROR_REDIRECT(provider, 'invalid_state'));
+      }
 
-    const def = getProvider(provider);
-    if (!def || def.type !== 'oauth') {
-      return reply.redirect(ERROR_REDIRECT(provider, 'unknown_provider'));
-    }
+      const def = getProvider(provider);
+      if (!def || def.type !== 'oauth') {
+        return reply.redirect(ERROR_REDIRECT(provider, 'unknown_provider'));
+      }
 
-    let tokens;
-    try {
-      tokens = await exchangeCodeForToken(provider, code, {
-        codeVerifier: payload.codeVerifier,
-        redirectUri: payload.redirectUri,
+      let tokens;
+      try {
+        tokens = await exchangeCodeForToken(provider, code, {
+          codeVerifier: payload.codeVerifier,
+          redirectUri: payload.redirectUri,
+        });
+      } catch (error) {
+        request.log.error({ err: error }, 'Integration token exchange failed');
+        return reply.redirect(ERROR_REDIRECT(provider, 'token_exchange_failed'));
+      }
+
+      const accountName = await fetchProviderAccountName(provider, tokens.accessToken);
+      await upsertIntegration(payload.sub, {
+        provider,
+        accountKey: payload.accountKey,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        tokenExpiresAt: tokens.expiresIn ? new Date(Date.now() + tokens.expiresIn * 1000) : null,
+        scopes: tokens.scope,
+        accountName,
       });
-    } catch (error) {
-      request.log.error({ err: error }, 'Integration token exchange failed');
-      return reply.redirect(ERROR_REDIRECT(provider, 'token_exchange_failed'));
-    }
+      emitIntegrationEvent({
+        type: 'connected',
+        provider,
+        userId: payload.sub,
+        accountName,
+      });
+      recordAudit({
+        actorId: payload.sub,
+        action: 'integration.connect',
+        target: provider,
+        detail: `accountKey=${payload.accountKey ?? 'default'}`,
+        ip: request.ip,
+      });
 
-    const accountName = await fetchProviderAccountName(provider, tokens.accessToken);
-    await upsertIntegration(payload.sub, {
-      provider,
-      accountKey: payload.accountKey,
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      tokenExpiresAt: tokens.expiresIn ? new Date(Date.now() + tokens.expiresIn * 1000) : null,
-      scopes: tokens.scope,
-      accountName,
-    });
-    emitIntegrationEvent({
-      type: 'connected',
-      provider,
-      userId: payload.sub,
-      accountName,
-    });
+      return reply.redirect(CONNECTED_REDIRECT(provider));
+    },
+  );
+}
 
-    return reply.redirect(CONNECTED_REDIRECT(provider));
-  });
+function healthPayload(status: {
+  status: string;
+  ok: boolean;
+  latencyMs: number | null;
+  lastMessage: string | null;
+  lastHealthCheckAt: Date;
+  lastSuccessAt: Date | null;
+  code: string | null;
+  apiStatus: string | null;
+  quota: unknown;
+}): Record<string, unknown> | null {
+  const issue = status.code ? classifyHealthIssue(status.code) : null;
+  return {
+    status: status.status,
+    issue,
+    issueLabel: issue ? issueLabel(issue) : undefined,
+    code: status.code,
+    ok: status.ok,
+    latencyMs: status.latencyMs,
+    lastMessage: status.lastMessage,
+    lastHealthCheckAt: status.lastHealthCheckAt,
+    lastSuccessAt: status.lastSuccessAt,
+    apiStatus: status.apiStatus,
+    quota: status.quota,
+  };
+}
+
+function autoReconnectFromMetadata(metadata: unknown): boolean {
+  if (typeof metadata === 'object' && metadata !== null) {
+    return (metadata as Record<string, unknown>).autoReconnect === true;
+  }
+  return false;
 }
 
 export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<void> {
@@ -189,6 +244,7 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
         revokedAt: record?.revokedAt ?? null,
         revokedReason: record?.revokedReason ?? null,
         capabilities: provider.capabilities,
+        fields: provider.type === 'token' ? provider.fields : undefined,
         permissions: record
           ? getGrantedPermissions(provider, record.scopes)
           : getProviderPermissionDefs(provider),
@@ -227,16 +283,7 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
             listProviderAccounts(userId, provider.id),
           ]);
           accountCount = accounts.length;
-          health = status
-            ? {
-                status: status.status,
-                ok: status.ok,
-                latencyMs: status.latencyMs,
-                lastMessage: status.lastMessage,
-                lastHealthCheckAt: status.lastHealthCheckAt,
-                lastSuccessAt: status.lastSuccessAt,
-              }
-            : null;
+          health = status ? healthPayload(status) : null;
           lastSync = history[0]
             ? {
                 id: history[0].id,
@@ -265,9 +312,11 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
           tokenExpiresAt: record?.tokenExpiresAt ?? null,
           lastRefreshedAt: record?.lastRefreshedAt ?? null,
           refreshCount: record?.refreshCount ?? 0,
+          autoReconnect: record ? autoReconnectFromMetadata(record.metadata) : false,
           revokedAt: record?.revokedAt ?? null,
           revokedReason: record?.revokedReason ?? null,
           capabilities: provider.capabilities,
+          fields: provider.type === 'token' ? provider.fields : undefined,
           permissions: record
             ? getGrantedPermissions(provider, record.scopes)
             : getProviderPermissionDefs(provider),
@@ -278,6 +327,109 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
       }),
     );
     return { providers };
+  });
+
+  app.get('/integrations/health', async (request) => {
+    const userId = request.user?.id;
+    if (!userId) {
+      throw new HttpError(401, 'Unauthorized');
+    }
+    const records = await listUserIntegrations(userId);
+    const providers = await Promise.all(
+      listProviders().map(async (provider) => {
+        const record = records.get(provider.id) ?? null;
+        let health: Record<string, unknown> | null = null;
+        let lastSync: Record<string, unknown> | null = null;
+        if (record) {
+          const [status, history] = await Promise.all([
+            getIntegrationStatus(record.id),
+            listSyncHistory(userId, provider.id, 1),
+          ]);
+          health = status ? healthPayload(status) : null;
+          lastSync = history[0]
+            ? {
+                id: history[0].id,
+                kind: history[0].kind,
+                status: history[0].status,
+                startedAt: history[0].startedAt,
+                finishedAt: history[0].finishedAt,
+                itemCount: history[0].itemCount,
+                error: history[0].error,
+              }
+            : null;
+        }
+        return {
+          id: provider.id,
+          label: provider.label,
+          description: provider.description,
+          type: provider.type,
+          icon: provider.icon,
+          configured: provider.oauthConfigured,
+          connected: record !== null,
+          accountName: record?.accountName ?? null,
+          status: computeConnectionStatus(record, provider),
+          autoReconnect: record ? autoReconnectFromMetadata(record.metadata) : false,
+          tokenExpiresAt: record?.tokenExpiresAt ?? null,
+          lastRefreshedAt: record?.lastRefreshedAt ?? null,
+          refreshCount: record?.refreshCount ?? 0,
+          revokedAt: record?.revokedAt ?? null,
+          revokedReason: record?.revokedReason ?? null,
+          health,
+          lastSync,
+        };
+      }),
+    );
+    const summary = {
+      connected: providers.filter((provider) => provider.connected).length,
+      healthy: providers.filter((provider) => provider.health?.ok === true).length,
+      unhealthy: providers.filter((provider) => provider.connected && provider.health?.ok === false)
+        .length,
+      disconnected: providers.filter((provider) => !provider.connected).length,
+      autoReconnectEnabled: providers.filter((provider) => provider.autoReconnect).length,
+    };
+    return {
+      providers,
+      summary,
+      sweep: getLastHealthSweep(),
+      monitor: {
+        enabled: config.healthMonitorEnabled,
+        intervalMs: config.healthMonitorIntervalMs,
+        autoReconnectEnabled: config.autoReconnectEnabled,
+      },
+    };
+  });
+
+  app.put('/integrations/:provider/auto-reconnect', async (request, reply) => {
+    const userId = request.user?.id;
+    if (!userId) {
+      throw new HttpError(401, 'Unauthorized');
+    }
+    const { provider } = request.params as { provider: string };
+    const def = getProvider(provider);
+    if (!def) {
+      throw new HttpError(404, 'Unknown integration provider');
+    }
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const enabled = body.enabled === true;
+    const accountKey = typeof body.accountKey === 'string' ? body.accountKey.trim() : undefined;
+    const ok = await setAutoReconnect(userId, provider, enabled, accountKey);
+    if (!ok) {
+      throw new HttpError(404, 'Integration not found');
+    }
+    recordAudit({
+      actorId: request.user?.id,
+      actorEmail: request.user?.email,
+      action: 'integration.auto_reconnect',
+      target: provider,
+      detail: JSON.stringify({ enabled, accountKey: accountKey ?? 'default' }),
+      ip: request.ip,
+    });
+    return reply.send({
+      ok: true,
+      provider: def.id,
+      accountKey: accountKey ?? null,
+      autoReconnect: enabled,
+    });
   });
 
   app.post('/integrations/:provider', async (request, reply) => {
@@ -310,19 +462,43 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
     }
 
     if (def.type === 'token') {
-      const token = typeof body.token === 'string' ? body.token.trim() : '';
-      const phoneNumberId = typeof body.phoneNumberId === 'string' ? body.phoneNumberId.trim() : '';
-      const accountKey = typeof body.accountKey === 'string' ? body.accountKey.trim() : undefined;
-      if (!token || !phoneNumberId) {
-        throw new HttpError(400, 'Both an access token and phone number ID are required');
+      const firstField = def.fields[0];
+      if (!firstField) {
+        throw new HttpError(400, 'This provider has no configurable fields');
       }
-      const accountName = `Phone ${phoneNumberId}`;
+      const accountKey = typeof body.accountKey === 'string' ? body.accountKey.trim() : undefined;
+      const missing: string[] = [];
+      const values: Record<string, string> = {};
+      for (const field of def.fields) {
+        const raw = body[field.name];
+        if (typeof raw !== 'string' || raw.trim() === '') {
+          missing.push(field.label);
+          continue;
+        }
+        values[field.name] = raw.trim();
+      }
+      if (missing.length > 0) {
+        throw new HttpError(
+          400,
+          `${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} required`,
+        );
+      }
+      const accessToken = values[firstField.name];
+      if (!accessToken) {
+        throw new HttpError(400, `${firstField.label} is required`);
+      }
+      const explicitName =
+        typeof body.accountName === 'string' && body.accountName.trim() !== ''
+          ? body.accountName.trim()
+          : undefined;
+      const accountName =
+        explicitName ?? def.accountNameFromFields?.(values) ?? `${def.label} connection`;
       await upsertIntegration(userId, {
         provider,
         accountKey,
-        accessToken: token,
+        accessToken,
         accountName,
-        metadata: { phoneNumberId },
+        metadata: values,
       });
       emitIntegrationEvent({ type: 'connected', provider, userId, accountName });
       return reply.status(201).send({ ok: true, connected: true, accountName });
@@ -381,6 +557,15 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
       accountKey,
       scopes: splitScopes(body.scopes),
     });
+    const existing = await getIntegration(userId, provider, accountKey);
+    recordAudit({
+      actorId: request.user?.id,
+      actorEmail: request.user?.email,
+      action: existing ? 'integration.reconnect' : 'integration.connect',
+      target: provider,
+      detail: `accountKey=${accountKey ?? 'default'}`,
+      ip: request.ip,
+    });
     return reply.send({
       ok: true,
       provider: def.id,
@@ -427,6 +612,14 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
     const validIds = new Set(def.permissions.map((permission) => permission.id));
     const enabledIds = [...new Set(requested.filter((id) => validIds.has(id)))];
     await updatePermissionSet(record.id, enabledIds);
+    recordAudit({
+      actorId: request.user?.id,
+      actorEmail: request.user?.email,
+      action: 'integration.permissions.update',
+      target: record.id,
+      detail: JSON.stringify({ provider, permissions: enabledIds }),
+      ip: request.ip,
+    });
     return reply.send({
       ok: true,
       provider: def.id,
@@ -546,6 +739,14 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
     if (!ok) {
       throw new HttpError(404, 'Integration account not found');
     }
+    recordAudit({
+      actorId: request.user?.id,
+      actorEmail: request.user?.email,
+      action: 'integration.primary.change',
+      target: accountId,
+      detail: `provider=${provider}`,
+      ip: request.ip,
+    });
     return reply.send({ ok: true, provider: def.id, primary: accountId });
   });
 
@@ -571,6 +772,13 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
     if (!ok) {
       throw new HttpError(404, 'Integration account not found');
     }
+    recordAudit({
+      actorId: request.user?.id,
+      actorEmail: request.user?.email,
+      action: 'integration.disconnect',
+      target: `${provider}:${accountId}`,
+      ip: request.ip,
+    });
     return reply.status(204).send();
   });
 
@@ -604,20 +812,12 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
       accountName: record.accountName,
       accountKey: record.accountKey,
       status: computeConnectionStatus(record, def),
+      autoReconnect: autoReconnectFromMetadata(record.metadata),
       revokedAt: record.revokedAt,
       revokedReason: record.revokedReason,
       lastRefreshedAt: record.lastRefreshedAt,
       refreshCount: record.refreshCount,
-      health: status
-        ? {
-            status: status.status,
-            ok: status.ok,
-            latencyMs: status.latencyMs,
-            lastMessage: status.lastMessage,
-            lastHealthCheckAt: status.lastHealthCheckAt,
-            lastSuccessAt: status.lastSuccessAt,
-          }
-        : null,
+      health: status ? healthPayload(status) : null,
       permissions: permissionSet
         ? {
             scopes: permissionSet.scopes,

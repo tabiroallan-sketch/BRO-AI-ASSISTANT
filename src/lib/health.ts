@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import { isEncryptionEnabled } from './encryption.js';
 import { prisma } from './prisma.js';
 import { redis } from './redis.js';
 
@@ -17,6 +18,7 @@ export type HealthReport = {
     database: CheckResult;
     redis: CheckResult;
   };
+  encryptionEnabled: boolean;
   uptime: number;
   timestamp: string;
 };
@@ -100,7 +102,16 @@ export async function getHealthReport(): Promise<HealthReport> {
   return {
     status: allOk ? 'ok' : 'degraded',
     checks,
+    encryptionEnabled: encryptionStatus(),
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   };
+}
+
+function encryptionStatus(): boolean {
+  try {
+    return isEncryptionEnabled();
+  } catch {
+    return false;
+  }
 }

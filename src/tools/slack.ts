@@ -84,6 +84,7 @@ function formatMember(member: SlackMember): string {
 
 export const slackSendMessageTool: Tool = {
   name: 'slack_send_message',
+  providerId: 'slack',
   description:
     'Send a message to a Slack channel or direct message. Provide the channel, e.g. "#general" or a user ID, and the text. Optionally reply inside a thread.',
   parameters: {
@@ -120,6 +121,7 @@ export const slackSendMessageTool: Tool = {
 
 export const slackListChannelsTool: Tool = {
   name: 'slack_list_channels',
+  providerId: 'slack',
   description:
     'List the public channels in the user\u2019s Slack workspace with their member counts and topics.',
   parameters: {
@@ -153,6 +155,7 @@ export const slackListChannelsTool: Tool = {
 
 export const slackReadMessagesTool: Tool = {
   name: 'slack_read_messages',
+  providerId: 'slack',
   description:
     'Read the most recent messages from a Slack channel, optionally only messages posted after a given time.',
   parameters: {
@@ -212,6 +215,7 @@ export const slackReadMessagesTool: Tool = {
 
 export const slackListUsersTool: Tool = {
   name: 'slack_list_users',
+  providerId: 'slack',
   description:
     'List the members of the user\u2019s Slack workspace with their name, email, and current status.',
   parameters: {
@@ -239,6 +243,7 @@ export const slackListUsersTool: Tool = {
 
 export const slackReadThreadTool: Tool = {
   name: 'slack_read_thread',
+  providerId: 'slack',
   description: 'Read a Slack thread: the parent message and its replies in a channel.',
   parameters: {
     type: 'object',
@@ -286,6 +291,7 @@ export const slackReadThreadTool: Tool = {
 
 export const slackGetStatusTool: Tool = {
   name: 'slack_get_status',
+  providerId: 'slack',
   description:
     'Show the current Slack status (status text, emoji, and expiry) of the authenticated user.',
   parameters: {
@@ -317,6 +323,7 @@ export const slackGetStatusTool: Tool = {
 
 export const slackSetStatusTool: Tool = {
   name: 'slack_set_status',
+  providerId: 'slack',
   description:
     'Set the Slack status (text and emoji) for the authenticated user, optionally expiring after some minutes.',
   parameters: {

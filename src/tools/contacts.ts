@@ -12,6 +12,7 @@ type ContactPerson = {
 
 export const contactsSearchTool: Tool = {
   name: 'contacts_search',
+  providerId: 'google-contacts',
   description:
     'Search the user\u2019s Google Contacts for people matching a name or email and return their contact details.',
   parameters: {

@@ -19,6 +19,9 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 
 - ✅ OpenAI-compatible streaming with automatic plain-completion fallback.
 - ✅ Long-term memory surfaced in the system prompt.
+- ✅ Integration awareness — the model knows which services are connected vs.
+  available and surfaces a Connect button in chat when a tool needs an account
+  that isn't connected yet.
 - 🚧 Better memory management — automatic fact extraction from conversations
   (instead of only manual entries).
 - 🎯 Retrieval-augmented generation (RAG) over past conversations and
@@ -47,8 +50,29 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 - 🎯 PostgreSQL logical replication or a proper snapshot for the in-memory
   audit/log buffers (or move them to Postgres).
 - 🎯 Structured logging with request tracing (correlation IDs).
-- 🎯 E2E browser tests for the web UI (Playwright against the running stack).
+- ✅ E2E browser tests for the web UI (Playwright against the running stack).
 - 🎯 OpenTelemetry metrics endpoint (`/metrics`) for Prometheus.
+
+## Testing & Quality
+
+- ✅ Backend test suite — 580 tests across unit, integration, performance,
+  stress, and API suites (vitest + mocked Prisma/fetch).
+- ✅ Web unit tests — 87 tests for the Next.js app (libs, API client, stores,
+  UI logic) via vitest.
+- ✅ Web UI tests — 15 Playwright specs against the running stack (auth,
+  chat, dashboard, integrations, admin-gating regression).
+- ✅ OAuth tests — Google flow (PKCE + signed state, callback handling, account
+  linking, tamper rejection) and disabled-provider mode.
+- ✅ Provider tests — integration marketplace, hub/permissions, LLM provider
+  layer, provider fallback.
+- ✅ Security tests — RBAC, rate limiting, SSRF guard, secrets, encryption,
+  admin self-demotion/deactivation guards.
+- ✅ Regression tests — dedicated `tests/regression/` suite encoding previously
+  fixed bugs (admin guards + audit-limit clamping, redis rate-limiter TTL
+  correctness) and web admin-gating specs.
+- 🎯 E2E backend suite against a real database (`TEST_E2E=1` with
+  `DATABASE_URL`) — wiring is in place, runs in CI with Postgres/Redis.
+- 🎯 Coverage thresholds enforced in CI (`c8`/`v8` coverage gates).
 
 ## Security & Privacy
 
@@ -62,6 +86,10 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 ## UX
 
 - ✅ Dark mode, voice input/output, markdown rendering, tool bubbles.
+- 🚧 Polished animations — Framer Motion micro-interactions (message/status
+  entrances, sidebar active pill, layout transitions), neon glow/sweep/pulse
+  utilities, glassmorphism cards, skeleton loaders, and connection/sync
+  feedback in the integration hub (all respecting reduced-motion).
 - 🎯 Message edit/regenerate and conversation branching.
 - 🎯 Drag-and-drop file uploads (PDF/images) into chat.
 - 🎯 Mobile app shell (PWA).

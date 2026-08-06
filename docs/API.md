@@ -25,17 +25,17 @@ All endpoints that are not marked *public* require
 |---|---|---|
 | `POST` | `/auth/register` | Create account `{email, password (min 8), displayName?}`. `409` if the email exists. |
 | `POST` | `/auth/login` | `{email, password}` → `{accessToken, refreshToken, user}`. |
-| `POST` | `/auth/refresh` | `{refreshToken}` → new token pair (rotates the presented token). |
-| `POST` | `/auth/logout` | `{refreshToken}` — revoke it. |
+| `POST` | `/auth/refresh` | `{refreshToken}` → new token pair (rotates the presented token). Rate limited (60/min). |
+| `POST` | `/auth/logout` | `{refreshToken}` — revoke it. Rate limited (60/min). |
 | `GET` | `/auth/providers` | Enabled sign-in providers (`email`, plus `google` if configured). |
-| `GET` | `/auth/google` | Redirect to Google OAuth. |
-| `GET` | `/auth/google/callback` | OAuth callback; redirects to the frontend with tokens in the URL fragment. |
+| `GET` | `/auth/google` | Redirect to Google OAuth. Uses PKCE (`code_challenge_method=S256`) and a signed `state` JWT (10-min TTL) stored in an `httpOnly` `oauth_state` cookie (`__Host-oauth_state` in production). Rate limited (20/min). |
+| `GET` | `/auth/google/callback` | OAuth callback; verifies the signed state and exchanges the code with the PKCE verifier; redirects to the frontend with tokens in the URL fragment. Rate limited (20/min). |
 
 ### Health
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/health` | `200`/`503` with per-check status (`application`, `database`, `redis`), latency, uptime, version. |
+| `GET` | `/health` | `200`/`503` with per-check status (`application`, `database`, `redis`), latency, `encryptionEnabled`, uptime, version. |
 
 ## Authenticated
 
@@ -83,12 +83,19 @@ All endpoints that are not marked *public* require
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/integrations` | All providers with `connected`, `configured`, `type`, and `accountName`. |
-| `GET` | `/integrations/:provider/connect` | Start OAuth (redirects to the provider). `503` if not configured. |
-| `POST` | `/integrations/:provider` | Save webhook/token credentials (`webhookUrl` for `discord`; `token` + `phoneNumberId` for `whatsapp`). `201`. |
+| `GET` | `/integrations/:provider/connect` | Start OAuth (redirects to the provider). `503` if not configured. || `POST` | `/integrations/:provider` | Save webhook/token credentials (`webhookUrl` for `discord`; `token` + `phoneNumberId` for `whatsapp`; token adapters use their `fields`, e.g. `apiKey`). `201`. |
 | `DELETE` | `/integrations/:provider` | Disconnect. `204`. |
+| `GET` | `/integrations/marketplace` | Catalog buckets `installed` / `available` / `future` with per-item `installed`, `connected`, `configured`, and `fields`. |
+| `POST` | `/integrations/marketplace/:itemId/install` | Enable a marketplace adapter server-wide. `409` for roadmap items. |
+| `POST` | `/integrations/marketplace/:itemId/update` | Update status (`{updated, message}`). |
+| `DELETE` | `/integrations/marketplace/:itemId` | Uninstall a marketplace adapter (or disable a bundled one). |
+| `GET` | `/integrations/health` | Connection Health overview: per provider `status`/`issue`/`code`/`latencyMs`/`apiStatus`/`quota`/last sync, a `summary` rollup, monitor config, and the last sweep. |
+| `PUT` | `/integrations/:provider/auto-reconnect` | Persist per-connection auto-reconnect preference (`{enabled}`). `404` if not connected. |
+| `GET` | `/integrations/:provider/status` | Connection status plus persisted health and permission set. |
+| `GET` | `/integrations/:provider/sync-history` | Recent sync records (`?limit=`). |
 
 The OAuth callback is public: `GET /integrations/:provider/callback` (redirects
-back to the web app with `?integration=&status=`).
+back to the web app with `?integration=&status=`). Rate limited (20/min).
 
 ### Tools
 
@@ -116,6 +123,7 @@ back to the web app with `?integration=&status=`).
 | `GET` | `/admin/users` | List users (id, email, display name, role, active). |
 | `PATCH` | `/admin/users/:id` | Update `role`/`isActive`. Cannot deactivate your own account; demoting yourself to `USER` is rejected with `400`. `404` for unknown users. |
 | `GET` | `/admin/audit?limit=` | Recent audit events (newest first; capped at `AUDIT_LOG_MAX`). |
+| `GET` | `/admin/secrets` | Secret configuration statuses `{count, configuredCount, encryptionEnabled, secrets: [{name, description, configured}]}`. Never returns values. Records an `admin.secrets.read` audit event. |
 | `GET` | `/automations` | n8n status: `enabled`, `configured`, `workflows`, recent `executions`. Errors surface as `error` instead of failing the request. |
 | `GET` | `/logs?limit=` | Recent server log entries (default 200, capped 1000). |
 | `DELETE` | `/logs` | Clear the in-memory log buffer. `204`. |

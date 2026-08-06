@@ -8,7 +8,17 @@ import {
   type Role,
 } from '../lib/auth.js';
 import { getAuditLogs, readAuditLogs, recordAudit } from '../lib/audit.js';
+import { isEncryptionEnabled } from '../lib/encryption.js';
 import { prisma } from '../lib/prisma.js';
+import { listSecretStatuses } from '../lib/secrets.js';
+
+function encryptionStatus(): boolean {
+  try {
+    return isEncryptionEnabled();
+  } catch {
+    return false;
+  }
+}
 
 const updateUserSchema = z
   .object({
@@ -95,6 +105,22 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return reply.send({ user: updated });
+  });
+
+  app.get('/admin/secrets', async (request) => {
+    const secrets = listSecretStatuses();
+    recordAudit({
+      actorId: request.user?.id,
+      actorEmail: request.user?.email,
+      action: 'admin.secrets.read',
+      ip: request.ip,
+    });
+    return {
+      count: secrets.length,
+      configuredCount: secrets.filter((secret) => secret.configured).length,
+      encryptionEnabled: encryptionStatus(),
+      secrets,
+    };
   });
 
   app.get('/admin/audit', async (request) => {

@@ -3,6 +3,7 @@ import { verifyAccessToken } from './jwt.js';
 import type { GoogleProfile, GoogleTokenResponse } from './oauth.js';
 import { prisma } from './prisma.js';
 import { cacheDelete, cacheGet, cacheSet } from './cache.js';
+import { encryptValue } from './encryption.js';
 import { config } from '../config/index.js';
 
 export class HttpError extends Error {
@@ -118,8 +119,8 @@ export async function upsertGoogleUser(
     await prisma.account.update({
       where: { id: existingAccount.id },
       data: {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
+        accessToken: encryptValue(tokens.access_token),
+        refreshToken: tokens.refresh_token ? encryptValue(tokens.refresh_token) : null,
         expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
       },
     });
@@ -162,8 +163,8 @@ export async function upsertGoogleUser(
       userId: user.id,
       provider: 'google',
       providerAccountId: profile.sub,
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
+      accessToken: encryptValue(tokens.access_token),
+      refreshToken: tokens.refresh_token ? encryptValue(tokens.refresh_token) : null,
       expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
     },
   });

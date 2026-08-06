@@ -10,6 +10,7 @@ type DriveFile = {
 
 export const sheetsListTool: Tool = {
   name: 'sheets_list',
+  providerId: 'google-sheets',
   description:
     'Find the user\u2019s Google Sheets by name and return their spreadsheet IDs, most recently modified first.',
   parameters: {
@@ -64,6 +65,7 @@ export const sheetsListTool: Tool = {
 
 export const sheetsReadTool: Tool = {
   name: 'sheets_read',
+  providerId: 'google-sheets',
   description:
     'Read cell values from a Google Sheet by its spreadsheet ID and an A1 range, returning rows of values.',
   parameters: {

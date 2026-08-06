@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Bot, User, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { MessageRole } from '@/lib/chat';
@@ -19,6 +20,7 @@ export function MessageBubble({
 }): React.JSX.Element {
   const isUser = role === 'USER';
   const [speaking, setSpeaking] = React.useState(false);
+  const reduceMotion = useReducedMotion();
 
   React.useEffect(() => {
     return () => {
@@ -40,7 +42,12 @@ export function MessageBubble({
   }
 
   return (
-    <div className={cn('flex w-full gap-3', isUser ? 'justify-end' : 'justify-start')}>
+    <motion.div
+      initial={reduceMotion ? false : { opacity: 0, y: 10, scale: 0.985 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+      className={cn('flex w-full gap-3', isUser ? 'justify-end' : 'justify-start')}
+    >
       {!isUser && (
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-muted">
           <Bot className="h-4 w-4" />
@@ -50,6 +57,9 @@ export function MessageBubble({
         className={cn(
           'max-w-[80%] rounded-2xl px-4 py-3',
           isUser ? 'bg-primary text-primary-foreground' : 'border bg-card text-card-foreground',
+          streaming &&
+            !isUser &&
+            'shadow-[0_0_24px_-8px] shadow-neon-cyan/40 transition-shadow duration-500',
         )}
       >
         {isUser ? (
@@ -76,6 +86,6 @@ export function MessageBubble({
           {speaking ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
         </Button>
       )}
-    </div>
+    </motion.div>
   );
 }

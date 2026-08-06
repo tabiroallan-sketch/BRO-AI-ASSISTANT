@@ -326,13 +326,54 @@ encrypted at rest with AES-256-GCM using `ENCRYPTION_KEY`, falling back to
 `INTEGRATION_ENCRYPTION_KEY`, then `JWT_SECRET`). Tokens are refreshed automatically
 before expiry when the provider supports refresh tokens.
 
+BRO is aware of which services are connected and which are available: each chat request
+embeds a compact "connected capabilities" section in the system prompt, so the model picks
+tools that match the accounts the user actually has and never calls a disconnected
+provider. When a tool needs a service that is not connected, the tool result carries a
+structured connect action and the chat UI renders a **Connect** button in the tool bubble
+that starts the provider's OAuth flow inline.
+
 Three connection types are supported:
 
 - **OAuth** — `google-calendar`, `google-gmail`, `google-drive`, `google-docs`,
   `google-sheets`, `google-tasks`, `google-contacts` (all reuse the Google OAuth
-  client), `github`, `slack`, and `notion`
+  client), `github`, `slack`, `notion`, plus marketplace adapters for `dropbox`,
+  `zoom`, and `clickup`
 - **Webhook** — `discord` (paste a channel webhook URL)
-- **Token** — `whatsapp` (paste a WhatsApp Business API token + phone number ID)
+- **Token** — `whatsapp` (paste a WhatsApp Business API token + phone number ID),
+  plus marketplace API-key adapters for `stripe`, `openai`, `nvidia`, `gemini`, and
+  `anthropic`
+
+### Integration Marketplace
+
+**Dashboard → Marketplace** (`/dashboard/integrations`) lists every integration in
+three buckets and drives the install lifecycle:
+
+- **Installed** — bundled adapters enabled by default (`google`, `drive`, `github`,
+  `slack`, `discord`, `notion`, `whatsapp`)
+- **Available** — real adapters you install to enable for the whole server
+  (`dropbox`, `zoom`, `clickup`, `stripe`, `openai`, `nvidia`, `gemini`, `anthropic`)
+- **Future** — roadmap-only items (Trello, Asana, Linear, Jira, Shopify, Salesforce,
+  HubSpot, Airtable, Telegram, Pipedrive) with no adapter shipped yet
+
+Install/Uninstall/Update flip provider registration at the server level and are
+persisted to `data/marketplace-state.json` (override with `MARKETPLACE_STATE_FILE`).
+Installing is global; connecting a provider is per user (tokens stay in the
+`integrations` table). Token providers are configured in-page with their API key;
+OAuth providers use the normal connect flow.
+
+API:
+
+`GET /api/v1/integrations/marketplace` — catalog with per-item `installed`,
+`connected`, `configured`, and `fields`.
+
+`POST /api/v1/integrations/marketplace/:itemId/install` — enable an adapter.
+Returns `409` for roadmap items.
+
+`POST /api/v1/integrations/marketplace/:itemId/update` — report update status.
+
+`DELETE /api/v1/integrations/marketplace/:itemId` — uninstall (disabled bundled
+items stop appearing in Settings).
 
 Manage connections from **Settings → Integrations** in the web app, or via the API:
 
@@ -346,6 +387,33 @@ be registered in each provider's app (default base `http://localhost:3000/api/v1
 discord; `token` + `phoneNumberId` for whatsapp).
 
 `DELETE /api/v1/integrations/:provider` — Disconnects a provider. Returns `204`.
+
+### Connection Health
+
+**Dashboard → Health** (`/dashboard/health`) shows the live status of every
+connected integration: Connected / Expired token / Rate limited / Invalid
+credentials / Network error, plus latency, provider API status, per-account
+quota usage, token expiry, and the last sync. A background monitor sweeps all
+connected integrations on an interval and records the results.
+
+- The monitor is on by default; set `INTEGRATIONS_HEALTH_MONITOR_ENABLED=false`
+  to disable it and `INTEGRATIONS_HEALTH_MONITOR_INTERVAL_MS` to change the
+  sweep cadence (default 10 minutes).
+- With `INTEGRATIONS_AUTO_RECONNECT_ENABLED=true` (default), the monitor refreshes
+  expired tokens automatically for connections that have **Auto-reconnect**
+  enabled (a per-connection toggle on the Health page). Connections whose
+  refresh token was revoked on the provider side are disabled locally so tools
+  stop trying them; the user reconnects via the normal OAuth flow. Rate-limited
+  connections are left alone to avoid hammering the provider.
+- Health results are persisted in `integration_statuses` (status, latency,
+  `code`, `apiStatus`, `quota`) and exposed per provider via the API:
+
+`GET /api/v1/integrations/health` — Health overview for the current user: per
+provider status/issue/latency/quota/last sync plus a rollup summary and the last
+monitor sweep.
+
+`PUT /api/v1/integrations/:provider/auto-reconnect` — Persists the per-connection
+auto-reconnect preference (`{ "enabled": true }`).
 
 To enable a provider, create the OAuth app and set the corresponding environment
 variables (see `.env.example`): `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`,
@@ -658,13 +726,30 @@ is read through `getSecret`, which prefers a `<NAME>_FILE` environment variable 
 at a file containing the value (e.g. `JWT_SECRET_FILE=/run/secrets/jwt`), falling back to
 the plain `<NAME>` variable. This makes it easy to mount secrets in Docker/Kubernetes.
 
+`GET /api/v1/admin/secrets` (admin-only) lists the configured secret statuses —
+name, description, and whether each is set — without exposing the values.
+
 ### Encryption at rest
 
-Integration access tokens are encrypted with AES-256-GCM before being stored
-(`enc:v1:<iv>:<tag>:<ciphertext>`). The key is derived from
+Integration access tokens and Google OAuth tokens are encrypted with AES-256-GCM
+before being stored (`enc:v1:<iv>:<tag>:<ciphertext>`). The key is derived from
 `ENCRYPTION_KEY` (or `INTEGRATION_ENCRYPTION_KEY`, or `JWT_SECRET`). In production the
 server refuses to start without an explicit encryption key; in development it falls
-back to plaintext with a one-time warning.
+back to plaintext with a one-time warning. On startup the server migrates any legacy
+plaintext Google account tokens to encrypted storage when encryption is enabled.
+
+### OAuth security
+
+The Google OAuth flow uses **PKCE** (S256 code challenge) and a signed `state` token
+(HS256 JWT, 10-minute expiry) that carries the code verifier. The state cookie is
+`httpOnly`, `sameSite=lax`, and uses the `__Host-` prefix in production; state values
+are compared in constant time. Token exchange always sends the `code_verifier`.
+
+### CSRF protection
+
+Non-GET requests with an `Origin` header are rejected with `403` when the origin does
+not match the configured `CORS_ORIGIN` (or when CORS allows all origins). Disable with
+`CSRF_PROTECTION_ENABLED=false`.
 
 ### Authentication & authorization (RBAC)
 
@@ -682,12 +767,16 @@ is applied globally and can be tightened per route via the route config
 (e.g. `max: 20, windowMs: 60_000` for register/login). Exceeded limits return `429`
 with `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, and `Retry-After`
 headers. Redis-backed when `REDIS_URL` is set, with an in-memory fallback.
+Refresh/logout are capped at `AUTH_REFRESH_RATE_LIMIT` (default 60/min) and the OAuth
+and integration-callback routes at `AUTH_OAUTH_RATE_LIMIT`/`INTEGRATION_OAUTH_RATE_LIMIT`
+(default 20/min).
 
 ### Audit log
 
 Security-relevant actions (register, login, logout, token refresh, OAuth, admin user
-updates, plugin reloads) are recorded in an in-memory audit log with actor, target,
-IP, and a redacted detail. Browsed at `GET /api/v1/admin/audit` (capped at
+updates, plugin reloads, secrets listing, and integration connect/disconnect/reconnect/
+revoke/permission/primary-change events) are recorded in an in-memory audit log with
+actor, target, IP, and a redacted detail. Browsed at `GET /api/v1/admin/audit` (capped at
 `AUDIT_LOG_MAX`, default 1000 events).
 
 ### Input & output validation
@@ -711,6 +800,8 @@ via `next.config.ts` `headers()`.
 - `PATCH /api/v1/admin/users/:id` — Update `role` and/or `isActive` (cannot deactivate
   your own account). Records an `admin.user.update` audit event.
 - `GET /api/v1/admin/audit?limit=` — Recent audit events (newest first, capped at 1000).
+- `GET /api/v1/admin/secrets` — Secret configuration statuses (name, description,
+  configured). Never returns values. Records an `admin.secrets.read` audit event.
 
 The web dashboard shows an **Admin** page (visible only to `ADMIN` users) with user
 management and the audit log.
@@ -755,7 +846,9 @@ Deployment-relevant variables (`NODE_ENV=production`, `ENCRYPTION_KEY`,
 
 Each check reports `ok`, `error`, or `disabled` (a check is `disabled` when the
 corresponding service is not configured). The endpoint returns `200` when every
-enabled check passes and `503` when any enabled check fails.
+enabled check passes and `503` when any enabled check fails. The response also
+reports `encryptionEnabled` (whether `ENCRYPTION_KEY`/`INTEGRATION_ENCRYPTION_KEY`
+is configured and encryption-at-rest is active).
 
 ```json
 {
@@ -765,6 +858,7 @@ enabled check passes and `503` when any enabled check fails.
     "database": { "status": "ok", "latencyMs": 4 },
     "redis": { "status": "ok", "latencyMs": 2 }
   },
+  "encryptionEnabled": true,
   "uptime": 12.3,
   "timestamp": "2026-08-03T00:00:00.000Z"
 }

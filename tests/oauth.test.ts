@@ -241,12 +241,16 @@ describe('Google OAuth when configured', () => {
     expect(body.providers.map((p: { id: string }) => p.id)).toEqual(['email', 'google']);
   });
 
-  it('redirects to Google with a state cookie', async () => {
+  it('redirects to Google with a signed state cookie and PKCE challenge', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/v1/auth/google' });
 
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toContain('https://accounts.google.com/o/oauth2/v2/auth');
     expect(response.headers.location).toContain('client_id=test-client-id');
+    expect(response.headers.location).toContain('code_challenge=');
+    expect(response.headers.location).toContain('code_challenge_method=S256');
+    const location = new URL(response.headers.location as string);
+    expect(location.searchParams.get('state')).toMatch(/^eyJ/);
     expect(response.headers['set-cookie']).toBeDefined();
   });
 
@@ -301,6 +305,52 @@ describe('Google OAuth when configured', () => {
 
     expect(response.statusCode).toBe(400);
     expect(getUsers()).toHaveLength(0);
+  });
+
+  it('rejects a callback when the state cookie does not match the signed state', async () => {
+    const { state } = await startFlow();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/auth/google/callback?code=good-code&state=${encodeURIComponent(state)}`,
+      headers: { cookie: 'oauth_state=some-other-cookie' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(getUsers()).toHaveLength(0);
+  });
+
+  it('rejects a callback with a tampered (non-signed) state token', async () => {
+    const { cookie, state } = await startFlow();
+    const tampered = `${state.slice(0, -4)}AAAA`;
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/auth/google/callback?code=good-code&state=${encodeURIComponent(tampered)}`,
+      headers: { cookie },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(getUsers()).toHaveLength(0);
+  });
+
+  it('sends the PKCE code verifier during the token exchange', async () => {
+    const { cookie, state } = await startFlow();
+
+    await app.inject({
+      method: 'GET',
+      url: `/api/v1/auth/google/callback?code=good-code&state=${encodeURIComponent(state)}`,
+      headers: { cookie },
+    });
+
+    const tokenCalls = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).includes('oauth2.googleapis.com/token'),
+    );
+    expect(tokenCalls.length).toBeGreaterThan(0);
+    const init = tokenCalls[0]?.[1] as { body?: string };
+    const body = new URLSearchParams(init?.body ?? '');
+    expect(body.get('code_verifier')).toBeTruthy();
+    expect(body.get('code_verifier')?.length).toBeGreaterThanOrEqual(32);
   });
 
   it('rejects a callback without a code', async () => {

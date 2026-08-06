@@ -57,4 +57,21 @@ describe('audit log', () => {
     audit.recordAudit({ action: 'auth.logout' });
     expect(audit.auditLogCount()).toBe(1);
   });
+
+  it('records integration security events', () => {
+    audit.recordAudit({ action: 'integration.connect', actorId: 'u1', target: 'github' });
+    audit.recordAudit({
+      action: 'integration.revoke',
+      actorId: 'u1',
+      target: 'i1',
+      detail: 'refresh_token_reuse',
+    });
+    audit.recordAudit({ action: 'integration.auto_reconnect', actorId: 'u1', target: 'slack' });
+    const logs = audit.getAuditLogs();
+    expect(logs.map((log) => log.action)).toEqual([
+      'integration.auto_reconnect',
+      'integration.revoke',
+      'integration.connect',
+    ]);
+  });
 });

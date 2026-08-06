@@ -26,6 +26,7 @@ function docText(doc: GoogleDoc): string {
 
 export const docsSearchTool: Tool = {
   name: 'docs_search',
+  providerId: 'google-docs',
   description:
     'Find the user\u2019s Google Documents by name and return their file IDs, most recently modified first.',
   parameters: {
@@ -80,6 +81,7 @@ export const docsSearchTool: Tool = {
 
 export const docsReadTool: Tool = {
   name: 'docs_read',
+  providerId: 'google-docs',
   description:
     'Read the text content of a Google Document by its file ID and return the plain text.',
   parameters: {

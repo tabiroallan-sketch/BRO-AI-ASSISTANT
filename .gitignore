@@ -5,8 +5,14 @@ dist
 !.env.example
 src/generated
 *.log
+data
 .DS_Store
 coverage
 .nyc_output
 .vscode
 .idea
+test-results
+web/test-results
+playwright-report
+web/playwright-report
+web-e2e/playwright-report

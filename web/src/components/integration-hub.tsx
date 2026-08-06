@@ -249,9 +249,11 @@ function SectionHeader({
 function ProviderCard({
   provider,
   onReload,
+  highlight,
 }: {
   provider: HubProvider;
   onReload: () => Promise<void>;
+  highlight?: boolean;
 }): React.JSX.Element {
   const router = useRouter();
   const { logout } = useAuth();
@@ -277,6 +279,7 @@ function ProviderCard({
   const [notice, setNotice] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<Record<string, string>>({});
   const [newAccountKey, setNewAccountKey] = React.useState('');
+  const [syncFlash, setSyncFlash] = React.useState(false);
 
   const connected = provider.connected;
   const status = statusConfig(provider.status, provider.configured);
@@ -327,6 +330,8 @@ function ProviderCard({
       setTestResult(result);
       if (kind === 'sync') {
         setNotice('Sync completed.');
+        setSyncFlash(true);
+        window.setTimeout(() => setSyncFlash(false), 1600);
       }
       await onReload();
     } catch (err) {
@@ -477,7 +482,11 @@ function ProviderCard({
       }}
       initial={reduceMotion ? false : 'hidden'}
       animate="show"
-      className="glass glass-hover relative overflow-hidden rounded-2xl p-5"
+      className={cn(
+        'glass glass-hover relative overflow-hidden rounded-2xl p-5 transition-shadow duration-300',
+        syncFlash && 'glow-success',
+        busy === 'disconnect' && 'opacity-60 saturate-50',
+      )}
     >
       <div
         className={cn(
@@ -485,6 +494,27 @@ function ProviderCard({
           connected ? 'opacity-100' : 'opacity-30',
         )}
       />
+
+      {(busy === 'sync' || busy === 'test') && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+          <div className="absolute inset-y-0 left-0 w-1/3 animate-sweep bg-gradient-to-r from-transparent via-neon-cyan/25 to-transparent" />
+        </div>
+      )}
+      {busy === 'disconnect' && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+          <div className="absolute inset-y-0 left-0 w-1/3 animate-sweep bg-gradient-to-r from-transparent via-destructive/35 to-transparent" />
+        </div>
+      )}
+      {highlight && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+          <div className="absolute inset-0 animate-pulse-ring rounded-2xl border-2 border-emerald-400/60" />
+        </div>
+      )}
+      {highlight && connected && (
+        <div className="absolute right-4 top-4 z-10 animate-pop-in rounded-full bg-emerald-500/20 p-1.5 backdrop-blur-sm">
+          <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+        </div>
+      )}
 
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
@@ -512,45 +542,63 @@ function ProviderCard({
             </p>
           </div>
         </div>
-        <span
-          className={cn(
-            'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
-            status.className,
-          )}
-        >
-          <span className="relative flex h-2 w-2">
-            {status.pulse && (
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={status.label}
+            initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.18 }}
+            className={cn(
+              'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
+              status.className,
             )}
-            <span className={cn('relative inline-flex h-2 w-2 rounded-full', status.dotClass)} />
-          </span>
-          {status.label}
-        </span>
+          >
+            <span className="relative flex h-2 w-2">
+              {status.pulse && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />
+              )}
+              <span className={cn('relative inline-flex h-2 w-2 rounded-full', status.dotClass)} />
+            </span>
+            {status.label}
+          </motion.span>
+        </AnimatePresence>
       </div>
 
-      {connected && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-background/40 px-3 py-2 text-xs">
-          <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-            <Users className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate font-medium text-foreground">
-              {provider.accountName ?? provider.accountKey ?? 'Connected'}
-            </span>
-          </span>
-          {provider.accountKey && (
-            <span className="font-mono text-muted-foreground">{provider.accountKey}</span>
-          )}
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <Calendar className="h-3.5 w-3.5" />
-            connected {formatRelative(provider.connectedAt)}
-          </span>
-          {provider.accountCount > 1 && (
-            <span className="text-muted-foreground">{provider.accountCount} accounts</span>
-          )}
-          {provider.refreshCount > 0 && (
-            <span className="text-muted-foreground">{provider.refreshCount} refreshes</span>
-          )}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {connected && (
+          <motion.div
+            key="account-strip"
+            initial={reduceMotion ? false : { opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-background/40 px-3 py-2 text-xs">
+              <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                <Users className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate font-medium text-foreground">
+                  {provider.accountName ?? provider.accountKey ?? 'Connected'}
+                </span>
+              </span>
+              {provider.accountKey && (
+                <span className="font-mono text-muted-foreground">{provider.accountKey}</span>
+              )}
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <Calendar className="h-3.5 w-3.5" />
+                connected {formatRelative(provider.connectedAt)}
+              </span>
+              {provider.accountCount > 1 && (
+                <span className="text-muted-foreground">{provider.accountCount} accounts</span>
+              )}
+              {provider.refreshCount > 0 && (
+                <span className="text-muted-foreground">{provider.refreshCount} refreshes</span>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {provider.status === 'revoked' && (
         <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
@@ -924,6 +972,7 @@ export function IntegrationHub(): React.JSX.Element {
   const [providers, setProviders] = React.useState<HubProvider[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [highlightProvider, setHighlightProvider] = React.useState<string | null>(null);
 
   async function load(): Promise<void> {
     try {
@@ -950,8 +999,11 @@ export function IntegrationHub(): React.JSX.Element {
     const status = params.get('status');
     if (provider && status === 'connected') {
       setNotice(`${provider} connected successfully.`);
+      setHighlightProvider(provider);
       window.history.replaceState({}, '', window.location.pathname);
       void load();
+      const timer = window.setTimeout(() => setHighlightProvider(null), 5000);
+      return () => window.clearTimeout(timer);
     } else if (provider && status === 'error') {
       const reason = params.get('reason');
       setError(reason ? `Connection failed: ${reason}` : 'Connection failed.');
@@ -1011,8 +1063,28 @@ export function IntegrationHub(): React.JSX.Element {
       )}
 
       {providers === null ? (
-        <div className="glass flex items-center gap-2 rounded-2xl p-5 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading integration hub…
+        <div className="grid gap-4 lg:grid-cols-2">
+          {[0, 1, 2, 3].map((index) => (
+            <div
+              key={index}
+              className="glass rounded-2xl p-5"
+              aria-hidden="true"
+              style={{ animationDelay: `${index * 120}ms` }}
+            >
+              <div className="flex items-start gap-3">
+                <div className="skeleton h-11 w-11 rounded-xl" />
+                <div className="flex-1 space-y-2">
+                  <div className="skeleton h-4 w-32 rounded-md" />
+                  <div className="skeleton h-3 w-48 rounded-md" />
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="skeleton h-14 rounded-xl" />
+                <div className="skeleton h-14 rounded-xl" />
+                <div className="skeleton h-14 rounded-xl" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <motion.div
@@ -1022,7 +1094,12 @@ export function IntegrationHub(): React.JSX.Element {
           className="grid gap-4 lg:grid-cols-2"
         >
           {providers.map((provider) => (
-            <ProviderCard key={provider.id} provider={provider} onReload={load} />
+            <ProviderCard
+              key={provider.id}
+              provider={provider}
+              onReload={load}
+              highlight={highlightProvider === provider.id}
+            />
           ))}
         </motion.div>
       )}

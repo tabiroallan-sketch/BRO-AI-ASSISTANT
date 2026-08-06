@@ -63,6 +63,9 @@ type MockIntegrationStatus = {
   lastMessage: string | null;
   lastHealthCheckAt: Date;
   lastSuccessAt: Date | null;
+  code: string | null;
+  apiStatus: string | null;
+  quota: unknown;
   updatedAt: Date;
 };
 
@@ -303,6 +306,9 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
             lastMessage: args.create.lastMessage ?? null,
             lastHealthCheckAt: args.create.lastHealthCheckAt ?? now,
             lastSuccessAt: args.create.lastSuccessAt ?? null,
+            code: args.create.code ?? null,
+            apiStatus: args.create.apiStatus ?? null,
+            quota: args.create.quota ?? null,
             updatedAt: now,
           };
       integrationStatuses.set(record.integrationId, record);
@@ -1340,5 +1346,90 @@ describe('integrations', () => {
     expect(slack.health).toBeNull();
     expect(slack.lastSync).toBeNull();
     expect(slack.accountCount).toBe(0);
+  });
+
+  it('returns a health overview with status, latency, quota, and sweep info', async () => {
+    const { authorization, userId } = await authSession('health-overview@example.com');
+    const { upsertIntegration } = await import('../src/integrations/store.js');
+    await upsertIntegration(userId, {
+      provider: 'github',
+      accessToken: 'gh_token',
+      accountName: 'octocat',
+    });
+
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ login: 'octocat' }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/integrations/github/test',
+      headers: { authorization },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/integrations/health',
+      headers: { authorization },
+    });
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.providers).toHaveLength(12);
+    const github = body.providers.find((p: { id: string }) => p.id === 'github');
+    expect(github.connected).toBe(true);
+    expect(github.health.ok).toBe(true);
+    expect(typeof github.health.latencyMs).toBe('number');
+    expect(typeof github.health.code).toBe('string');
+    expect(body.summary.connected).toBe(1);
+    expect(body.summary.healthy).toBe(1);
+    expect(body.summary.unhealthy).toBe(0);
+    expect(body.summary.disconnected).toBe(11);
+    expect(body.monitor.enabled).toBe(true);
+    expect(body.monitor.intervalMs).toBeGreaterThan(0);
+    expect(body.sweep).toBeDefined();
+  });
+
+  it('persists the auto-reconnect toggle per provider', async () => {
+    const { authorization, userId } = await authSession('health-toggle@example.com');
+    const { upsertIntegration } = await import('../src/integrations/store.js');
+    await upsertIntegration(userId, {
+      provider: 'github',
+      accessToken: 'gh_token',
+      accountName: 'octocat',
+    });
+
+    const enable = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/integrations/github/auto-reconnect',
+      headers: { authorization },
+      payload: { enabled: true },
+    });
+    expect(enable.statusCode).toBe(200);
+    expect(JSON.parse(enable.body).autoReconnect).toBe(true);
+
+    const health = await app.inject({
+      method: 'GET',
+      url: '/api/v1/integrations/health',
+      headers: { authorization },
+    });
+    const github = JSON.parse(health.body).providers.find((p: { id: string }) => p.id === 'github');
+    expect(github.autoReconnect).toBe(true);
+
+    const disable = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/integrations/github/auto-reconnect',
+      headers: { authorization },
+      payload: { enabled: false },
+    });
+    expect(JSON.parse(disable.body).autoReconnect).toBe(false);
+
+    const notFound = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/integrations/dropbox/auto-reconnect',
+      headers: { authorization },
+      payload: { enabled: true },
+    });
+    expect(notFound.statusCode).toBe(404);
   });
 });

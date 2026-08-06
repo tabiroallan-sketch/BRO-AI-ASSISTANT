@@ -4,6 +4,32 @@ export type ConnectionStatus =
   'connected' | 'needs_refresh' | 'expired' | 'revoked' | 'not_connected' | 'error';
 
 /**
+ * The live-health classification shown in Connection Health. More granular
+ * than ConnectionStatus: it tells the user WHY a connection is unhealthy.
+ */
+export type HealthIssue =
+  | 'connected'
+  | 'disconnected'
+  | 'expired'
+  | 'rate_limited'
+  | 'invalid_credentials'
+  | 'missing_scope'
+  | 'revoked'
+  | 'network'
+  | 'error';
+
+export type QuotaInfo = {
+  /** Units consumed (requests, API calls, credits) in the current window. */
+  used: number | null;
+  /** Window ceiling, when the provider reports one. */
+  limit: number | null;
+  /** Approximate requests left, when the provider reports one. */
+  remaining: number | null;
+  /** ISO timestamp of the quota window reset, when known. */
+  resetAt: string | null;
+};
+
+/**
  * A capability is a stable, provider-agnostic action identifier that BRO tools
  * rely on (e.g. 'gmail:read', 'calendar:write'). It decouples tool code from
  * any single provider and lets the AI awareness layer discover what a user can
@@ -26,14 +52,28 @@ export type HealthProbe = {
   ok: boolean;
   accountName?: string | null;
   message?: string | null;
+  /**
+   * Optional failure classification. Returned by providers that already know
+   * the failure mode (e.g. a probe catching a ProviderError). The monitor
+   * falls back to classifying from the HTTP status.
+   */
+  code?: string | null;
+  /** Rate-limit / quota snapshot observed during the probe. */
+  quota?: QuotaInfo | null;
+  /** Provider API status label, e.g. 'operational', 'degraded', 'down'. */
+  apiStatus?: string | null;
 };
 
 export type HealthResult = {
   ok: boolean;
   status: ConnectionStatus;
+  issue?: HealthIssue | null;
+  code?: string | null;
   latencyMs: number | null;
   accountName: string | null;
   message: string | null;
+  quota?: QuotaInfo | null;
+  apiStatus?: string | null;
   checkedAt: string;
 };
 
@@ -94,9 +134,17 @@ export type WebhookProviderDef = BaseProviderDef & {
   type: 'webhook';
 };
 
+export type TokenField = { name: string; label: string; placeholder: string };
+
 export type TokenProviderDef = BaseProviderDef & {
   type: 'token';
-  fields: { name: string; label: string; placeholder: string }[];
+  fields: TokenField[];
+  /**
+   * Derives the account label from the submitted field values. Defaults to
+   * "<label> connection" when omitted, so per-provider naming (e.g. WhatsApp
+   * phone numbers) can be expressed without special-casing the save route.
+   */
+  accountNameFromFields?: (values: Record<string, string>) => string | null;
 };
 
 export type ProviderDef = OAuthProviderDef | WebhookProviderDef | TokenProviderDef;

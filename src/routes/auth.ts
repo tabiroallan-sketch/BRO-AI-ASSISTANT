@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config/index.js';
@@ -21,7 +20,11 @@ import {
   buildGoogleAuthorizationUrl,
   exchangeGoogleCode,
   fetchGoogleProfile,
+  generatePkcePair,
   googleOAuthEnabled,
+  secureEqual,
+  signGoogleState,
+  verifyGoogleState,
 } from '../lib/oauth.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { prisma } from '../lib/prisma.js';
@@ -42,6 +45,14 @@ const refreshSchema = z.object({
 });
 
 const AUTH_RATE_LIMIT = { max: 20, windowMs: 60_000 } as const;
+const AUTH_REFRESH_RATE_LIMIT = { max: 60, windowMs: 60_000 } as const;
+const AUTH_OAUTH_RATE_LIMIT = { max: 20, windowMs: 60_000 } as const;
+
+const OAUTH_STATE_COOKIE = 'oauth_state';
+
+function oauthStateCookieName(): string {
+  return config.nodeEnv === 'production' ? '__Host-oauth_state' : OAUTH_STATE_COOKIE;
+}
 
 async function createSession(userId: string): Promise<string> {
   if (!prisma) {
@@ -221,81 +232,89 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ accessToken, refreshToken, user: publicUser(user) });
   });
 
-  app.post('/auth/refresh', async (request, reply) => {
-    const parsed = refreshSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw new HttpError(400, 'Invalid request body');
-    }
-    const { refreshToken } = parsed.data;
+  app.post(
+    '/auth/refresh',
+    { config: { rateLimit: AUTH_REFRESH_RATE_LIMIT } },
+    async (request, reply) => {
+      const parsed = refreshSchema.safeParse(request.body);
+      if (!parsed.success) {
+        throw new HttpError(400, 'Invalid request body');
+      }
+      const { refreshToken } = parsed.data;
 
-    if (!prisma) {
-      throw new HttpError(503, 'Database not configured');
-    }
+      if (!prisma) {
+        throw new HttpError(503, 'Database not configured');
+      }
 
-    const session = await prisma.session.findFirst({
-      where: { token: hashRefreshToken(refreshToken) },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            displayName: true,
-            avatarUrl: true,
-            role: true,
-            isActive: true,
+      const session = await prisma.session.findFirst({
+        where: { token: hashRefreshToken(refreshToken) },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              displayName: true,
+              avatarUrl: true,
+              role: true,
+              isActive: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!session || session.expiresAt < new Date()) {
-      throw new HttpError(401, 'Invalid or expired refresh token');
-    }
-    if (!session.user.isActive) {
-      throw new HttpError(401, 'Account disabled');
-    }
+      if (!session || session.expiresAt < new Date()) {
+        throw new HttpError(401, 'Invalid or expired refresh token');
+      }
+      if (!session.user.isActive) {
+        throw new HttpError(401, 'Account disabled');
+      }
 
-    await prisma.session.delete({ where: { id: session.id } });
+      await prisma.session.delete({ where: { id: session.id } });
 
-    const user = await ensureAdminRole(session.user);
+      const user = await ensureAdminRole(session.user);
 
-    const [accessToken, newRefreshToken] = await Promise.all([
-      signAccessToken(user.id, user.role),
-      createSession(user.id),
-    ]);
+      const [accessToken, newRefreshToken] = await Promise.all([
+        signAccessToken(user.id, user.role),
+        createSession(user.id),
+      ]);
 
-    recordAudit({
-      actorId: user.id,
-      actorEmail: user.email,
-      action: 'auth.refresh',
-      ...auditContext(request),
-    });
+      recordAudit({
+        actorId: user.id,
+        actorEmail: user.email,
+        action: 'auth.refresh',
+        ...auditContext(request),
+      });
 
-    return reply.send({
-      accessToken,
-      refreshToken: newRefreshToken,
-      user: publicUser(user),
-    });
-  });
+      return reply.send({
+        accessToken,
+        refreshToken: newRefreshToken,
+        user: publicUser(user),
+      });
+    },
+  );
 
-  app.post('/auth/logout', async (request, reply) => {
-    const parsed = refreshSchema.safeParse(request.body);
-    if (!parsed.success) {
-      throw new HttpError(400, 'Invalid request body');
-    }
-    const { refreshToken } = parsed.data;
+  app.post(
+    '/auth/logout',
+    { config: { rateLimit: AUTH_REFRESH_RATE_LIMIT } },
+    async (request, reply) => {
+      const parsed = refreshSchema.safeParse(request.body);
+      if (!parsed.success) {
+        throw new HttpError(400, 'Invalid request body');
+      }
+      const { refreshToken } = parsed.data;
 
-    if (!prisma) {
-      throw new HttpError(503, 'Database not configured');
-    }
+      if (!prisma) {
+        throw new HttpError(503, 'Database not configured');
+      }
 
-    await prisma.session.deleteMany({ where: { token: hashRefreshToken(refreshToken) } });
-    recordAudit({
-      action: 'auth.logout',
-      ...auditContext(request),
-    });
-    return reply.status(204).send();
-  });
+      await prisma.session.deleteMany({ where: { token: hashRefreshToken(refreshToken) } });
+      recordAudit({
+        action: 'auth.logout',
+        ...auditContext(request),
+      });
+      return reply.status(204).send();
+    },
+  );
 
   app.get('/auth/providers', async () => {
     return {
@@ -306,81 +325,99 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.get('/auth/google', async (_request, reply) => {
-    if (!googleOAuthEnabled()) {
-      throw new HttpError(503, 'Google OAuth is not configured');
-    }
-    const state = randomBytes(16).toString('base64url');
-    reply.setCookie('oauth_state', state, {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      secure: config.nodeEnv === 'production',
-      maxAge: 600,
-    });
-    return reply.redirect(buildGoogleAuthorizationUrl(state));
-  });
+  app.get(
+    '/auth/google',
+    { config: { rateLimit: AUTH_OAUTH_RATE_LIMIT } },
+    async (_request, reply) => {
+      if (!googleOAuthEnabled()) {
+        throw new HttpError(503, 'Google OAuth is not configured');
+      }
+      const { verifier, challenge } = generatePkcePair();
+      const state = await signGoogleState(verifier);
+      reply.setCookie(oauthStateCookieName(), state, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: config.nodeEnv === 'production',
+        maxAge: 600,
+      });
+      return reply.redirect(buildGoogleAuthorizationUrl(state, challenge));
+    },
+  );
 
-  app.get('/auth/google/callback', async (request, reply) => {
-    if (!googleOAuthEnabled()) {
-      throw new HttpError(503, 'Google OAuth is not configured');
-    }
+  app.get(
+    '/auth/google/callback',
+    { config: { rateLimit: AUTH_OAUTH_RATE_LIMIT } },
+    async (request, reply) => {
+      if (!googleOAuthEnabled()) {
+        throw new HttpError(503, 'Google OAuth is not configured');
+      }
 
-    const { code, state } = request.query as { code?: string; state?: string };
-    if (!code) {
-      throw new HttpError(400, 'Missing authorization code');
-    }
+      const { code, state } = request.query as { code?: string; state?: string };
+      if (!code) {
+        throw new HttpError(400, 'Missing authorization code');
+      }
 
-    const expectedState = request.cookies?.oauth_state;
-    reply.clearCookie('oauth_state', { path: '/' });
-    if (!expectedState || !state || state !== expectedState) {
-      throw new HttpError(400, 'Invalid OAuth state');
-    }
+      let verifier: string;
+      try {
+        verifier = await verifyGoogleState(state ?? '');
+      } catch {
+        throw new HttpError(400, 'Invalid OAuth state');
+      }
 
-    let tokens;
-    try {
-      tokens = await exchangeGoogleCode(code);
-    } catch (error) {
-      request.log.error({ err: error }, 'Google token exchange failed');
-      throw new HttpError(502, 'Failed to exchange authorization code');
-    }
+      const expectedState =
+        request.cookies?.[oauthStateCookieName()] ?? request.cookies?.[OAUTH_STATE_COOKIE];
+      reply.clearCookie(oauthStateCookieName(), { path: '/' });
+      reply.clearCookie(OAUTH_STATE_COOKIE, { path: '/' });
+      if (!expectedState || !state || !secureEqual(state, expectedState)) {
+        throw new HttpError(400, 'Invalid OAuth state');
+      }
 
-    let profile;
-    try {
-      profile = await fetchGoogleProfile(tokens.access_token);
-    } catch (error) {
-      request.log.error({ err: error }, 'Google profile fetch failed');
-      throw new HttpError(502, 'Failed to fetch Google profile');
-    }
+      let tokens;
+      try {
+        tokens = await exchangeGoogleCode(code, verifier);
+      } catch (error) {
+        request.log.error({ err: error }, 'Google token exchange failed');
+        throw new HttpError(502, 'Failed to exchange authorization code');
+      }
 
-    if (!profile.email) {
-      throw new HttpError(400, 'Google account has no email address');
-    }
+      let profile;
+      try {
+        profile = await fetchGoogleProfile(tokens.access_token);
+      } catch (error) {
+        request.log.error({ err: error }, 'Google profile fetch failed');
+        throw new HttpError(502, 'Failed to fetch Google profile');
+      }
 
-    const user = await ensureAdminRole(await upsertGoogleUser(profile, tokens));
-    if (!user.isActive) {
-      throw new HttpError(403, 'Account disabled');
-    }
+      if (!profile.email) {
+        throw new HttpError(400, 'Google account has no email address');
+      }
 
-    const [accessToken, refreshToken] = await Promise.all([
-      signAccessToken(user.id, user.role),
-      createSession(user.id),
-    ]);
+      const user = await ensureAdminRole(await upsertGoogleUser(profile, tokens));
+      if (!user.isActive) {
+        throw new HttpError(403, 'Account disabled');
+      }
 
-    recordAudit({
-      actorId: user.id,
-      actorEmail: user.email,
-      action: 'auth.oauth',
-      detail: 'Google sign-in',
-      ...auditContext(request),
-    });
+      const [accessToken, refreshToken] = await Promise.all([
+        signAccessToken(user.id, user.role),
+        createSession(user.id),
+      ]);
 
-    const webOrigin = config.corsOrigin;
-    return reply.redirect(
-      `${webOrigin}/auth/callback#access_token=${encodeURIComponent(accessToken)}` +
-        `&refresh_token=${encodeURIComponent(refreshToken)}`,
-    );
-  });
+      recordAudit({
+        actorId: user.id,
+        actorEmail: user.email,
+        action: 'auth.oauth',
+        detail: 'Google sign-in',
+        ...auditContext(request),
+      });
+
+      const webOrigin = config.corsOrigin;
+      return reply.redirect(
+        `${webOrigin}/auth/callback#access_token=${encodeURIComponent(accessToken)}` +
+          `&refresh_token=${encodeURIComponent(refreshToken)}`,
+      );
+    },
+  );
 
   app.get('/auth/me', { preHandler: requireAuth }, async (request) => {
     if (!request.user) {

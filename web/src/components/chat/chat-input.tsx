@@ -10,6 +10,7 @@ import {
   type SpeechRecognizer,
 } from '@/lib/speech';
 import { useAiState } from '@/lib/ai-state';
+import { cn } from '@/lib/utils';
 
 export function ChatInput({
   disabled,
@@ -84,6 +85,7 @@ export function ChatInput({
   }
 
   const displayed = interim ? `${value}${value ? ' ' : ''}${interim}` : value;
+  const canSend = !disabled && value.trim().length > 0;
 
   return (
     <form
@@ -91,7 +93,7 @@ export function ChatInput({
         event.preventDefault();
         submit();
       }}
-      className="flex items-end gap-2 border-t bg-background p-4"
+      className="flex items-end gap-2 border-t bg-background/60 p-4 backdrop-blur-md"
     >
       <Textarea
         value={displayed}
@@ -112,19 +114,26 @@ export function ChatInput({
           type="button"
           size="icon"
           variant={listening ? 'destructive' : 'secondary'}
-          className="h-11 w-11 shrink-0"
+          className={cn(
+            'relative h-11 w-11 shrink-0',
+            listening &&
+              'glow-danger shadow-[0_0_18px_color-mix(in_oklab,var(--destructive)_40%,transparent)]',
+          )}
           disabled={disabled}
           onClick={toggleListening}
           aria-label={listening ? 'Stop voice input' : 'Start voice input'}
         >
+          {listening && (
+            <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-md border-2 border-destructive/50" />
+          )}
           {listening ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </Button>
       )}
       <Button
         type="submit"
         size="icon"
-        className="h-11 w-11 shrink-0"
-        disabled={disabled || value.trim().length === 0}
+        className={cn('h-11 w-11 shrink-0', canSend && 'glow-primary')}
+        disabled={!canSend}
         aria-label="Send message"
       >
         <Send className="h-4 w-4" />

@@ -53,6 +53,7 @@ export default [
       '*.config.*',
       '**/*.d.ts',
       'web/**',
+      'web-e2e/**',
     ],
   },
 ];

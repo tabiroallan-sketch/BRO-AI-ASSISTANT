@@ -27,12 +27,24 @@ export type ToolActivity = {
   args: Record<string, unknown>;
   ok?: boolean;
   output?: string;
+  /** Present when the tool failed because the account is not connected. */
+  connectProviderId?: string;
+  connectLabel?: string;
+  permissionDenied?: boolean;
 };
 
 export type StreamEvent =
   | { type: 'start'; conversationId: string; messageId: string }
   | { type: 'tool_start'; name: string; args: Record<string, unknown> }
-  | { type: 'tool_result'; name: string; ok: boolean; output: string }
+  | {
+      type: 'tool_result';
+      name: string;
+      ok: boolean;
+      output: string;
+      connectProviderId?: string;
+      connectLabel?: string;
+      permissionDenied?: boolean;
+    }
   | { type: 'delta'; content: string }
   | { type: 'done'; message: ChatMessage }
   | { type: 'error'; message: string };

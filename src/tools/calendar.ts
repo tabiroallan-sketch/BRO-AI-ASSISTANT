@@ -34,6 +34,7 @@ async function googleCalendarRequest(
 
 export const calendarListEventsTool: Tool = {
   name: 'calendar_list_events',
+  providerId: 'google-calendar',
   description:
     'List upcoming events on the user\u2019s Google Calendar. Returns the next events with title, time, and description.',
   parameters: {
@@ -84,6 +85,7 @@ export const calendarListEventsTool: Tool = {
 
 export const calendarCreateEventTool: Tool = {
   name: 'calendar_create_event',
+  providerId: 'google-calendar',
   description:
     'Create a new event on the user\u2019s Google Calendar. Provide a title, start, and end date-time in ISO 8601 format.',
   parameters: {

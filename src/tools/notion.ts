@@ -45,6 +45,7 @@ async function notionError(response: Response, fallback: string): Promise<never>
 
 export const notionWorkspaceTool: Tool = {
   name: 'notion_workspace',
+  providerId: 'notion',
   description:
     'Show the Notion workspace this integration is connected to, including the integration name and workspace ID.',
   parameters: {
@@ -85,6 +86,7 @@ export const notionWorkspaceTool: Tool = {
 
 export const notionSearchPagesTool: Tool = {
   name: 'notion_search_pages',
+  providerId: 'notion',
   description:
     'Search the user\u2019s Notion workspace for pages and return matching page titles with last edited time.',
   parameters: {
@@ -138,6 +140,7 @@ type NotionDatabase = {
 
 export const notionSearchDatabasesTool: Tool = {
   name: 'notion_search_databases',
+  providerId: 'notion',
   description:
     'Search the user\u2019s Notion workspace for databases and return matching database titles, IDs, and their property names.',
   parameters: {
@@ -189,6 +192,7 @@ export const notionSearchDatabasesTool: Tool = {
 
 export const notionCreatePageTool: Tool = {
   name: 'notion_create_page',
+  providerId: 'notion',
   description:
     'Create a new page inside an existing page in the user\u2019s Notion workspace. Provide the parent page ID and the new page title.',
   parameters: {
@@ -229,6 +233,7 @@ export const notionCreatePageTool: Tool = {
 
 export const notionUpdatePageTool: Tool = {
   name: 'notion_update_page',
+  providerId: 'notion',
   description:
     'Update an existing page in the user\u2019s Notion workspace: change its title and/or move it to the trash (archive).',
   parameters: {

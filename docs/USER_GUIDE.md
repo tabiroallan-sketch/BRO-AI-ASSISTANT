@@ -20,6 +20,12 @@ The chat page is the main workspace.
 - The assistant streams its reply as it is generated. If it needs to use a
   tool (search the web, check the weather, read a file, query n8n, …) you'll
   see an inline **tool bubble** showing what it is doing and the result.
+- If a tool needs a service you have not connected yet (e.g. "check my
+  inbox" before connecting Gmail), the tool bubble shows a **Connect** button —
+  click it to start the OAuth flow right there in chat, then keep talking after
+  you return.
+- BRO knows which services are connected and which are available, and uses
+  that to pick the right tool for the accounts you actually have.
 - Click **New chat** to start a fresh conversation. Conversations are saved
   automatically and listed in the sidebar; click one to resume it.
 - Rename or delete a conversation with the icons that appear when you hover an
@@ -48,8 +54,26 @@ Connect services so BRO can act on your behalf.
 - **Discord**: paste a channel **webhook URL** and click Save.
 - **WhatsApp**: paste a WhatsApp Business **access token** and **phone number
   ID**.
+- **Marketplace** (**Dashboard → Marketplace**) lists every integration. Install
+  adapters like Dropbox, Zoom, ClickUp, Stripe, OpenAI, NVIDIA, Gemini, or
+  Anthropic server-wide, then connect them here or in Settings. API-key providers
+  are configured in-page with their key.
 - Connected services light up as usable tools in chat (e.g. "send an email",
   "list my Drive files", "post to Slack").
+
+### Connection Health
+
+**Dashboard → Health** shows the live status of every connected integration:
+Connected, Expired token, Rate limited, Invalid credentials, Network error, plus
+latency, provider API status, quota usage, token expiry, and the last sync.
+
+- **Run check** probes that connection right away and stores the result.
+- **Auto-reconnect** opts a connection into the background monitor's automatic
+  token refresh. When an expired connection is fixed, it is marked healthy
+  again automatically; if the provider revoked the credentials, the connection
+  is disabled so it stops failing (reconnect it from Settings).
+- The monitor runs on an interval on the server; the summary card shows the
+  last sweep and how many connections were reconnected or disabled.
 
 ## Notifications
 
@@ -66,12 +90,15 @@ The **Dashboard** gives an overview of your activity and the platform:
 - **Conversations** — browse your saved conversations.
 - **Memories** — manage stored facts.
 - **Connected accounts** — the same integration management as Settings.
+- **Marketplace** — install and connect integration adapters server-wide.
+- **Health** — live status, latency, quota, and last sync for every connected
+  integration, with per-connection auto-reconnect.
 - **Installed tools** — every tool BRO can call and what it does.
 - **Plugins** — installed plugins and a *Reload plugins* button.
 - **Automations** — *(Admin)* n8n workflow status and recent executions.
 - **Logs** — *(Admin)* recent server log lines.
-- **Admin** — *(Admin)* manage users (roles, active status) and browse the
-  audit log.
+- **Admin** — *(Admin)* manage users (roles, active status), browse the
+  audit log, and review which secrets are configured.
 
 ## Troubleshooting quick hits
 

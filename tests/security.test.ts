@@ -15,7 +15,17 @@ type MockUser = {
   googleId: string | null;
 };
 
-const { mockPrisma, registerAndLogin, listUsers } = vi.hoisted(() => {
+type MockAccount = {
+  id: string;
+  userId: string;
+  provider: string;
+  providerAccountId: string;
+  accessToken: string | null;
+  refreshToken: string | null;
+  expiresAt: Date | null;
+};
+
+const { mockPrisma, registerAndLogin, listUsers, getAccounts } = vi.hoisted(() => {
   process.env.DATABASE_URL = '';
   process.env.REDIS_URL = '';
   process.env.JWT_SECRET = 'test-access-secret';
@@ -25,13 +35,40 @@ const { mockPrisma, registerAndLogin, listUsers } = vi.hoisted(() => {
   process.env.ENCRYPTION_KEY = 'unit-test-encryption-key';
 
   const users = new Map<string, MockUser>();
+  const accounts = new Map<string, MockAccount>();
 
   const userModel = {
-    async findUnique(args: { where: { id: string } }): Promise<MockUser | null> {
-      return users.get(args.where.id) ?? null;
+    async findUnique(args: {
+      where: { id?: string; email?: string };
+      select?: unknown;
+    }): Promise<MockUser | null> {
+      if (args.where.id !== undefined) {
+        return users.get(args.where.id) ?? null;
+      }
+      if (args.where.email !== undefined) {
+        for (const user of users.values()) {
+          if (user.email === args.where.email) {
+            return user;
+          }
+        }
+      }
+      return null;
     },
     async findMany(): Promise<MockUser[]> {
       return [...users.values()];
+    },
+    async create(args: { data: Partial<MockUser>; select?: unknown }): Promise<MockUser> {
+      const user: MockUser = {
+        id: randomUUID(),
+        email: args.data.email ?? '',
+        role: args.data.role ?? 'USER',
+        isActive: true,
+        displayName: args.data.displayName ?? null,
+        avatarUrl: args.data.avatarUrl ?? null,
+        googleId: args.data.googleId ?? null,
+      };
+      users.set(user.id, user);
+      return user;
     },
     async update(args: { where: { id: string }; data: Partial<MockUser> }): Promise<MockUser> {
       const existing = users.get(args.where.id);
@@ -40,6 +77,56 @@ const { mockPrisma, registerAndLogin, listUsers } = vi.hoisted(() => {
       }
       const updated = { ...existing, ...args.data };
       users.set(updated.id, updated);
+      return updated;
+    },
+  };
+
+  const accountModel = {
+    async findUnique(args: {
+      where: {
+        provider_providerAccountId?: { provider: string; providerAccountId: string };
+        id?: string;
+      };
+    }): Promise<MockAccount | null> {
+      if (args.where.id !== undefined) {
+        return accounts.get(args.where.id) ?? null;
+      }
+      const composite = args.where.provider_providerAccountId;
+      if (composite) {
+        for (const account of accounts.values()) {
+          if (
+            account.provider === composite.provider &&
+            account.providerAccountId === composite.providerAccountId
+          ) {
+            return account;
+          }
+        }
+      }
+      return null;
+    },
+    async create(args: { data: Partial<MockAccount> }): Promise<MockAccount> {
+      const account: MockAccount = {
+        id: randomUUID(),
+        userId: args.data.userId ?? '',
+        provider: args.data.provider ?? '',
+        providerAccountId: args.data.providerAccountId ?? '',
+        accessToken: args.data.accessToken ?? null,
+        refreshToken: args.data.refreshToken ?? null,
+        expiresAt: args.data.expiresAt ?? null,
+      };
+      accounts.set(account.id, account);
+      return account;
+    },
+    async update(args: {
+      where: { id: string };
+      data: Partial<MockAccount>;
+    }): Promise<MockAccount> {
+      const existing = accounts.get(args.where.id);
+      if (!existing) {
+        throw new Error('Account not found');
+      }
+      const updated = { ...existing, ...args.data };
+      accounts.set(updated.id, updated);
       return updated;
     },
   };
@@ -63,9 +150,15 @@ const { mockPrisma, registerAndLogin, listUsers } = vi.hoisted(() => {
   }
 
   return {
-    mockPrisma: { user: userModel, $disconnect: async (): Promise<void> => undefined },
+    mockPrisma: {
+      user: userModel,
+      account: accountModel,
+      $queryRaw: async (): Promise<Array<{ '?column?': number }>> => [{ '?column?': 1 }],
+      $disconnect: async (): Promise<void> => undefined,
+    },
     registerAndLogin,
     listUsers: (): MockUser[] => [...users.values()],
+    getAccounts: (): MockAccount[] => [...accounts.values()],
   };
 });
 
@@ -141,6 +234,34 @@ describe('encryption', () => {
 
     expect(decryptValue('not-encrypted')).toBe('not-encrypted');
     expect(encryptValue('')).toBe('');
+  });
+
+  it('encrypts Google account tokens before storing them', async () => {
+    const { upsertGoogleUser } = await import('../src/lib/auth.js');
+    const { decryptValue } = await import('../src/lib/encryption.js');
+
+    const user = await upsertGoogleUser(
+      {
+        sub: 'google-sub-enc',
+        email: 'enc-google@example.com',
+        name: 'Encrypted',
+        email_verified: true,
+      },
+      {
+        access_token: 'secret-access-token',
+        refresh_token: 'secret-refresh-token',
+        expires_in: 3600,
+      },
+    );
+
+    expect(user.email).toBe('enc-google@example.com');
+    const account = getAccounts()[0];
+    expect(account).toBeDefined();
+    expect(account!.accessToken).toMatch(/^enc:v1:/);
+    expect(account!.accessToken).not.toContain('secret-access-token');
+    expect(account!.refreshToken).toMatch(/^enc:v1:/);
+    expect(decryptValue(account!.accessToken as string)).toBe('secret-access-token');
+    expect(decryptValue(account!.refreshToken as string)).toBe('secret-refresh-token');
   });
 });
 
@@ -348,5 +469,67 @@ describe('security endpoints', () => {
     } finally {
       (config as { rateLimitMax: number }).rateLimitMax = previous;
     }
+  });
+
+  it('reports encryption status in the health endpoint', async () => {
+    const response = await app.inject({ method: 'GET', url: '/health' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().encryptionEnabled).toBe(true);
+  });
+
+  it('rejects cross-origin state-changing requests (CSRF protection)', async () => {
+    const crossOrigin = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { origin: 'https://evil.example.com' },
+      payload: { email: 'a@b.c', password: 'whatever' },
+    });
+    expect(crossOrigin.statusCode).toBe(403);
+    expect(crossOrigin.json().error.message).toBe('Cross-origin request rejected');
+
+    const sameOrigin = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { origin: 'http://localhost:3001' },
+      payload: { email: 'a@b.c', password: 'whatever' },
+    });
+    expect(sameOrigin.statusCode).not.toBe(403);
+  });
+
+  it('allows cross-origin safe (GET) requests', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/providers',
+      headers: { origin: 'https://evil.example.com' },
+    });
+    expect(response.statusCode).toBe(200);
+  });
+
+  it('lists secret statuses to admins without exposing values', async () => {
+    const { token } = await registerAndLogin('admin-secrets@example.com', 'ADMIN');
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/secrets',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(200);
+
+    const body = JSON.parse(response.body);
+    expect(body.count).toBeGreaterThan(0);
+    expect(body.encryptionEnabled).toBe(true);
+    const jwtSecret = body.secrets.find((secret: { name: string }) => secret.name === 'JWT_SECRET');
+    expect(jwtSecret).toBeDefined();
+    expect(jwtSecret.configured).toBe(true);
+    expect(JSON.stringify(body)).not.toContain('test-access-secret');
+  });
+
+  it('denies the secrets endpoint to regular users', async () => {
+    const { token } = await registerAndLogin('regular-secrets@example.com');
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/secrets',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(403);
   });
 });

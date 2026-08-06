@@ -10,7 +10,15 @@ export type AuditAction =
   | 'auth.refresh'
   | 'auth.oauth'
   | 'admin.user.update'
-  | 'plugins.reload';
+  | 'admin.secrets.read'
+  | 'plugins.reload'
+  | 'integration.connect'
+  | 'integration.disconnect'
+  | 'integration.reconnect'
+  | 'integration.revoke'
+  | 'integration.permissions.update'
+  | 'integration.primary.change'
+  | 'integration.auto_reconnect';
 
 export type AuditEvent = {
   id: string;

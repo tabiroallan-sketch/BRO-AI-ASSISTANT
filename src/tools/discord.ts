@@ -4,6 +4,7 @@ import { fetchWithTimeout } from '../lib/http.js';
 
 export const discordSendMessageTool: Tool = {
   name: 'discord_send_message',
+  providerId: 'discord',
   description: 'Send a message to a Discord channel using the user\u2019s configured webhook.',
   parameters: {
     type: 'object',

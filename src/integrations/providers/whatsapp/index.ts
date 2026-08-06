@@ -26,6 +26,10 @@ export const whatsappProvider: TokenProviderDef = {
     },
     { name: 'phoneNumberId', label: 'Phone number ID', placeholder: 'e.g. 123456789012345' },
   ],
+  accountNameFromFields: (values) =>
+    typeof values.phoneNumberId === 'string' && values.phoneNumberId.trim() !== ''
+      ? `Phone ${values.phoneNumberId}`
+      : null,
   async healthCheck(token, metadata) {
     const phoneNumberId = typeof metadata.phoneNumberId === 'string' ? metadata.phoneNumberId : '';
     if (!phoneNumberId) {

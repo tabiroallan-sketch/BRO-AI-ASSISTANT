@@ -37,11 +37,71 @@ export type IntegrationInfo = {
 
 export type HubHealth = {
   status: IntegrationConnectionStatus;
+  issue?: string | null;
+  issueLabel?: string | null;
+  code?: string | null;
   ok: boolean;
   latencyMs: number | null;
   lastMessage: string | null;
   lastHealthCheckAt: string;
   lastSuccessAt: string | null;
+  apiStatus?: string | null;
+  quota?: HealthQuota | null;
+};
+
+export type HealthQuota = {
+  used: number | null;
+  limit: number | null;
+  remaining: number | null;
+  resetAt: string | null;
+};
+
+export type HealthProvider = {
+  id: string;
+  label: string;
+  description: string;
+  type: IntegrationType;
+  icon: string;
+  configured: boolean;
+  connected: boolean;
+  accountName: string | null;
+  status: IntegrationConnectionStatus;
+  autoReconnect: boolean;
+  tokenExpiresAt: string | null;
+  lastRefreshedAt: string | null;
+  refreshCount: number;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  health: HubHealth | null;
+  lastSync: HubSync | null;
+};
+
+export type HealthSweep = {
+  ran: boolean;
+  checked: number;
+  healthy: number;
+  unhealthy: number;
+  autoReconnected: number;
+  disabled: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+};
+
+export type HealthResponse = {
+  providers: HealthProvider[];
+  summary: {
+    connected: number;
+    healthy: number;
+    unhealthy: number;
+    disconnected: number;
+    autoReconnectEnabled: number;
+  };
+  sweep: HealthSweep | null;
+  monitor: {
+    enabled: boolean;
+    intervalMs: number;
+    autoReconnectEnabled: boolean;
+  };
 };
 
 export type HubSync = {
@@ -121,6 +181,37 @@ export type SyncRecord = {
   createdAt: string;
 };
 
+export type MarketplaceTokenField = { name: string; label: string; placeholder: string };
+
+export type MarketplaceItem = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  version: string;
+  latestVersion: string;
+  author: string;
+  status: 'installed' | 'available' | 'future';
+  authType: IntegrationType;
+  providerIds: string[];
+  bundled: boolean;
+  requiredEnv: string[];
+  installed: boolean;
+  connected: boolean;
+  configured: boolean;
+  accountName: string | null;
+  capabilities: string[];
+  fields?: MarketplaceTokenField[];
+  updateAvailable: boolean;
+};
+
+export type MarketplaceResponse = {
+  installed: MarketplaceItem[];
+  available: MarketplaceItem[];
+  future: MarketplaceItem[];
+};
+
 export type RefreshResult = {
   ok: boolean;
   status: IntegrationConnectionStatus;
@@ -152,6 +243,28 @@ export async function fetchHub(): Promise<HubProvider[]> {
   return result.providers;
 }
 
+export async function fetchHealth(): Promise<HealthResponse> {
+  return request<HealthResponse>('/integrations/health', { token: authToken() });
+}
+
+export async function setAutoReconnect(
+  provider: string,
+  enabled: boolean,
+): Promise<{ autoReconnect: boolean }> {
+  return request<{ autoReconnect: boolean }>(`/integrations/${provider}/auto-reconnect`, {
+    method: 'PUT',
+    token: authToken(),
+    body: { enabled },
+  });
+}
+
+export async function runHealthProbe(provider: string): Promise<ConnectionTestResult> {
+  return request<ConnectionTestResult>(`/integrations/${provider}/test`, {
+    method: 'POST',
+    token: authToken(),
+  });
+}
+
 export async function listPermissions(): Promise<PermissionCenterProvider[]> {
   const result = await request<{ providers: PermissionCenterProvider[] }>(
     '/integrations/permissions',
@@ -177,6 +290,21 @@ export async function updatePermissions(
 
 export function connectUrl(provider: string): string {
   return `${API_BASE_URL}/integrations/${provider}/connect`;
+}
+
+/**
+ * Returns the provider's OAuth authorization URL for the current user. Uses the
+ * JSON-returning reconnect endpoint (with the Bearer token) instead of the
+ * redirecting connect URL, which cannot carry the Authorization header in a
+ * plain browser navigation.
+ */
+export async function getIntegrationConnectUrl(provider: string): Promise<string> {
+  const result = await request<{ url: string }>(`/integrations/${provider}/reconnect`, {
+    method: 'POST',
+    token: authToken(),
+    body: {},
+  });
+  return result.url;
 }
 
 export async function saveIntegration(
@@ -257,4 +385,33 @@ export async function syncHistory(provider: string, limit = 8): Promise<SyncReco
     { token: authToken() },
   );
   return result.history;
+}
+
+export async function fetchMarketplace(): Promise<MarketplaceResponse> {
+  return request<MarketplaceResponse>('/integrations/marketplace', { token: authToken() });
+}
+
+export async function installMarketplaceItem(itemId: string): Promise<MarketplaceItem> {
+  const result = await request<{ item: MarketplaceItem }>(
+    `/integrations/marketplace/${itemId}/install`,
+    { method: 'POST', token: authToken() },
+  );
+  return result.item;
+}
+
+export async function uninstallMarketplaceItem(itemId: string): Promise<MarketplaceItem> {
+  const result = await request<{ item: MarketplaceItem }>(`/integrations/marketplace/${itemId}`, {
+    method: 'DELETE',
+    token: authToken(),
+  });
+  return result.item;
+}
+
+export async function updateMarketplaceItem(
+  itemId: string,
+): Promise<{ updated: boolean; message: string }> {
+  return request<{ updated: boolean; message: string }>(
+    `/integrations/marketplace/${itemId}/update`,
+    { method: 'POST', token: authToken() },
+  );
 }

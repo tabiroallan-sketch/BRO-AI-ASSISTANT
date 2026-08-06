@@ -14,6 +14,7 @@ const GOOGLE_APP_MIME_PREFIX = 'application/vnd.google-apps.';
 
 export const driveListFilesTool: Tool = {
   name: 'drive_list_files',
+  providerId: 'google-drive',
   description:
     'List files from the user\u2019s Google Drive, most recently modified first, with name, type, and modified time.',
   parameters: {
@@ -65,6 +66,7 @@ export const driveListFilesTool: Tool = {
 
 export const driveReadFileTool: Tool = {
   name: 'drive_read_file',
+  providerId: 'google-drive',
   description:
     'Read the contents of a file from the user\u2019s Google Drive by its ID and return it as text.',
   parameters: {
@@ -114,6 +116,7 @@ export const driveReadFileTool: Tool = {
 
 export const driveUploadFileTool: Tool = {
   name: 'drive_upload_file',
+  providerId: 'google-drive',
   description:
     'Upload a text file to the user\u2019s Google Drive and return the new file ID. Creates a new file.',
   parameters: {

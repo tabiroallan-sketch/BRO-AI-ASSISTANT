@@ -32,6 +32,7 @@ export const config = {
   redisUrl: process.env.REDIS_URL ?? '',
   jwtSecret: getSecret('JWT_SECRET'),
   jwtRefreshSecret: getSecret('JWT_REFRESH_SECRET'),
+  cookieSecret: getSecret('COOKIE_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '15m',
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
   openaiApiKey: getSecret('OPENAI_API_KEY'),
@@ -61,6 +62,12 @@ export const config = {
   slackClientSecret: getSecret('SLACK_CLIENT_SECRET'),
   notionClientId: getSecret('NOTION_CLIENT_ID'),
   notionClientSecret: getSecret('NOTION_CLIENT_SECRET'),
+  dropboxClientId: getSecret('DROPBOX_CLIENT_ID'),
+  dropboxClientSecret: getSecret('DROPBOX_CLIENT_SECRET'),
+  zoomClientId: getSecret('ZOOM_CLIENT_ID'),
+  zoomClientSecret: getSecret('ZOOM_CLIENT_SECRET'),
+  clickupClientId: getSecret('CLICKUP_CLIENT_ID'),
+  clickupClientSecret: getSecret('CLICKUP_CLIENT_SECRET'),
   whatsappApiUrl: process.env.WHATSAPP_API_URL ?? 'https://graph.facebook.com/v18.0',
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:3001',
   appVersion: process.env.BRO_VERSION ?? '0.1.0',
@@ -68,6 +75,7 @@ export const config = {
   rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
   rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX ?? '100', 10),
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '60000', 10),
+  csrfProtectionEnabled: process.env.CSRF_PROTECTION_ENABLED !== 'false',
   auditLogMax: parseInt(process.env.AUDIT_LOG_MAX ?? '1000', 10),
   bodyLimit: parseInt(process.env.BODY_LIMIT_BYTES ?? '1048576', 10),
   maxRequestUrlLength: parseInt(process.env.MAX_REQUEST_URL_LENGTH ?? '2048', 10),
@@ -84,4 +92,13 @@ export const config = {
   pluginsDir: process.env.PLUGINS_DIR ?? path.join(process.cwd(), 'plugins'),
   integrationProvidersDir:
     process.env.INTEGRATION_PROVIDERS_DIR ?? path.join(process.cwd(), 'integrations'),
+  marketplaceStateFile:
+    process.env.MARKETPLACE_STATE_FILE ??
+    path.join(process.cwd(), 'data', 'marketplace-state.json'),
+  healthMonitorEnabled: process.env.INTEGRATIONS_HEALTH_MONITOR_ENABLED !== 'false',
+  healthMonitorIntervalMs: parseInt(
+    process.env.INTEGRATIONS_HEALTH_MONITOR_INTERVAL_MS ?? '600000',
+    10,
+  ),
+  autoReconnectEnabled: process.env.INTEGRATIONS_AUTO_RECONNECT_ENABLED !== 'false',
 } as const;

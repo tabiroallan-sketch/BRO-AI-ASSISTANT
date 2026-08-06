@@ -1,5 +1,6 @@
 import { Prisma, prisma } from '../lib/prisma.js';
 import { decryptValue, encryptValue } from '../lib/encryption.js';
+import { recordAudit } from '../lib/audit.js';
 import { emitIntegrationEvent } from './events.js';
 import {
   REFRESH_WINDOW_MS,
@@ -47,6 +48,13 @@ export type UpsertIntegrationInput = {
 
 function resolveAccountKey(input: UpsertIntegrationInput): string {
   return input.accountKey ?? input.externalId ?? 'default';
+}
+
+function metadataOf(value: unknown): Record<string, unknown> {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
 }
 
 type IntegrationWriteFields = {
@@ -220,6 +228,21 @@ export async function listProviderAccounts(
   return records.map(decryptRecord);
 }
 
+/**
+ * Returns every non-revoked integration across all users. Used by the
+ * background health monitor to sweep the whole installation; the returned
+ * records are already decrypted.
+ */
+export async function listConnectedIntegrations(): Promise<IntegrationRecord[]> {
+  if (!prisma) {
+    return [];
+  }
+  const records = await prisma.integration.findMany({
+    where: { revokedAt: null },
+  });
+  return records.map(decryptRecord);
+}
+
 export async function setPrimaryIntegration(
   userId: string,
   providerId: string,
@@ -245,6 +268,32 @@ export async function setPrimaryIntegration(
       data: { isPrimary: true },
     }),
   ]);
+  return true;
+}
+
+/**
+ * Persists the per-connection auto-reconnect preference in integration.metadata
+ * so the background health monitor knows whether to attempt a token refresh
+ * (or disable a dead connection) without user intervention.
+ */
+export async function setAutoReconnect(
+  userId: string,
+  providerId: string,
+  enabled: boolean,
+  accountKey?: string,
+): Promise<boolean> {
+  if (!prisma) {
+    return false;
+  }
+  const record = await getIntegration(userId, providerId, accountKey);
+  if (!record) {
+    return false;
+  }
+  const metadata = metadataOf(record.metadata);
+  await prisma.integration.update({
+    where: { id: record.id },
+    data: { metadata: { ...metadata, autoReconnect: enabled } as Prisma.InputJsonValue },
+  });
   return true;
 }
 
@@ -275,6 +324,12 @@ export async function getValidAccessToken(
         !secureEqual(hashToken(integration.refreshToken as string), integration.refreshTokenHash)
       ) {
         await revokeIntegration(integration.id, 'refresh_token_reuse');
+        recordAudit({
+          actorId: userId,
+          action: 'integration.revoke',
+          target: integration.id,
+          detail: 'refresh_token_reuse',
+        });
         emitIntegrationEvent({
           type: 'token_revoked',
           provider: providerId,

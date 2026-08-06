@@ -31,6 +31,7 @@ async function tasksRequest(token: string, path: string, init: FetchInit = {}): 
 
 export const tasksListTool: Tool = {
   name: 'tasks_list',
+  providerId: 'google-tasks',
   description:
     'List the user\u2019s Google Tasks lists, or the tasks inside a given list with their due dates.',
   parameters: {
@@ -85,6 +86,7 @@ export const tasksListTool: Tool = {
 
 export const tasksCreateTool: Tool = {
   name: 'tasks_create',
+  providerId: 'google-tasks',
   description: 'Create a new task in the user\u2019s Google Tasks.',
   parameters: {
     type: 'object',

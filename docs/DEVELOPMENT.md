@@ -120,3 +120,23 @@ Every call to an external service must go through `src/lib/http.ts`:
 - Zod for all request validation.
 - No comments unless they explain *why*; prefer self-documenting code.
 - Never log secrets; audit-log sensitive actions with redaction.
+
+## Desktop app (`desktop/`)
+
+The desktop shell is an Electron app that bundles Postgres + API + web as a
+single installable package. See [DESKTOP.md](DESKTOP.md) for the full guide.
+Key workflows:
+
+```bash
+cd desktop
+npm run dev          # root API + web with watch, Electron in dev mode
+npm run typecheck    # tsc --noEmit
+npm test             # unit tests (no external services)
+npm run test:e2e     # embedded-mode smoke test (Playwright + Electron)
+npm run package      # NSIS installer (publish only with BRO_GH_OWNER/BRO_GH_REPO)
+```
+
+New desktop behavior ships with unit tests in `desktop/tests/`; the e2e script
+is the gate before packaging. The web app is intentionally untouched at
+runtime: the preload injects `window.__BRO_API_URL__` so
+`web/src/lib/api.ts` can resolve the embedded API URL.

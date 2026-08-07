@@ -1,6 +1,16 @@
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from './token-store';
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
+function resolveApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const injected = (window as { __BRO_API_URL__?: string }).__BRO_API_URL__;
+    if (injected) {
+      return injected;
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export class ApiError extends Error {
   status: number;

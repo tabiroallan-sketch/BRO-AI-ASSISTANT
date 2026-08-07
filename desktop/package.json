@@ -1,0 +1,38 @@
+{
+  "name": "bro-desktop",
+  "version": "0.1.0",
+  "description": "BRO - AI Operating System (desktop shell)",
+  "private": true,
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/build-preload.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "lint": "eslint .",
+    "icons": "node scripts/make-icons.mjs",
+    "build:api": "node scripts/build-api.mjs",
+    "build:web": "node scripts/build-web.mjs",
+    "package": "node scripts/package.mjs",
+    "dev": "node scripts/dev.mjs"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9",
+    "embedded-postgres": "18.3.0-beta.17"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "electron": "43.3.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "^0.28.1",
+    "playwright": "^1.62.1",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
+  },
+  "allowScripts": {
+    "electron@43.3.0": true,
+    "esbuild@0.28.1": true,
+    "@embedded-postgres/windows-x64@18.3.0-beta.17": true,
+    "electron-winstaller@5.4.0": true
+  }
+}

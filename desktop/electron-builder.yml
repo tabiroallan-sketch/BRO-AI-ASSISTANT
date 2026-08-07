@@ -1,0 +1,39 @@
+appId: com.bro.desktop
+productName: BRO
+electronVersion: 43.3.0
+copyright: Copyright (c) 2026 BRO
+directories:
+  output: dist/installer
+  buildResources: resources
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: resources/runtime
+    to: runtime
+    filter:
+      - '**/*'
+asar: true
+asarUnpack:
+  - node_modules/embedded-postgres/**/*
+  - node_modules/@embedded-postgres/**/*
+win:
+  icon: resources/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: BRO
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+publish:
+  provider: github
+  owner: ${env.BRO_GH_OWNER}
+  repo: ${env.BRO_GH_REPO}
+  releaseType: release

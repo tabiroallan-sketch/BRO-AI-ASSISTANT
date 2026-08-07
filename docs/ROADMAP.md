@@ -44,6 +44,13 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 ## Platform & Reliability
 
 - ✅ Docker Compose stack, production override, CI/CD, health checks.
+- ✅ **Desktop shell (Stage 1)** — Electron app bundling Postgres + API + web:
+  embedded Postgres cluster, managed service processes, tray + menus, global
+  shortcuts, window-state persistence, single-instance lock, sandbox-safe
+  preload bridge, GitHub-Releases auto-update wiring, NSIS installer.
+- 🚧 Desktop hardening — Windows-only verified today (mac/Linux need their
+  `@embedded-postgres` native package); auto-update needs a real GitHub
+  repo/owner to publish to; per-platform crash reporting and code signing.
 - 🚧 Horizontal scaling — the in-process caches and browser sessions are
   single-instance today; a shared cache (Redis) and sticky sessions or a
   distributed browser pool are the main work items.

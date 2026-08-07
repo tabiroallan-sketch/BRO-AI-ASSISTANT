@@ -18,6 +18,7 @@ model User {
   googleId      String?  @unique
   role          Role     @default(USER)
   isActive      Boolean  @default(true)
+  settings      Json?    @default("{}")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -237,12 +238,17 @@ model Notification {
   userId    String
   title     String
   body      String?
+  kind      String?
+  priority  String   @default("medium")
+  metadata  Json?
   readAt    DateTime?
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, priority])
+  @@index([kind])
   @@map("notifications")
 }
 

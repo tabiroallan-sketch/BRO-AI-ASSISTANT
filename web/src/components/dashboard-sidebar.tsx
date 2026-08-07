@@ -7,6 +7,8 @@ import { motion } from 'framer-motion';
 import {
   Activity,
   BarChart3,
+  Bell,
+  BellRing,
   Box,
   Brain,
   KeyRound,
@@ -26,6 +28,8 @@ import { cn } from '@/lib/utils';
 
 const items: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/dashboard/notifications', label: 'Notifications', icon: Bell },
+  { href: '/dashboard/proactive', label: 'Proactive', icon: BellRing },
   { href: '/dashboard/conversations', label: 'Conversations', icon: MessageSquare },
   { href: '/dashboard/memories', label: 'Memories', icon: Brain },
   { href: '/dashboard/system', label: 'Computer', icon: Monitor },

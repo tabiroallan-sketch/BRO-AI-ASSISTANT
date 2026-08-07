@@ -15,6 +15,7 @@ import { loadPluginsFromDisk } from './plugins/index.js';
 import { loadProvidersFromDisk } from './integrations/providers/loader.js';
 import { applyMarketplaceState } from './integrations/marketplace.js';
 import { startHealthMonitor, stopHealthMonitor } from './integrations/monitor.js';
+import { startProactiveMonitor, stopProactiveMonitor } from './proactive/index.js';
 import { appRoutes } from './routes/index.js';
 import './tools/index.js';
 
@@ -140,6 +141,15 @@ export function buildApp(): FastifyInstance {
         'Integration health monitor started',
       );
     }
+    if (
+      process.env.VITEST !== 'true' &&
+      config.proactiveMonitorEnabled &&
+      config.databaseUrl &&
+      config.proactiveMonitorIntervalMs > 0
+    ) {
+      startProactiveMonitor(config.proactiveMonitorIntervalMs);
+      app.log.info({ intervalMs: config.proactiveMonitorIntervalMs }, 'Proactive monitor started');
+    }
     try {
       await aiConfigStore.loadIntoRuntime();
       app.log.info('AI config loaded into runtime');
@@ -150,6 +160,7 @@ export function buildApp(): FastifyInstance {
 
   app.addHook('onClose', async () => {
     stopHealthMonitor();
+    stopProactiveMonitor();
     try {
       await prisma?.$disconnect();
     } catch (error) {

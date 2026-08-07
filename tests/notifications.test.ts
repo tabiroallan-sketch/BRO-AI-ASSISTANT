@@ -35,6 +35,9 @@ type MockNotification = {
   userId: string;
   title: string;
   body: string | null;
+  kind: string | null;
+  priority: string;
+  metadata: unknown;
   readAt: Date | null;
   createdAt: Date;
 };
@@ -72,13 +75,22 @@ const { mockPrisma, resetDb, registerAndLogin, seedNotification } = vi.hoisted((
 
   const notificationModel = {
     async findMany(args: {
-      where?: { userId?: string };
+      where?: { userId?: string; kind?: string; priority?: string; readAt?: Date | null };
       orderBy?: { createdAt?: 'asc' | 'desc' };
       take?: number;
     }): Promise<MockNotification[]> {
       let list = [...notifications.values()];
       if (args.where?.userId) {
         list = list.filter((n) => n.userId === args.where?.userId);
+      }
+      if (args.where?.kind) {
+        list = list.filter((n) => n.kind === args.where?.kind);
+      }
+      if (args.where?.priority) {
+        list = list.filter((n) => n.priority === args.where?.priority);
+      }
+      if (args.where?.readAt === null) {
+        list = list.filter((n) => n.readAt === null);
       }
       if (args.orderBy?.createdAt === 'desc') {
         list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -127,6 +139,14 @@ const { mockPrisma, resetDb, registerAndLogin, seedNotification } = vi.hoisted((
       notifications.set(updated.id, updated);
       return updated;
     },
+    async delete(args: { where: { id: string } }): Promise<MockNotification> {
+      const n = notifications.get(args.where.id);
+      if (!n) {
+        throw new Error('Notification not found');
+      }
+      notifications.delete(n.id);
+      return n;
+    },
     async updateMany(args: {
       where: { userId?: string; readAt?: Date | null };
       data: { readAt: Date };
@@ -152,12 +172,18 @@ const { mockPrisma, resetDb, registerAndLogin, seedNotification } = vi.hoisted((
     body: string | null,
     readAt: Date | null = null,
     createdAt: Date = new Date(),
+    kind: string | null = null,
+    priority = 'medium',
+    metadata: unknown = null,
   ): MockNotification {
     const n: MockNotification = {
       id: randomUUID(),
       userId,
       title,
       body,
+      kind,
+      priority,
+      metadata,
       readAt,
       createdAt,
     };
@@ -324,5 +350,99 @@ describe('notifications', () => {
   it('requires authentication', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/v1/notifications' });
     expect(response.statusCode).toBe(401);
+  });
+
+  it('returns priority, kind, and metadata on each notification', async () => {
+    const { authorization, userId } = await authSession('owner@example.com');
+    seedNotification(userId, 'Build failed', 'tsc error', null, new Date(), 'build', 'high', {
+      monitorId: 'm1',
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications',
+      headers: { authorization },
+    });
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.notifications).toHaveLength(1);
+    expect(body.notifications[0].kind).toBe('build');
+    expect(body.notifications[0].priority).toBe('high');
+    expect(body.notifications[0].metadata).toEqual({ monitorId: 'm1' });
+  });
+
+  it('filters notifications by kind, priority, and unread state', async () => {
+    const { authorization, userId } = await authSession('owner@example.com');
+    seedNotification(userId, 'Email', null, null, new Date(), 'email', 'medium');
+    seedNotification(userId, 'Build', null, null, new Date(), 'build', 'high');
+    seedNotification(userId, 'Old', null, new Date(), new Date(), 'email', 'medium');
+
+    const kindOnly = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?kind=build',
+      headers: { authorization },
+    });
+    expect(JSON.parse(kindOnly.body).notifications).toHaveLength(1);
+
+    const priorityOnly = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?priority=medium',
+      headers: { authorization },
+    });
+    expect(JSON.parse(priorityOnly.body).notifications).toHaveLength(2);
+
+    const unreadOnly = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?unread=true',
+      headers: { authorization },
+    });
+    expect(JSON.parse(unreadOnly.body).notifications).toHaveLength(2);
+  });
+
+  it('respects a limit query parameter', async () => {
+    const { authorization, userId } = await authSession('owner@example.com');
+    for (let index = 0; index < 5; index += 1) {
+      seedNotification(userId, `N${index}`, null, null, new Date());
+    }
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?limit=2',
+      headers: { authorization },
+    });
+    expect(JSON.parse(response.body).notifications).toHaveLength(2);
+  });
+
+  it('deletes a notification', async () => {
+    const { authorization, userId } = await authSession('owner@example.com');
+    const n = seedNotification(userId, 'To delete', null, null);
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/notifications/${n.id}`,
+      headers: { authorization },
+    });
+    expect(deleted.statusCode).toBe(204);
+
+    const after = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications',
+      headers: { authorization },
+    });
+    expect(JSON.parse(after.body).notifications).toHaveLength(0);
+  });
+
+  it("cannot delete another user's notification", async () => {
+    const { authorization: ownerAuth, userId } = await authSession('owner@example.com');
+    const { authorization: intruderAuth } = await authSession('intruder@example.com');
+    const n = seedNotification(userId, 'Private', null, null);
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/notifications/${n.id}`,
+      headers: { authorization: intruderAuth },
+    });
+    expect(response.statusCode).toBe(404);
+    void ownerAuth;
   });
 });

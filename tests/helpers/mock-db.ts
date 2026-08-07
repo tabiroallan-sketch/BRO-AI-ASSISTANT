@@ -11,6 +11,7 @@ export type MockUser = {
   avatarUrl: string | null;
   role: MockRole;
   isActive: boolean;
+  settings: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -55,6 +56,9 @@ export type MockNotification = {
   userId: string;
   title: string;
   body: string | null;
+  kind: string | null;
+  priority: string;
+  metadata: unknown;
   readAt: Date | null;
   createdAt: Date;
 };
@@ -122,6 +126,10 @@ export function createMockDb(): MockDb {
   }
 
   const userModel = {
+    async findMany(args: { select?: Record<string, unknown> }): Promise<MockUser[]> {
+      void args;
+      return [...users.values()];
+    },
     async findUnique(args: {
       where: { id?: string; email?: string };
       select?: Record<string, unknown>;
@@ -158,6 +166,7 @@ export function createMockDb(): MockDb {
         avatarUrl: args.data.avatarUrl ?? null,
         role: args.data.role ?? 'USER',
         isActive: true,
+        settings: {},
         createdAt: now,
         updatedAt: now,
       };
@@ -166,7 +175,7 @@ export function createMockDb(): MockDb {
     },
     async update(args: {
       where: { id: string };
-      data: { role?: MockRole; isActive?: boolean };
+      data: { role?: MockRole; isActive?: boolean; settings?: unknown };
       select?: Record<string, unknown>;
     }): Promise<MockUser> {
       const user = getById(users, args.where.id);
@@ -177,6 +186,7 @@ export function createMockDb(): MockDb {
         ...user,
         ...(args.data.role !== undefined ? { role: args.data.role } : {}),
         ...(args.data.isActive !== undefined ? { isActive: args.data.isActive } : {}),
+        ...(args.data.settings !== undefined ? { settings: args.data.settings } : {}),
         updatedAt: new Date(),
       };
       users.set(updated.id, updated);
@@ -295,6 +305,12 @@ export function createMockDb(): MockDb {
       return false;
     }
     if (where.userId !== undefined && notification.userId !== where.userId) {
+      return false;
+    }
+    if (where.kind !== undefined && notification.kind !== where.kind) {
+      return false;
+    }
+    if (where.priority !== undefined && notification.priority !== where.priority) {
       return false;
     }
     if (where.readAt !== undefined && where.readAt !== null) {
@@ -566,7 +582,7 @@ export function createMockDb(): MockDb {
 
   const notificationModel = {
     async findMany(args: {
-      where: { userId: string };
+      where: { userId: string; kind?: string; priority?: string; readAt?: Date | null };
       orderBy?: { createdAt?: 'asc' | 'desc' };
       take?: number;
       select?: Record<string, unknown>;
@@ -585,7 +601,9 @@ export function createMockDb(): MockDb {
       }
       return list;
     },
-    async count(args: { where: { userId: string; readAt?: Date | null } }): Promise<number> {
+    async count(args: {
+      where: { userId: string; kind?: string; priority?: string; readAt?: Date | null };
+    }): Promise<number> {
       let count = 0;
       for (const notification of notifications.values()) {
         if (notificationMatches(notification, args.where ?? {})) {
@@ -604,6 +622,31 @@ export function createMockDb(): MockDb {
       }
       return null;
     },
+    async create(args: {
+      data: {
+        userId: string;
+        title: string;
+        body?: string | null;
+        kind?: string | null;
+        priority?: string;
+        metadata?: unknown;
+      };
+    }): Promise<MockNotification> {
+      const now = new Date();
+      const notification: MockNotification = {
+        id: randomUUID(),
+        userId: args.data.userId,
+        title: args.data.title,
+        body: args.data.body ?? null,
+        kind: args.data.kind ?? null,
+        priority: args.data.priority ?? 'medium',
+        metadata: args.data.metadata ?? null,
+        readAt: null,
+        createdAt: now,
+      };
+      notifications.set(notification.id, notification);
+      return notification;
+    },
     async update(args: {
       where: { id: string };
       data: { readAt: Date };
@@ -615,6 +658,14 @@ export function createMockDb(): MockDb {
       const updated: MockNotification = { ...notification, readAt: args.data.readAt };
       notifications.set(updated.id, updated);
       return updated;
+    },
+    async delete(args: { where: { id: string } }): Promise<MockNotification> {
+      const notification = getById(notifications, args.where.id);
+      if (!notification) {
+        throw new Error('Notification not found');
+      }
+      notifications.delete(notification.id);
+      return notification;
     },
     async updateMany(args: {
       where: { userId: string; readAt: Date | null };
@@ -648,6 +699,7 @@ export function createMockDb(): MockDb {
       avatarUrl: null,
       role,
       isActive: true,
+      settings: {},
       createdAt: now,
       updatedAt: now,
     };
@@ -691,13 +743,23 @@ export function createMockDb(): MockDb {
     return memory;
   }
 
-  function seedNotification(userId: string, title: string, body = ''): MockNotification {
+  function seedNotification(
+    userId: string,
+    title: string,
+    body = '',
+    kind: string | null = null,
+    priority = 'medium',
+    metadata: unknown = null,
+  ): MockNotification {
     const now = new Date();
     const notification: MockNotification = {
       id: randomUUID(),
       userId,
       title,
       body,
+      kind,
+      priority,
+      metadata,
       readAt: null,
       createdAt: now,
     };

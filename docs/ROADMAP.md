@@ -53,6 +53,20 @@ Planned and aspirational work for BRO, roughly in order. Status key:
   notifications reusing the existing notification store. Web: dashboard
   Automations page (create form, live task list, step/log detail, cancel/retry)
   while the admin-only n8n overview is preserved.
+- ✅ **Proactive mode (Stage 11)** — per-user opt-in monitoring that turns
+  signals into prioritized notifications: build command failures, dev server
+  ports down, HTTP endpoint checks, low disk / high CPU, unread Gmail
+  (high-priority for important senders), upcoming Calendar events, and GitHub
+  issues assigned to you. Notifications carry `kind` + `priority`
+  (low/medium/high/critical); quiet hours suppress low/medium and dedupe
+  prevents repeats (one-shot for email/calendar/github, cooldown for stateful
+  conditions). New `GET/PUT /proactive/settings`, `POST /proactive/run`,
+  `GET /proactive/status` routes; notifications gained kind/priority/metadata
+  + filters (`kind`/`priority`/`unread`/`limit`) + `DELETE`. Runs every 5 min
+  via a configurable scheduler (`PROACTIVE_MONITOR_ENABLED` /
+  `PROACTIVE_MONITOR_INTERVAL_MS`). Web: dashboard Notifications center and a
+  Proactive settings page (sources, thresholds, quiet hours, important
+  senders, custom monitors, run-now + status).
 - 🎯 More providers: Microsoft 365, Telegram, Linear, Jira, Todoist, Teams.
 - 🎯 Scheduled/triggered automations driven by n8n webhooks into BRO.
 - 🎯 Upload attachments into the sandbox from the web UI.
@@ -115,13 +129,14 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 
 ## Testing & Quality
 
-- ✅ Backend test suite — 763 tests across unit, integration, performance,
+- ✅ Backend test suite — 837 tests across unit, integration, performance,
   stress, and API suites (vitest + mocked Prisma/fetch), including the
-  `src/system/` computer-control layer (43 unit + 12 route tests) and the
-  `src/automation/` engine (42 unit + 9 route tests).
-- ✅ Web unit tests — 214 tests for the Next.js app (libs, API client, stores,
-  UI logic, voice VAD/mic/engine/settings/wake-word, computer + automation
-  clients) via vitest.
+  `src/system/` computer-control layer (43 unit + 12 route tests), the
+  `src/automation/` engine (42 unit + 9 route tests), and the `src/proactive/`
+  monitor layer (62 unit + 7 proactive-route + 11 notification-route tests).
+- ✅ Web unit tests — 230 tests for the Next.js app (libs, API client, stores,
+  UI logic, voice VAD/mic/engine/settings/wake-word, computer, automation,
+  notifications + proactive clients) via vitest.
 - ✅ Web UI tests — 15 Playwright specs against the running stack (auth,
   chat, dashboard, integrations, admin-gating regression).
 - ✅ OAuth tests — Google flow (PKCE + signed state, callback handling, account

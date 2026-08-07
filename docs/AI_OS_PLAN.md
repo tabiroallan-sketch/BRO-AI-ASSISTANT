@@ -116,10 +116,26 @@ via the existing `POST /system/actions/:id/decision` flow. Exposed through
 task list, step/log detail panel, cancel/retry) while the admin-only n8n
 workflow overview is preserved. 51 new backend tests + 11 new web tests.
 
-## Stage 11 — Proactive Mode
-Notifications for build failures, email, calendar, client replies, GitHub
-issues, low disk, high CPU, dev server stopped. Notification center, history,
-priority system, quiet hours.
+## Stage 11 — Proactive Mode ✅
+Per-user opt-in monitoring that turns external and system signals into
+prioritized notifications. Sources: build commands (non-zero exit), dev server
+ports (unresponsive), HTTP endpoints (non-2xx), low disk / high CPU thresholds,
+Gmail (unread mail, high-priority for important senders), Calendar (upcoming
+events), and GitHub (open issues assigned to you). Notifications carry `kind`
+(build/dev_server/http/low_disk/high_cpu/email/calendar/github/automation/
+system/general) and `priority` (low/medium/high/critical); quiet hours suppress
+low/medium alerts and dedupe prevents repeats (one-shot for email/calendar/
+github, cooldown for stateful conditions). Per-user `settings` (JSONB) control
+enabled/sources/monitors/thresholds/quiet hours/cooldown/important senders.
+New routes: `GET/PUT /proactive/settings`, `POST /proactive/run`,
+`GET /proactive/status`; notifications gained `kind`/`priority`/`metadata`,
+filter query params (`kind`/`priority`/`unread`/`limit`), and `DELETE /:id`.
+A scheduler sweeps every `PROACTIVE_MONITOR_INTERVAL_MS` (default 5 min) when
+`PROACTIVE_MONITOR_ENABLED`. Web: dashboard Notifications center (filters, mark
+read/all, delete) and Proactive settings page (sources, thresholds, quiet
+hours, important senders, custom endpoint monitors, run-now + status). 80 new
+backend tests + 16 new web tests. Migration:
+`20260807120000_add_proactive_notifications`.
 
 ## Stage 12 — Desktop Dashboard
 Three operating modes (Desktop / Overlay / Voice) with instant switching,

@@ -103,4 +103,6 @@ export const config = {
   autoReconnectEnabled: process.env.INTEGRATIONS_AUTO_RECONNECT_ENABLED !== 'false',
   automationMaxTasksPerUser: parseInt(process.env.AUTOMATION_MAX_TASKS_PER_USER ?? '100', 10),
   automationQueueConcurrency: parseInt(process.env.AUTOMATION_QUEUE_CONCURRENCY ?? '1', 10),
+  proactiveMonitorEnabled: process.env.PROACTIVE_MONITOR_ENABLED !== 'false',
+  proactiveMonitorIntervalMs: parseInt(process.env.PROACTIVE_MONITOR_INTERVAL_MS ?? '300000', 10),
 } as const;

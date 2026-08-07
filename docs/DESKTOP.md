@@ -1,4 +1,4 @@
-# Desktop Shell (Stage 1–3)
+# Desktop Shell (Stage 1–4)
 
 BRO ships as a cross-platform desktop app: an Electron shell that bundles
 PostgreSQL, the Fastify API, and the Next.js web app into a single installable
@@ -28,6 +28,8 @@ desktop/
       tray.ts / menus.ts         # tray icon + application menu
       shortcuts.ts               # global hotkey registry (configurable, Stage 3)
       shortcut-utils.ts          # accelerator normalize/validate/conflict checks
+      overlay.ts                 # floating overlay window (transparent, Stage 4)
+      overlay-bounds.ts          # overlay bounds normalize/clamp helpers
       notifications.ts           # OS notifications
       updater.ts                 # GitHub Releases auto-update
       crash.ts / native.ts       # crash handling, native theme watch
@@ -65,10 +67,10 @@ Run from `desktop/`:
 | `npm run dev` | Dev mode: builds/runs root API (`:3000`) + web (`:3001`), launches Electron pointing at them. No embedded Postgres. |
 | `npm run build` | Type-check + compile main/preload to `dist/` (preload is bundled via esbuild). |
 | `npm run typecheck` | `tsc --noEmit` over `src` + `tests`. |
-| `npm test` | Vitest unit suite (91 tests, no external services). |
+| `npm test` | Vitest unit suite (101 tests, no external services). |
 | `npm run build:api` | Stage the API bundle into `resources/runtime/api` (compiles root, `npm ci --omit=dev`, Prisma generate). |
 | `npm run build:web` | Stage the Next.js standalone bundle into `resources/runtime/web` (`BRO_DESKTOP_BUILD=1`). |
-| `npm run test:e2e` | `scripts/run-e2e.mjs`: builds missing bundles, launches Electron in embedded mode, asserts bridge/config/IPC/services/health. |
+| `npm run test:e2e` | `scripts/run-e2e.mjs`: builds missing bundles, launches Electron in embedded mode, asserts bridge/config/IPC/services/health/overlay. |
 | `npm run package` | Build runtime + desktop, then `electron-builder` (NSIS installer). Publish only when `BRO_GH_OWNER`/`BRO_GH_REPO` are set. |
 
 ## Runtime bundles
@@ -156,6 +158,32 @@ even while the window is hidden:
   modifier (`Alt`/`Ctrl` alone), so push-to-talk defaults to `Alt+P` instead of
   the originally-planned bare `Alt`.
 
+### Floating overlay (Stage 4)
+
+A second, transparent BrowserWindow over `/overlay` gives instant access to the
+assistant without leaving the current app:
+
+- **Window** (`main/overlay.ts`): lazy-created on first summon, transparent and
+  frameless, always on top, `skipTaskbar`, `movable` but **not user-resizable**
+  (resizing happens from the web UI via `overlay.resize`, so the drag handle can
+  report pixel-accurate sizes). Position/size persist to `config.overlayBounds`
+  (300ms debounce after move/resize); on a display change, bounds are re-clamped
+  onto the cursor display's work area (`main/overlay-bounds.ts`, pure + unit
+  tested). Hiding keeps the window alive for a snappier next summon; quitting
+  destroys it.
+- **Bridge**: the preload exposes `overlay.toggle/show/hide/resize/onVisibility`
+  and `window.show()` (used by the overlay's "Open BRO" action to focus the main
+  window on `/chat`). Listening and push-to-talk events are broadcast to both
+  windows so the overlay's orb reacts to the same commands as the dashboard.
+- **Web page** (`web/src/app/overlay/page.tsx`): a glass card with quick prompt,
+  streaming responses (SSE), conversation history, and a voice-orb visualization
+  driven by the AI state / listening events. `Esc` hides the overlay (a second
+  `Esc` first closes the history panel). The header is a `-webkit-app-region:
+  drag` region; interactive controls are `no-drag`. In a plain browser the page
+  degrades to a centered demo (no resize handle, no bridge).
+- **Shortcuts**: `Ctrl+Space` toggles the overlay, `Esc` hides it (configurable,
+  Stage 3).
+
 ### Dev mode
 
 `npm run dev` runs the root API and web app with tsx/Next watch, then launches
@@ -163,7 +191,7 @@ Electron with `BRO_DESKTOP_DEV=1`. The shell then uses `DEV_API_URL`/`DEV_WEB_UR
 instead of embedded services and the embedded Postgres, giving fast iteration
 with the real IPC surface.
 
-## Known limitations (Stage 1–3)
+## Known limitations (Stage 1–4)
 
 - Windows is the verified target; mac/Linux need the matching
   `@embedded-postgres/<platform>` package and NSIS is Windows-only (mac uses

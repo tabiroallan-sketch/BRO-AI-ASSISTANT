@@ -153,6 +153,17 @@ body {
     0 20px 60px rgb(0 0 0 / 0.45);
 }
 
+/* Floating overlay card (Stage 4): heavier blur so the desktop behind the
+   transparent window reads as glass. */
+.glass-overlay {
+  background: color-mix(in oklab, var(--background) 82%, transparent);
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
+  backdrop-filter: blur(26px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.06),
+    0 24px 64px rgb(0 0 0 / 0.5);
+}
+
 .glass-hover {
   transition:
     border-color 0.3s ease,

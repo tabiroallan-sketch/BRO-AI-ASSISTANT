@@ -15,9 +15,11 @@ import { cn } from '@/lib/utils';
 export function ChatInput({
   disabled,
   onSend,
+  autoFocus,
 }: {
   disabled: boolean;
   onSend: (message: string) => void;
+  autoFocus?: boolean;
 }): React.JSX.Element {
   const [value, setValue] = React.useState('');
   const [listening, setListening] = React.useState(false);
@@ -108,6 +110,7 @@ export function ChatInput({
         rows={1}
         className="max-h-40 min-h-[44px] resize-none"
         aria-label="Message BRO"
+        autoFocus={autoFocus}
       />
       {speechSupported && (
         <Button

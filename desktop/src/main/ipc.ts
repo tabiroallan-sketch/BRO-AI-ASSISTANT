@@ -12,16 +12,19 @@ import {
   type ThemeSource,
 } from '../shared/desktop-api.js';
 import { ConfigStore } from './config.js';
+import { normalizeOverlayBounds } from './overlay-bounds.js';
 import { findConflicts, validateAccelerator } from './shortcut-utils.js';
 import { ShortcutRegistry } from './shortcuts.js';
 import { UpdateManager } from './updater.js';
 import type { NativeBridge } from './native.js';
 import type { Notifier } from './notifications.js';
+import type { OverlayWindow } from './overlay.js';
 import type { MainWindow } from './windows.js';
 
 export type IpcDependencies = {
   config: ConfigStore;
   mainWindow: MainWindow;
+  overlay: OverlayWindow;
   native: NativeBridge;
   shortcuts: ShortcutRegistry;
   updates: UpdateManager;
@@ -54,6 +57,7 @@ const CONFIG_KEYS: ReadonlyArray<keyof DesktopConfig> = [
   'autoCheckUpdates',
   'browserEnabled',
   'shortcuts',
+  'overlayBounds',
 ];
 
 function sanitizeShortcuts(value: unknown): ShortcutBindings | undefined {
@@ -92,6 +96,13 @@ function sanitizeConfigPatch(raw: unknown): Partial<DesktopConfig> {
       const shortcuts = sanitizeShortcuts(value);
       if (shortcuts) {
         patch.shortcuts = shortcuts;
+      }
+    } else if (key === 'overlayBounds') {
+      const bounds = normalizeOverlayBounds(value);
+      if (bounds) {
+        patch.overlayBounds = bounds;
+      } else if (value === null) {
+        patch.overlayBounds = null;
       }
     } else if (typeof value === 'boolean') {
       (patch as Record<string, unknown>)[key] = value;
@@ -183,12 +194,19 @@ export function registerIpc(deps: IpcDependencies): void {
   ipcMain.handle(IPC.windowMinimize, () => deps.mainWindow.minimize());
   ipcMain.handle(IPC.windowToggleMaximize, () => deps.mainWindow.toggleMaximize());
   ipcMain.handle(IPC.windowClose, () => deps.mainWindow.close());
+  ipcMain.handle(IPC.windowShow, () => deps.mainWindow.focus());
   ipcMain.handle(IPC.windowIsMaximized, () => deps.mainWindow.instance?.isMaximized() ?? false);
   ipcMain.handle(IPC.windowNavigate, (_event, path: string) =>
     deps.mainWindow.send(IPC.windowNavigate, path),
   );
-  ipcMain.handle(IPC.overlayToggle, () => deps.mainWindow.send(IPC.overlayToggle));
-  ipcMain.handle(IPC.overlayHide, () => deps.mainWindow.send(IPC.overlayHide));
+  ipcMain.handle(IPC.overlayToggle, () => deps.overlay.toggle());
+  ipcMain.handle(IPC.overlayShow, () => deps.overlay.show());
+  ipcMain.handle(IPC.overlayHide, () => deps.overlay.hide());
+  ipcMain.handle(IPC.overlayResize, (_event, width: unknown, height: unknown) => {
+    if (typeof width === 'number' && typeof height === 'number') {
+      deps.overlay.resize(width, height);
+    }
+  });
 
   ipcMain.handle(IPC.shellOpenExternal, (_event, url: string) => deps.native.openExternal(url));
   ipcMain.handle(IPC.shellOpenPath, (_event, target: string) => deps.native.openPath(target));

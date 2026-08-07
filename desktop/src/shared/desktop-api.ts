@@ -10,6 +10,14 @@
 
 export type ThemeSource = 'system' | 'light' | 'dark';
 
+/** Rectangle describing the overlay window's position and size. */
+export type OverlayBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type DesktopConfig = {
   /** Theme source applied to nativeTheme and synced to the web app. */
   theme: ThemeSource;
@@ -25,6 +33,8 @@ export type DesktopConfig = {
   browserEnabled: boolean;
   /** Global shortcut bindings, per action. */
   shortcuts: ShortcutBindings;
+  /** Last position/size of the floating overlay window, or null to auto-place. */
+  overlayBounds: OverlayBounds | null;
 };
 
 export type UpdateState =
@@ -113,10 +123,14 @@ export const IPC = {
   windowClose: 'bro:window:close',
   windowIsMaximized: 'bro:window:is-maximized',
   windowMaximized: 'bro:window:maximized',
+  windowShow: 'bro:window:show',
   windowNavigate: 'bro:window:navigate',
   micToggle: 'bro:mic:toggle',
   overlayToggle: 'bro:overlay:toggle',
+  overlayShow: 'bro:overlay:show',
   overlayHide: 'bro:overlay:hide',
+  overlayResize: 'bro:overlay:resize',
+  overlayVisibility: 'bro:overlay:visibility',
   listeningStart: 'bro:listening:start',
   listeningStop: 'bro:listening:stop',
   pushToTalkStart: 'bro:push-to-talk:start',
@@ -165,6 +179,8 @@ export type DesktopApi = {
     close(): void;
     isMaximized(): Promise<boolean>;
     onMaximized(callback: (maximized: boolean) => void): () => void;
+    /** Bring the main window to the front (from the overlay, etc.). */
+    show(): void;
     /** Ask the renderer to navigate (tray/hotkey shortcuts). */
     navigate(path: string): void;
   };
@@ -181,14 +197,16 @@ export type DesktopApi = {
     onPushToTalkStop(callback: () => void): () => void;
   };
   overlay: {
-    /** Ask the shell to toggle the overlay (Stage 4 implements the window). */
+    /** Ask the shell to toggle the floating overlay window. */
     toggle(): void;
-    /** Ask the shell to hide the overlay (Esc hotkey, Stage 4 implements it). */
+    /** Ask the shell to show the floating overlay window (instant summon). */
+    show(): void;
+    /** Ask the shell to hide the floating overlay window (Esc / hotkey). */
     hide(): void;
-    /** Fired when the shell wants the overlay shown/hidden. */
-    onToggle(callback: () => void): () => void;
-    /** Fired when the shell wants the overlay hidden. */
-    onHide(callback: () => void): () => void;
+    /** Resize the overlay window, keeping its top-left corner fixed. */
+    resize(width: number, height: number): void;
+    /** Fired when the shell shows/hides the overlay window. */
+    onVisibility(callback: (visible: boolean) => void): () => void;
   };
   shell: {
     openExternal(url: string): Promise<void>;
@@ -251,4 +269,5 @@ export const DEFAULT_DESKTOP_CONFIG: DesktopConfig = {
   autoCheckUpdates: true,
   browserEnabled: false,
   shortcuts: { ...DEFAULT_SHORTCUTS },
+  overlayBounds: null,
 };

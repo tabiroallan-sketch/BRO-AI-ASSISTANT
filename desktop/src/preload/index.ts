@@ -42,6 +42,7 @@ const api: DesktopApi = {
     close: () => void ipcRenderer.invoke(IPC.windowClose),
     isMaximized: () => ipcRenderer.invoke(IPC.windowIsMaximized),
     onMaximized: (callback) => subscribe<boolean>(IPC.windowMaximized, callback),
+    show: () => void ipcRenderer.invoke(IPC.windowShow),
     navigate: (path) => void ipcRenderer.invoke(IPC.windowNavigate, path),
   },
   commands: {
@@ -53,9 +54,10 @@ const api: DesktopApi = {
   },
   overlay: {
     toggle: () => void ipcRenderer.invoke(IPC.overlayToggle),
+    show: () => void ipcRenderer.invoke(IPC.overlayShow),
     hide: () => void ipcRenderer.invoke(IPC.overlayHide),
-    onToggle: (callback) => subscribe(IPC.overlayToggle, callback),
-    onHide: (callback) => subscribe(IPC.overlayHide, callback),
+    resize: (width, height) => void ipcRenderer.invoke(IPC.overlayResize, width, height),
+    onVisibility: (callback) => subscribe<boolean>(IPC.overlayVisibility, callback),
   },
   shell: {
     openExternal: (url) => ipcRenderer.invoke(IPC.shellOpenExternal, url),

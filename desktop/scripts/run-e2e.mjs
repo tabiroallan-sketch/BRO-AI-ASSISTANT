@@ -21,7 +21,10 @@ function ensureRuntime() {
   if (!existsSync(api) || !existsSync(web)) {
     console.log('[e2e] runtime bundles missing - building (this can take a while)...');
     for (const script of ['build-api.mjs', 'build-web.mjs']) {
-      const result = spawnSync(process.execPath, [`scripts/${script}`], { cwd: desktopDir, stdio: 'inherit' });
+      const result = spawnSync(process.execPath, [`scripts/${script}`], {
+        cwd: desktopDir,
+        stdio: 'inherit',
+      });
       if (result.status !== 0) {
         console.error(`[e2e] ${script} failed`);
         process.exit(result.status ?? 1);
@@ -50,14 +53,22 @@ async function waitFor(predicate, timeoutMs = 90_000, label = 'condition') {
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new Error(`Timed out waiting for ${label} (last: ${last instanceof Error ? last.message : String(last)})`);
+  throw new Error(
+    `Timed out waiting for ${label} (last: ${last instanceof Error ? last.message : String(last)})`,
+  );
 }
 
 async function main() {
   ensureRuntime();
 
   const userData = mkdtempSync(join(tmpdir(), 'bro-e2e-'));
-  const electronBin = join(desktopDir, 'node_modules', 'electron', 'dist', isWindows ? 'electron.exe' : 'electron');
+  const electronBin = join(
+    desktopDir,
+    'node_modules',
+    'electron',
+    'dist',
+    isWindows ? 'electron.exe' : 'electron',
+  );
 
   console.log('[e2e] launching BRO (embedded mode)...');
   const app = await electron.launch({
@@ -100,7 +111,9 @@ async function main() {
     const reports = await waitFor(
       async () => {
         const current = await page.evaluate(() => window.broDesktop.servers.status());
-        return current.length === 3 && current.every((report) => report.state === 'running') ? current : null;
+        return current.length === 3 && current.every((report) => report.state === 'running')
+          ? current
+          : null;
       },
       120_000,
       'all services running',
@@ -125,7 +138,72 @@ async function main() {
 
     console.log('[e2e] checking update status (expected disabled in dev)');
     const updateStatus = await page.evaluate(() => window.broDesktop.updates.status());
-    assert(updateStatus.state === 'disabled', `expected disabled update state, got ${updateStatus.state}`);
+    assert(
+      updateStatus.state === 'disabled',
+      `expected disabled update state, got ${updateStatus.state}`,
+    );
+
+    console.log('[e2e] checking overlay window (show/resize/hide)...');
+    await page.evaluate(() => window.broDesktop.overlay.show());
+    const overlayWindow = await waitFor(
+      async () => {
+        const windows = await app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().map((w) => ({
+            url: w.webContents.getURL(),
+            visible: w.isVisible(),
+          })),
+        );
+        const overlay = windows.find((w) => w.url.endsWith('/overlay'));
+        return overlay && overlay.visible ? overlay : null;
+      },
+      30_000,
+      'overlay visible',
+    );
+    assert(overlayWindow, 'overlay.show() did not produce a visible /overlay window');
+    assert(
+      overlayWindow.url.endsWith('/overlay'),
+      `overlay loaded unexpected URL: ${overlayWindow.url}`,
+    );
+
+    const overlayPage = app.windows().find((w) => w.url().endsWith('/overlay'));
+    assert(overlayPage, 'overlay page not available to playwright');
+    const overlayBridge = await overlayPage.evaluate(() => ({
+      hasOverlay:
+        typeof window.broDesktop?.overlay?.hide === 'function' &&
+        typeof window.broDesktop?.overlay?.resize === 'function',
+      hasCommands: typeof window.broDesktop?.commands?.onListeningStart === 'function',
+      hasWindowShow: typeof window.broDesktop?.window?.show === 'function',
+    }));
+    assert(overlayBridge.hasOverlay, 'overlay preload bridge missing overlay API');
+    assert(overlayBridge.hasCommands, 'overlay preload bridge missing commands API');
+    assert(overlayBridge.hasWindowShow, 'overlay preload bridge missing window.show()');
+
+    await page.evaluate(() => window.broDesktop.overlay.resize(400, 500));
+    const overlayBounds = await app.evaluate(({ BrowserWindow }) => {
+      const overlay = BrowserWindow.getAllWindows().find((w) =>
+        w.webContents.getURL().endsWith('/overlay'),
+      );
+      return overlay ? overlay.getBounds() : null;
+    });
+    assert(
+      overlayBounds && overlayBounds.width === 400 && overlayBounds.height === 500,
+      `overlay.resize() left unexpected bounds: ${JSON.stringify(overlayBounds)}`,
+    );
+
+    await page.evaluate(() => window.broDesktop.overlay.hide());
+    await waitFor(
+      async () => {
+        const hidden = await app.evaluate(({ BrowserWindow }) => {
+          const overlay = BrowserWindow.getAllWindows().find((w) =>
+            w.webContents.getURL().endsWith('/overlay'),
+          );
+          return overlay ? !overlay.isVisible() : true;
+        });
+        return hidden ? true : null;
+      },
+      30_000,
+      'overlay hidden',
+    );
 
     console.log('[e2e] ALL CHECKS PASSED');
   } finally {

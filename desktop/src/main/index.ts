@@ -10,6 +10,7 @@ import { registerIpc, watchNativeTheme } from './ipc.js';
 import { installApplicationMenu } from './menus.js';
 import { createNativeBridge } from './native.js';
 import { createNotifier } from './notifications.js';
+import { OverlayWindow } from './overlay.js';
 import { SecretStore } from './secret-store.js';
 import { ServerManager } from './servers/server-manager.js';
 import { Heartbeat } from './services/heartbeat.js';
@@ -24,6 +25,7 @@ const DEV_API_URL = process.env.BRO_DEV_API_URL ?? 'http://127.0.0.1:3000';
 const DEV_WEB_URL = process.env.BRO_DEV_WEB_URL ?? 'http://127.0.0.1:3001';
 
 let mainWindow: MainWindow | null = null;
+let overlay: OverlayWindow | null = null;
 let manager: ServerManager | null = null;
 let tray: AppTray | null = null;
 let shortcuts: ShortcutRegistry | null = null;
@@ -39,6 +41,12 @@ const setListening = (next: boolean): void => {
   if (mainWindow) {
     tray?.setListening(mainWindow, next);
   }
+};
+
+/** Sends a renderer event to every live window (main + overlay). */
+const broadcast = (channel: string, payload?: unknown): void => {
+  mainWindow?.send(channel, payload);
+  overlay?.send(channel, payload);
 };
 
 app.setName('BRO');
@@ -147,6 +155,21 @@ async function bootstrap(): Promise<void> {
   });
   mainWindow.create(webUrl);
 
+  // Floating overlay (Stage 4): lazily created on first summon, hidden to the
+  // tray when idle, bounds persisted to config on move/resize.
+  overlay = new OverlayWindow({
+    webUrl,
+    preloadPath: join(__dirname, '..', 'preload', 'index.js'),
+    apiBaseUrl,
+    getBounds: () => configState.overlayBounds,
+    saveBounds: (bounds) => {
+      void config.set({ overlayBounds: bounds });
+    },
+    onVisibility: (visible) => {
+      overlay?.send(IPC.overlayVisibility, visible);
+    },
+  });
+
   // Global hotkeys (Stage 3): user-configurable, applied from persisted config.
   let pttHoldTimer: ReturnType<typeof setTimeout> | null = null;
   let pttActive = false;
@@ -156,7 +179,7 @@ async function bootstrap(): Promise<void> {
     // replaces this with real key-release handling for the audio pipeline.
     if (!pttActive) {
       pttActive = true;
-      mainWindow?.send(IPC.pushToTalkStart);
+      broadcast(IPC.pushToTalkStart);
     }
     if (pttHoldTimer) {
       clearTimeout(pttHoldTimer);
@@ -164,7 +187,7 @@ async function bootstrap(): Promise<void> {
     pttHoldTimer = setTimeout(() => {
       pttActive = false;
       pttHoldTimer = null;
-      mainWindow?.send(IPC.pushToTalkStop);
+      broadcast(IPC.pushToTalkStop);
     }, 400);
   };
 
@@ -177,22 +200,22 @@ async function bootstrap(): Promise<void> {
       }
       if (id === 'toggle-mic') {
         setListening(!listening);
-        mainWindow?.send(IPC.micToggle);
+        broadcast(IPC.micToggle);
         return;
       }
       if (id === 'open-overlay') {
-        mainWindow?.send(IPC.overlayToggle);
+        overlay?.toggle();
         return;
       }
       if (id === 'hide-overlay') {
-        mainWindow?.send(IPC.overlayHide);
+        overlay?.hide();
         return;
       }
       if (id === 'push-to-talk') {
         pushToTalkHold();
         return;
       }
-      mainWindow?.send(IPC.shortcutsTriggered, id);
+      broadcast(IPC.shortcutsTriggered, id);
     },
   });
   const shortcutResults = shortcuts.configure(configState.shortcuts);
@@ -253,6 +276,7 @@ async function bootstrap(): Promise<void> {
   registerIpc({
     config,
     mainWindow,
+    overlay,
     native,
     shortcuts,
     updates,
@@ -301,16 +325,15 @@ async function bootstrap(): Promise<void> {
       mainWindow?.send(IPC.windowNavigate, '/dashboard');
     },
     onOpenOverlay: () => {
-      mainWindow?.focus();
-      mainWindow?.send(IPC.overlayToggle);
+      overlay?.show();
     },
     onStartListening: () => {
       setListening(true);
-      mainWindow?.send(IPC.listeningStart);
+      broadcast(IPC.listeningStart);
     },
     onStopListening: () => {
       setListening(false);
-      mainWindow?.send(IPC.listeningStop);
+      broadcast(IPC.listeningStop);
     },
     onQuit: requestQuit,
   });
@@ -342,6 +365,7 @@ async function bootstrap(): Promise<void> {
         connectivity?.stop();
         heartbeat?.stop();
         tray?.destroy();
+        overlay?.destroy();
         if (pttHoldTimer) {
           clearTimeout(pttHoldTimer);
         }

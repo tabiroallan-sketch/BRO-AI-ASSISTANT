@@ -23,7 +23,7 @@ push-to-talk, `Ctrl+Shift+B` dashboard, `Ctrl+Shift+M` toggle microphone. User
 customization, conflict detection, settings UI. (Note: Windows reserves bare
 modifier-only global shortcuts, so push-to-talk defaults to `Alt+P`.)
 
-## Stage 4 — Overlay Mode
+## Stage 4 — Overlay Mode ✅
 Floating always-on-top transparent glass assistant with blur, drag/resize,
 animations, keyboard access, voice visualization, quick prompt box,
 conversation history, streaming responses, Esc to hide, instant summon,

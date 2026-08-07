@@ -59,6 +59,13 @@ Planned and aspirational work for BRO, roughly in order. Status key:
   disable, and a settings card for capture + reset. Defaults follow
   `Ctrl+Space`/`Esc`/`Alt+P`/`Ctrl+Shift+B`/`Ctrl+Shift+M` (bare `Alt` is not a
   valid global shortcut on Windows, so push-to-talk uses `Alt+P`).
+- ✅ **Overlay mode (Stage 4)** — a transparent, frameless, always-on-top
+  `BrowserWindow` over `/overlay`: glass quick-chat with streaming responses,
+  conversation history, voice-orb visualization, drag header + programmatic
+  resize handle (persisted bounds, re-clamped on display change), `Esc` to hide,
+  instant summon via `Ctrl+Space`, and a plain-browser fallback. Includes
+  `overlay-bounds` unit tests and overlay show/resize/hide assertions in the
+  desktop e2e harness.
 - 🚧 Desktop hardening — Windows-only verified today (mac/Linux need their
   `@embedded-postgres` native package); auto-update needs a real GitHub
   repo/owner to publish to; per-platform crash reporting and code signing.
@@ -75,7 +82,7 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 
 - ✅ Backend test suite — 580 tests across unit, integration, performance,
   stress, and API suites (vitest + mocked Prisma/fetch).
-- ✅ Web unit tests — 96 tests for the Next.js app (libs, API client, stores,
+- ✅ Web unit tests — 100 tests for the Next.js app (libs, API client, stores,
   UI logic) via vitest.
 - ✅ Web UI tests — 15 Playwright specs against the running stack (auth,
   chat, dashboard, integrations, admin-gating regression).

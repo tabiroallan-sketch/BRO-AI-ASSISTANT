@@ -103,6 +103,7 @@ export function registerIpc(deps: IpcDependencies): void {
   ipcMain.handle(IPC.windowNavigate, (_event, path: string) =>
     deps.mainWindow.send(IPC.windowNavigate, path),
   );
+  ipcMain.handle(IPC.overlayToggle, () => deps.mainWindow.send(IPC.overlayToggle));
 
   ipcMain.handle(IPC.shellOpenExternal, (_event, url: string) => deps.native.openExternal(url));
   ipcMain.handle(IPC.shellOpenPath, (_event, target: string) => deps.native.openPath(target));

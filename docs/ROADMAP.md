@@ -48,6 +48,11 @@ Planned and aspirational work for BRO, roughly in order. Status key:
   embedded Postgres cluster, managed service processes, tray + menus, global
   shortcuts, window-state persistence, single-instance lock, sandbox-safe
   preload bridge, GitHub-Releases auto-update wiring, NSIS installer.
+- ✅ **Background service (Stage 2)** — BRO stays alive with the window hidden:
+  tray right-click quick actions (Open Dashboard, Open Overlay, Start/Stop
+  Listening, Quit), background task scheduler with adaptive intervals, heartbeat
+  monitoring with liveness probes, auto-restart on crash (per-service cooldown),
+  and low idle CPU/memory footprint.
 - 🚧 Desktop hardening — Windows-only verified today (mac/Linux need their
   `@embedded-postgres` native package); auto-update needs a real GitHub
   repo/owner to publish to; per-platform crash reporting and code signing.

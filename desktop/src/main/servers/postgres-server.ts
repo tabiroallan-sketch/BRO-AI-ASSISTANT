@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { connect } from 'node:net';
 import EmbeddedPostgres from 'embedded-postgres';
 import type { ServiceState } from '../../shared/desktop-api.js';
 
@@ -8,6 +9,8 @@ export type PostgresLike = {
   getState(): ServiceState;
   getPort(): number;
   connectionUri(database?: string): string;
+  /** True when the postmaster accepts connections on its port. */
+  isAlive(): Promise<boolean>;
   start(): Promise<void>;
   stop(): Promise<void>;
 };
@@ -64,6 +67,22 @@ export class PostgresServer implements PostgresLike {
   connectionUri(database: string = this.options.databaseName): string {
     const encodedPassword = encodeURIComponent(this.options.password);
     return `postgresql://${this.options.user}:${encodedPassword}@127.0.0.1:${this.options.port}/${database}`;
+  }
+
+  async isAlive(): Promise<boolean> {
+    if (this.state !== 'running') {
+      return false;
+    }
+    return new Promise((resolve) => {
+      const socket = connect({ host: '127.0.0.1', port: this.options.port });
+      const onDone = (alive: boolean): void => {
+        socket.destroy();
+        resolve(alive);
+      };
+      socket.setTimeout(2000, () => onDone(false));
+      socket.once('connect', () => onDone(true));
+      socket.once('error', () => onDone(false));
+    });
   }
 
   async start(): Promise<void> {

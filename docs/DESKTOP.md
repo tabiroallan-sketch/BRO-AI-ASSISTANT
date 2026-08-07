@@ -1,4 +1,4 @@
-# Desktop Shell (Stage 1)
+# Desktop Shell (Stage 1–2)
 
 BRO ships as a cross-platform desktop app: an Electron shell that bundles
 PostgreSQL, the Fastify API, and the Next.js web app into a single installable
@@ -39,6 +39,9 @@ desktop/
         api-server.ts            # spawns dist/server.js from the API bundle
         web-server.ts            # spawns Next.js standalone server
         server-manager.ts        # lifecycle: Postgres -> migrate -> API -> web
+      services/
+        scheduler.ts             # chained, non-overlapping background tasks
+        heartbeat.ts             # liveness checks + auto-restart on crash
     preload/index.ts             # contextBridge -> window.broDesktop
   scripts/
     dev.mjs                      # dev mode: root API + web + Electron
@@ -61,7 +64,7 @@ Run from `desktop/`:
 | `npm run dev` | Dev mode: builds/runs root API (`:3000`) + web (`:3001`), launches Electron pointing at them. No embedded Postgres. |
 | `npm run build` | Type-check + compile main/preload to `dist/` (preload is bundled via esbuild). |
 | `npm run typecheck` | `tsc --noEmit` over `src` + `tests`. |
-| `npm test` | Vitest unit suite (43+ tests, no external services). |
+| `npm test` | Vitest unit suite (61 tests, no external services). |
 | `npm run build:api` | Stage the API bundle into `resources/runtime/api` (compiles root, `npm ci --omit=dev`, Prisma generate). |
 | `npm run build:web` | Stage the Next.js standalone bundle into `resources/runtime/web` (`BRO_DESKTOP_BUILD=1`). |
 | `npm run test:e2e` | `scripts/run-e2e.mjs`: builds missing bundles, launches Electron in embedded mode, asserts bridge/config/IPC/services/health. |
@@ -101,6 +104,30 @@ Node/Postgres install:
    so a hung embedded service can never block exit; Postgres is force-stopped
    via `pg_ctl -m immediate` as a backstop.
 
+### Background service (Stage 2)
+
+BRO stays alive when the window is hidden to the tray:
+
+- **Tray quick actions** (`tray.ts`): Open BRO, Open Dashboard, Open Overlay,
+  Start/Stop Listening (enabled by the current listening state), Quit. The
+  overlay and listening items ship their events to the renderer over the
+  preload bridge (`overlay`, `commands.onListeningStart/onListeningStop`), so
+  the web layer drives the actual behavior.
+- **Task scheduler** (`services/scheduler.ts`): chained timers that never
+  overlap — a slow cycle drops, it never queues. Intervals can be adaptive
+  (a function evaluated per cycle), enabling the heartbeat's background
+  throttle; timers are `unref`'d so idle CPU stays near zero.
+- **Heartbeat** (`services/heartbeat.ts`): every cycle reports service states,
+  probes liveness (Postgres via a 2s TCP probe on its port; the managed
+  children's state is authoritative), and restarts anything that is down.
+  Restarts are guarded by a per-service cooldown so a broken Postgres or API
+  cannot trigger a restart loop. The interval switches from 60s to 300s while
+  the window is hidden (low CPU/memory when idle). The first check runs
+  immediately at startup, then on the schedule.
+- **Crash recovery**: a child that dies flips to `error`/`stopped` and is
+  restarted by the next heartbeat cycle; a dead Postgres is caught by the TCP
+  liveness probe.
+
 ### Dev mode
 
 `npm run dev` runs the root API and web app with tsx/Next watch, then launches
@@ -108,7 +135,7 @@ Electron with `BRO_DESKTOP_DEV=1`. The shell then uses `DEV_API_URL`/`DEV_WEB_UR
 instead of embedded services and the embedded Postgres, giving fast iteration
 with the real IPC surface.
 
-## Known limitations (Stage 1)
+## Known limitations (Stage 1–2)
 
 - Windows is the verified target; mac/Linux need the matching
   `@embedded-postgres/<platform>` package and NSIS is Windows-only (mac uses

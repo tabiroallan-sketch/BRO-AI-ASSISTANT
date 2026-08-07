@@ -12,6 +12,7 @@ import { createNativeBridge } from './native.js';
 import { createNotifier } from './notifications.js';
 import { SecretStore } from './secret-store.js';
 import { ServerManager } from './servers/server-manager.js';
+import { Heartbeat } from './services/heartbeat.js';
 import { ShortcutRegistry } from './shortcuts.js';
 import { AppTray } from './tray.js';
 import { UpdateManager } from './updater.js';
@@ -28,8 +29,17 @@ let tray: AppTray | null = null;
 let shortcuts: ShortcutRegistry | null = null;
 let updates: UpdateManager | null = null;
 let connectivity: ConnectivityMonitor | null = null;
+let heartbeat: Heartbeat | null = null;
 let stopNativeTheme: (() => void) | null = null;
 let quitting = false;
+let listening = false;
+
+const setListening = (next: boolean): void => {
+  listening = next;
+  if (mainWindow) {
+    tray?.setListening(mainWindow, next);
+  }
+};
 
 app.setName('BRO');
 app.setAppUserModelId('com.bro.desktop');
@@ -145,6 +155,7 @@ async function bootstrap(): Promise<void> {
         return;
       }
       if (id === 'toggle-mic') {
+        setListening(!listening);
         mainWindow?.send(IPC.micToggle);
         return;
       }
@@ -180,6 +191,25 @@ async function bootstrap(): Promise<void> {
     onStatus: (online) => mainWindow?.send(IPC.networkChanged, online),
   });
   connectivity.start();
+
+  if (manager) {
+    // Background service (Stage 2): keeps the embedded services alive while the
+    // window is hidden and throttles itself so idle CPU stays low.
+    heartbeat = new Heartbeat({
+      isBackground: () => Boolean(mainWindow && !mainWindow.isVisible()),
+      shouldPause: () => quitting,
+      getReports: () => manager?.getReports() ?? [],
+      isServiceAlive: (id) => manager?.isServiceAlive(id) ?? Promise.resolve(false),
+      restartService: (id) => manager?.restartService(id) ?? Promise.resolve(),
+      onTick: (report) => {
+        onLog(
+          `heartbeat: ${report.services.length} services running, restarted=${report.restarted.length > 0 ? report.restarted.join(',') : 'none'}, heap=${Math.round(report.memory.heapUsed / 1024 / 1024)}MB`,
+        );
+      },
+      onLog,
+    });
+    heartbeat.start();
+  }
 
   const getWindow = (): Electron.BrowserWindow | null => mainWindow?.instance ?? null;
 
@@ -228,6 +258,23 @@ async function bootstrap(): Promise<void> {
 
   tray = new AppTray({
     iconPath: assetPath('tray.png') ?? assetPath('icon.png'),
+    listening: () => listening,
+    onOpenDashboard: () => {
+      mainWindow?.focus();
+      mainWindow?.send(IPC.windowNavigate, '/dashboard');
+    },
+    onOpenOverlay: () => {
+      mainWindow?.focus();
+      mainWindow?.send(IPC.overlayToggle);
+    },
+    onStartListening: () => {
+      setListening(true);
+      mainWindow?.send(IPC.listeningStart);
+    },
+    onStopListening: () => {
+      setListening(false);
+      mainWindow?.send(IPC.listeningStop);
+    },
     onQuit: requestQuit,
   });
   tray.create(mainWindow);
@@ -256,6 +303,7 @@ async function bootstrap(): Promise<void> {
         stopNativeTheme?.();
         shortcuts?.unregisterAll();
         connectivity?.stop();
+        heartbeat?.stop();
         tray?.destroy();
         // Shutdown is best-effort: never let a hung embedded service block quit.
         await Promise.race([

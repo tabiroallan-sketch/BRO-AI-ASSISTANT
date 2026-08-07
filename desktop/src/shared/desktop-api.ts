@@ -44,8 +44,10 @@ export type UpdateStatus = {
 
 export type ServiceState = 'starting' | 'running' | 'stopped' | 'error';
 
+export type ServiceId = 'postgres' | 'api' | 'web';
+
 export type ServerReport = {
-  id: 'postgres' | 'api' | 'web';
+  id: ServiceId;
   state: ServiceState;
   port?: number;
   message?: string;
@@ -66,6 +68,9 @@ export const IPC = {
   windowMaximized: 'bro:window:maximized',
   windowNavigate: 'bro:window:navigate',
   micToggle: 'bro:mic:toggle',
+  overlayToggle: 'bro:overlay:toggle',
+  listeningStart: 'bro:listening:start',
+  listeningStop: 'bro:listening:stop',
   shellOpenExternal: 'bro:shell:open-external',
   shellOpenPath: 'bro:shell:open-path',
   dialogPickFile: 'bro:dialog:pick-file',
@@ -113,6 +118,16 @@ export type DesktopApi = {
   commands: {
     /** Fired when a push-to-talk style command is requested (voice stage). */
     onMicToggle(callback: () => void): () => void;
+    /** Fired when the tray/user asks listening to begin (voice stage). */
+    onListeningStart(callback: () => void): () => void;
+    /** Fired when the tray/user asks listening to stop (voice stage). */
+    onListeningStop(callback: () => void): () => void;
+  };
+  overlay: {
+    /** Ask the shell to toggle the overlay (Stage 4 implements the window). */
+    toggle(): void;
+    /** Fired when the shell wants the overlay shown/hidden. */
+    onToggle(callback: () => void): () => void;
   };
   shell: {
     openExternal(url: string): Promise<void>;

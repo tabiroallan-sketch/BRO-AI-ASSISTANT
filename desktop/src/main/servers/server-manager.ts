@@ -1,4 +1,4 @@
-import type { DesktopConfig, ServerReport } from '../../shared/desktop-api.js';
+import type { DesktopConfig, ServerReport, ServiceId } from '../../shared/desktop-api.js';
 import type { SpawnFn, ManagedProcess } from './process-manager.js';
 import { createApiServer, type ApiServerOptions, type RuntimeSecrets } from './api-server.js';
 import { createWebServer, type WebServerOptions } from './web-server.js';
@@ -185,6 +185,34 @@ export class ServerManager {
       await service.restart();
     }
     this.publish();
+  }
+
+  /** Restarts any embedded service, including Postgres (used by the heartbeat). */
+  async restartService(id: ServiceId): Promise<void> {
+    if (id === 'postgres') {
+      if (this.postgres) {
+        await this.postgres.start();
+      }
+    } else {
+      const service = id === 'api' ? this.api : this.web;
+      if (service) {
+        await service.restart();
+      }
+    }
+    this.publish();
+  }
+
+  /**
+   * Liveness check used by the heartbeat. Managed children track their own
+   * process state; Postgres needs a real probe because the shell never sees
+   * its child process.
+   */
+  async isServiceAlive(id: ServiceId): Promise<boolean> {
+    if (id === 'postgres') {
+      return this.postgres ? this.postgres.isAlive() : false;
+    }
+    const service = id === 'api' ? this.api : this.web;
+    return service?.getState() === 'running';
   }
 
   async stopAll(): Promise<void> {

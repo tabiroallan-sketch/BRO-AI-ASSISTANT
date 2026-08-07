@@ -43,6 +43,12 @@ const api: DesktopApi = {
   },
   commands: {
     onMicToggle: (callback) => subscribe(IPC.micToggle, callback),
+    onListeningStart: (callback) => subscribe(IPC.listeningStart, callback),
+    onListeningStop: (callback) => subscribe(IPC.listeningStop, callback),
+  },
+  overlay: {
+    toggle: () => void ipcRenderer.invoke(IPC.overlayToggle),
+    onToggle: (callback) => subscribe(IPC.overlayToggle, callback),
   },
   shell: {
     openExternal: (url) => ipcRenderer.invoke(IPC.shellOpenExternal, url),

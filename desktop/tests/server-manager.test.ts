@@ -67,6 +67,7 @@ function fakePostgres(): PostgresLike {
     connectionUri: () => 'postgresql://fake',
     start: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
+    isAlive: vi.fn(async () => true),
   };
 }
 

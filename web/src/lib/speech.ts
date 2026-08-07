@@ -111,14 +111,49 @@ export function isSpeechSynthesisSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
-export function speak(text: string, onEnd?: () => void): boolean {
+export type SpeechVoice = {
+  name: string;
+  lang: string;
+  default: boolean;
+};
+
+export type SpeakOptions = {
+  voice?: string | null;
+  rate?: number;
+  pitch?: number;
+  onEnd?: () => void;
+};
+
+/** Lists installed voices (empty when synthesis is unsupported). */
+export function getVoices(): SpeechVoice[] {
+  if (!isSpeechSynthesisSupported()) {
+    return [];
+  }
+  return window.speechSynthesis
+    .getVoices()
+    .map((voice) => ({ name: voice.name, lang: voice.lang, default: !!voice.default }));
+}
+
+export function speak(text: string, options?: SpeakOptions | (() => void)): boolean {
   if (!isSpeechSynthesisSupported() || !text.trim()) {
     return false;
   }
+  const onEnd = typeof options === 'function' ? options : options?.onEnd;
+  const voiceName = typeof options === 'function' ? null : (options?.voice ?? null);
+  const rate = typeof options === 'function' ? 1 : (options?.rate ?? 1);
+  const pitch = typeof options === 'function' ? 1 : (options?.pitch ?? 1);
   const synth = window.speechSynthesis;
   synth.cancel();
   const utterance = new SpeechSynthesisUtterance(stripMarkdown(text));
   utterance.lang = 'en-US';
+  utterance.rate = rate;
+  utterance.pitch = pitch;
+  if (voiceName) {
+    const voice = synth.getVoices().find((candidate) => candidate.name === voiceName);
+    if (voice) {
+      utterance.voice = voice;
+    }
+  }
   if (onEnd) {
     utterance.onend = () => onEnd();
     utterance.onerror = () => onEnd();

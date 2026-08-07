@@ -4,12 +4,7 @@ import * as React from 'react';
 import { Mic, Send, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  createSpeechRecognizer,
-  isSpeechRecognitionSupported,
-  type SpeechRecognizer,
-} from '@/lib/speech';
-import { useAiState } from '@/lib/ai-state';
+import { useVoice } from '@/hooks/use-voice';
 import { cn } from '@/lib/utils';
 
 export function ChatInput({
@@ -22,16 +17,24 @@ export function ChatInput({
   autoFocus?: boolean;
 }): React.JSX.Element {
   const [value, setValue] = React.useState('');
-  const [listening, setListening] = React.useState(false);
-  const [interim, setInterim] = React.useState('');
-  const recognizerRef = React.useRef<SpeechRecognizer | null>(null);
-  const speechSupported = isSpeechRecognitionSupported();
+  const voice = useVoice();
+  const { state } = voice;
 
+  // Manual transcripts append to the draft; push-to-talk results send directly.
   React.useEffect(() => {
-    return () => {
-      recognizerRef.current?.stop();
-    };
-  }, []);
+    const consumed = voice.engine.consumeTranscript();
+    if (!consumed) {
+      return;
+    }
+    if (consumed.source === 'ptt') {
+      onSend(consumed.text);
+      return;
+    }
+    setValue((current) => {
+      const base = current.trim();
+      return base ? `${base} ${consumed.text}` : consumed.text;
+    });
+  }, [voice, state.transcriptId, onSend]);
 
   function submit(): void {
     const trimmed = value.trim();
@@ -40,53 +43,10 @@ export function ChatInput({
     }
     onSend(trimmed);
     setValue('');
-    setInterim('');
   }
 
-  function stopListening(): void {
-    recognizerRef.current?.stop();
-    setListening(false);
-    setInterim('');
-    useAiState.getState().setState('idle');
-  }
-
-  function toggleListening(): void {
-    if (disabled) {
-      return;
-    }
-    if (recognizerRef.current?.isListening()) {
-      stopListening();
-      return;
-    }
-    const recognizer = createSpeechRecognizer({
-      onInterim: (text) => setInterim(text),
-      onFinal: (text) => {
-        setValue((current) => {
-          const base = current.trim();
-          return base ? `${base} ${text}` : text;
-        });
-      },
-      onEnd: () => {
-        setListening(false);
-        setInterim('');
-        useAiState.getState().setState('idle');
-      },
-      onError: () => {
-        setListening(false);
-        setInterim('');
-        useAiState.getState().setState('idle');
-      },
-    });
-    if (!recognizer) {
-      return;
-    }
-    recognizerRef.current = recognizer;
-    recognizer.start();
-    setListening(true);
-    useAiState.getState().setState('listening');
-  }
-
-  const displayed = interim ? `${value}${value ? ' ' : ''}${interim}` : value;
+  const voiceEnabled = state.sttSupported && state.micSupported && state.mode !== 'off';
+  const displayed = state.interim ? `${value}${value ? ' ' : ''}${state.interim}` : value;
   const canSend = !disabled && value.trim().length > 0;
 
   return (
@@ -106,31 +66,40 @@ export function ChatInput({
             submit();
           }
         }}
-        placeholder={listening ? 'Listening…' : 'Message BRO…'}
+        placeholder={voice.isListening ? 'Listening…' : 'Message BRO…'}
         rows={1}
         className="max-h-40 min-h-[44px] resize-none"
         aria-label="Message BRO"
         autoFocus={autoFocus}
       />
-      {speechSupported && (
+      {voiceEnabled && (
         <Button
           type="button"
           size="icon"
-          variant={listening ? 'destructive' : 'secondary'}
+          variant={voice.isListening ? 'destructive' : 'secondary'}
           className={cn(
             'relative h-11 w-11 shrink-0',
-            listening &&
+            voice.isListening &&
               'glow-danger shadow-[0_0_18px_color-mix(in_oklab,var(--destructive)_40%,transparent)]',
           )}
           disabled={disabled}
-          onClick={toggleListening}
-          aria-label={listening ? 'Stop voice input' : 'Start voice input'}
+          onClick={() => (voice.isListening ? voice.stop() : voice.startManual())}
+          aria-label={voice.isListening ? 'Stop voice input' : 'Start voice input'}
+          title={state.error ?? undefined}
         >
-          {listening && (
-            <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-md border-2 border-destructive/50" />
+          {voice.isListening && (
+            <span
+              className="absolute inline-flex h-full w-full animate-pulse-ring rounded-md border-2 border-destructive/50"
+              style={{ opacity: 0.5 + 0.5 * state.level }}
+            />
           )}
-          {listening ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          {voice.isListening ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </Button>
+      )}
+      {state.error && !voice.isListening && (
+        <span className="sr-only" role="alert">
+          {state.error}
+        </span>
       )}
       <Button
         type="submit"

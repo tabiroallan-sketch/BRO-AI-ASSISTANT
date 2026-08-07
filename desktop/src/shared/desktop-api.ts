@@ -18,6 +18,109 @@ export type OverlayBounds = {
   height: number;
 };
 
+/** How the assistant accepts voice input (Stage 5). */
+export type ListeningMode = 'off' | 'manual' | 'ptt';
+
+/**
+ * Voice preferences (Stage 5). Mirror of the settings card; persisted in the
+ * desktop config when the shell is present, else the web app's localStorage.
+ */
+export type VoiceSettings = {
+  /** off = never auto-start; manual = mic button / mic-toggle; ptt = hotkey. */
+  listeningMode: ListeningMode;
+  /** Preferred input device id from enumerateDevices, or null for default. */
+  inputDeviceId: string | null;
+  /** Preferred output device id, or null for default. */
+  outputDeviceId: string | null;
+  /** Speak assistant replies via speechSynthesis. */
+  ttsEnabled: boolean;
+  /** Preferred TTS voice URI, or null for the default voice. */
+  ttsVoice: string | null;
+  /** Speech rate 0.5..2. */
+  ttsRate: number;
+  /** Speech pitch 0..2. */
+  ttsPitch: number;
+  /** getUserMedia audio processing (all default on). */
+  noiseSuppression: boolean;
+  echoCancellation: boolean;
+  autoGainControl: boolean;
+};
+
+export const VOICE_MODES: readonly ListeningMode[] = ['off', 'manual', 'ptt'];
+
+export const VOICE_MODE_LABELS: Record<ListeningMode, string> = {
+  off: 'Off',
+  manual: 'Manual (click to talk)',
+  ptt: 'Push-to-talk (hotkey)',
+};
+
+export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
+  listeningMode: 'manual',
+  inputDeviceId: null,
+  outputDeviceId: null,
+  ttsEnabled: true,
+  ttsVoice: null,
+  ttsRate: 1,
+  ttsPitch: 1,
+  noiseSuppression: true,
+  echoCancellation: true,
+  autoGainControl: true,
+};
+
+const VOICE_BOOLEAN_KEYS = [
+  'ttsEnabled',
+  'noiseSuppression',
+  'echoCancellation',
+  'autoGainControl',
+] as const;
+
+function nullableString(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return typeof value === 'string' ? value : undefined;
+}
+
+/** Validates an arbitrary persisted value into VoiceSettings, or undefined. */
+export function normalizeVoiceSettings(raw: unknown): VoiceSettings | undefined {
+  if (typeof raw !== 'object' || raw === null) {
+    return undefined;
+  }
+  const source = raw as Record<string, unknown>;
+  if (!VOICE_MODES.includes(source.listeningMode as ListeningMode)) {
+    return undefined;
+  }
+  for (const key of VOICE_BOOLEAN_KEYS) {
+    if (typeof source[key] !== 'boolean') {
+      return undefined;
+    }
+  }
+  if (typeof source.ttsRate !== 'number' || !Number.isFinite(source.ttsRate)) {
+    return undefined;
+  }
+  if (typeof source.ttsPitch !== 'number' || !Number.isFinite(source.ttsPitch)) {
+    return undefined;
+  }
+  const inputDeviceId = nullableString(source.inputDeviceId);
+  const outputDeviceId = nullableString(source.outputDeviceId);
+  const ttsVoice = nullableString(source.ttsVoice);
+  if (inputDeviceId === undefined || outputDeviceId === undefined || ttsVoice === undefined) {
+    return undefined;
+  }
+  return {
+    listeningMode: source.listeningMode as ListeningMode,
+    inputDeviceId,
+    outputDeviceId,
+    ttsEnabled: source.ttsEnabled as boolean,
+    ttsVoice,
+    ttsRate: Math.round(Math.min(2, Math.max(0.5, source.ttsRate)) * 100) / 100,
+    ttsPitch: Math.round(Math.min(2, Math.max(0, source.ttsPitch)) * 100) / 100,
+    noiseSuppression: source.noiseSuppression as boolean,
+    echoCancellation: source.echoCancellation as boolean,
+    autoGainControl: source.autoGainControl as boolean,
+  };
+}
+
 export type DesktopConfig = {
   /** Theme source applied to nativeTheme and synced to the web app. */
   theme: ThemeSource;
@@ -35,6 +138,8 @@ export type DesktopConfig = {
   shortcuts: ShortcutBindings;
   /** Last position/size of the floating overlay window, or null to auto-place. */
   overlayBounds: OverlayBounds | null;
+  /** Voice preferences (input device, listening mode, TTS). */
+  voice: VoiceSettings;
 };
 
 export type UpdateState =
@@ -270,4 +375,5 @@ export const DEFAULT_DESKTOP_CONFIG: DesktopConfig = {
   browserEnabled: false,
   shortcuts: { ...DEFAULT_SHORTCUTS },
   overlayBounds: null,
+  voice: { ...DEFAULT_VOICE_SETTINGS },
 };

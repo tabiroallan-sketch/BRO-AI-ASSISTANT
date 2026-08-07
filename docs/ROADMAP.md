@@ -66,6 +66,15 @@ Planned and aspirational work for BRO, roughly in order. Status key:
   instant summon via `Ctrl+Space`, and a plain-browser fallback. Includes
   `overlay-bounds` unit tests and overlay show/resize/hide assertions in the
   desktop e2e harness.
+- ✅ **Voice system (Stage 5)** — browser-first voice pipeline with graceful
+  Electron fallback and no new API endpoints: mic manager (device list,
+  permission/stream acquisition, Web Audio level meter), pure energy VAD,
+  shared listening engine (manual click-to-talk + push-to-talk with VAD
+  auto-finalize, tray/shortcut drivers, live level), Web Speech recognition +
+  synthesis (rate/pitch/voice), a `useVoice` hook wiring desktop command events,
+  and a settings card (mode, devices, TTS, processing). `DesktopConfig.voice`
+  contract + 60s PTT safety timer; wake word / continuous always-on listening
+  deferred to Stage 6. Includes vad/mic/engine/settings/speech tests.
 - 🚧 Desktop hardening — Windows-only verified today (mac/Linux need their
   `@embedded-postgres` native package); auto-update needs a real GitHub
   repo/owner to publish to; per-platform crash reporting and code signing.
@@ -82,8 +91,8 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 
 - ✅ Backend test suite — 580 tests across unit, integration, performance,
   stress, and API suites (vitest + mocked Prisma/fetch).
-- ✅ Web unit tests — 100 tests for the Next.js app (libs, API client, stores,
-  UI logic) via vitest.
+- ✅ Web unit tests — 149 tests for the Next.js app (libs, API client, stores,
+  UI logic, voice VAD/mic/engine/settings) via vitest.
 - ✅ Web UI tests — 15 Playwright specs against the running stack (auth,
   chat, dashboard, integrations, admin-gating regression).
 - ✅ OAuth tests — Google flow (PKCE + signed state, callback handling, account

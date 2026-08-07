@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createSpeechRecognizer,
+  getVoices,
   isSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
   speak,
@@ -150,6 +151,9 @@ describe('speech synthesis', () => {
   class MockUtterance {
     lang = '';
     text: string;
+    rate = 1;
+    pitch = 1;
+    voice: { name: string } | null = null;
     onend: (() => void) | null = null;
     onerror: (() => void) | null = null;
 
@@ -158,22 +162,27 @@ describe('speech synthesis', () => {
     }
   }
 
-  function stubSynthesis(): {
+  function stubSynthesis(voices: Array<{ name: string; lang: string; default?: boolean }> = []): {
     cancel: ReturnType<typeof vi.fn>;
     speak: ReturnType<typeof vi.fn>;
+    getVoices: ReturnType<typeof vi.fn>;
     utterance: MockUtterance;
   } {
     const utterance = new MockUtterance('');
     const cancel = vi.fn();
+    const getVoices = vi.fn(() => voices);
     const speak = vi.fn((u: MockUtterance) => {
       utterance.text = u.text;
       utterance.lang = u.lang;
+      utterance.rate = u.rate;
+      utterance.pitch = u.pitch;
+      utterance.voice = u.voice;
       utterance.onend = u.onend;
       utterance.onerror = u.onerror;
     });
     vi.stubGlobal('SpeechSynthesisUtterance', MockUtterance);
-    vi.stubGlobal('window', { speechSynthesis: { cancel, speak } });
-    return { cancel, speak, utterance };
+    vi.stubGlobal('window', { speechSynthesis: { cancel, speak, getVoices } });
+    return { cancel, speak, getVoices, utterance };
   }
 
   it('is supported when speechSynthesis exists', () => {
@@ -200,6 +209,45 @@ describe('speech synthesis', () => {
 
   it('returns false when unsupported', () => {
     expect(speak('hello')).toBe(false);
+  });
+
+  it('lists available voices', () => {
+    expect(getVoices()).toEqual([]);
+    const { getVoices: stubGetVoices } = stubSynthesis([
+      { name: 'Aria', lang: 'en-US', default: true },
+      { name: 'Jenny', lang: 'en-GB' },
+    ]);
+    expect(getVoices()).toEqual([
+      { name: 'Aria', lang: 'en-US', default: true },
+      { name: 'Jenny', lang: 'en-GB', default: false },
+    ]);
+    expect(stubGetVoices).toHaveBeenCalledOnce();
+  });
+
+  it('applies voice, rate and pitch from options', () => {
+    const { utterance, getVoices: stubGetVoices } = stubSynthesis([
+      { name: 'Aria', lang: 'en-US' },
+    ]);
+
+    const started = speak('Hello', {
+      voice: 'Aria',
+      rate: 1.5,
+      pitch: 1.25,
+    });
+
+    expect(started).toBe(true);
+    expect(utterance.rate).toBe(1.5);
+    expect(utterance.pitch).toBe(1.25);
+    expect(utterance.voice).toEqual({ name: 'Aria', lang: 'en-US' });
+    expect(stubGetVoices).toHaveBeenCalled();
+  });
+
+  it('invokes onEnd from the options object', () => {
+    const { utterance } = stubSynthesis();
+    const onEnd = vi.fn();
+    expect(speak('Hi', { onEnd })).toBe(true);
+    utterance.onend?.();
+    expect(onEnd).toHaveBeenCalledOnce();
   });
 
   it('stops speaking by cancelling', () => {

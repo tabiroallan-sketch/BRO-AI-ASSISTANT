@@ -2,6 +2,7 @@ import { AiProvidersCard } from '@/components/ai-providers-card';
 import { IntegrationHub } from '@/components/integration-hub';
 import { RequireAuth } from '@/components/require-auth';
 import { ShortcutsCard } from '@/components/shortcuts-card';
+import { VoiceSettingsCard } from '@/components/voice-settings-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function SettingsPage(): React.JSX.Element {
@@ -15,6 +16,10 @@ export default function SettingsPage(): React.JSX.Element {
 
         <div className="mb-8">
           <ShortcutsCard />
+        </div>
+
+        <div className="mb-8">
+          <VoiceSettingsCard />
         </div>
 
         <div className="mb-10">

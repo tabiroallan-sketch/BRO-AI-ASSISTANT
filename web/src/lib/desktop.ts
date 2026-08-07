@@ -1,23 +1,35 @@
 import {
   DEFAULT_SHORTCUTS,
+  DEFAULT_VOICE_SETTINGS,
   SHORTCUT_ACTIONS,
   SHORTCUT_LABELS,
+  VOICE_MODE_LABELS,
+  VOICE_MODES,
+  normalizeVoiceSettings,
   type DesktopApi,
+  type ListeningMode,
   type OverlayBounds,
   type ShortcutAction,
   type ShortcutBindings,
   type ShortcutSetResult,
+  type VoiceSettings,
 } from '../../../desktop/src/shared/desktop-api';
 
 export {
   DEFAULT_SHORTCUTS,
+  DEFAULT_VOICE_SETTINGS,
   SHORTCUT_ACTIONS,
   SHORTCUT_LABELS,
+  VOICE_MODE_LABELS,
+  VOICE_MODES,
+  normalizeVoiceSettings,
   type DesktopApi,
+  type ListeningMode,
   type OverlayBounds,
   type ShortcutAction,
   type ShortcutBindings,
   type ShortcutSetResult,
+  type VoiceSettings,
 };
 
 declare global {

@@ -72,21 +72,8 @@ export default function OverlayPage(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [api, historyOpen]);
 
-  // Drive the voice orb from the shell's listening state.
-  React.useEffect(() => {
-    if (!api) {
-      return;
-    }
-    const stopListening = api.commands.onListeningStart(() =>
-      useAiState.getState().setState('listening'),
-    );
-    const stopIdle = api.commands.onListeningStop(() => useAiState.getState().setState('idle'));
-    return () => {
-      stopListening();
-      stopIdle();
-    };
-  }, [api]);
-
+  // Drive the voice orb from the shared listening engine (Stage 5): the
+  // useVoice hook inside ChatInput keeps the experiential AI state in sync.
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, streamingContent, toolActivity, streaming]);

@@ -29,11 +29,14 @@ animations, keyboard access, voice visualization, quick prompt box,
 conversation history, streaming responses, Esc to hide, instant summon,
 performance-optimized.
 
-## Stage 5 — Voice System
-Microphone manager, audio pipeline, VAD, wake word engine, speech recognition +
-synthesis, noise reduction, echo cancellation, voice command router,
-conversation manager. Continuous/manual/PTT/wake-word listening, streaming
-transcription, multiple mics/speakers, settings page.
+## Stage 5 — Voice System ✅
+Mic manager (device list, permission + stream acquisition, level meter), pure
+energy VAD, listening engine (manual click-to-talk + push-to-talk + tray/shortcut
+drivers), speech recognition + synthesis, noise reduction/echo cancellation/auto
+gain via stream constraints, voice settings page (mode, devices, TTS voice,
+rate, pitch, processing). Browser-first using Web Speech API + Web Audio with
+graceful fallback in Electron; no new API endpoints. Wake word + continuous
+always-on listening are deferred to Stage 6.
 
 ## Stage 6 — Wake Word Engine
 "Hey BRO" / "BRO" / "Wake up". Confidence scoring, sensitivity slider, false

@@ -171,12 +171,14 @@ async function bootstrap(): Promise<void> {
   });
 
   // Global hotkeys (Stage 3): user-configurable, applied from persisted config.
+  // Stage 5 push-to-talk: Electron fires global shortcuts repeatedly while a
+  // combo is held, so each repeat restarts a long safety timer. The renderer's
+  // VAD ends the utterance on silence; the timer only guarantees a stuck "held"
+  // state can never keep the mic open indefinitely.
+  const PTT_HOLD_TIMEOUT_MS = 60_000;
   let pttHoldTimer: ReturnType<typeof setTimeout> | null = null;
   let pttActive = false;
   const pushToTalkHold = (): void => {
-    // Electron fires global shortcuts repeatedly while a combo is held, so a
-    // short idle timer turns "held" into start + delayed stop. Stage 5
-    // replaces this with real key-release handling for the audio pipeline.
     if (!pttActive) {
       pttActive = true;
       broadcast(IPC.pushToTalkStart);
@@ -188,7 +190,7 @@ async function bootstrap(): Promise<void> {
       pttActive = false;
       pttHoldTimer = null;
       broadcast(IPC.pushToTalkStop);
-    }, 400);
+    }, PTT_HOLD_TIMEOUT_MS);
   };
 
   shortcuts = new ShortcutRegistry({

@@ -1,4 +1,4 @@
-# Desktop Shell (Stage 1–4)
+# Desktop Shell (Stage 1–5)
 
 BRO ships as a cross-platform desktop app: an Electron shell that bundles
 PostgreSQL, the Fastify API, and the Next.js web app into a single installable
@@ -67,7 +67,7 @@ Run from `desktop/`:
 | `npm run dev` | Dev mode: builds/runs root API (`:3000`) + web (`:3001`), launches Electron pointing at them. No embedded Postgres. |
 | `npm run build` | Type-check + compile main/preload to `dist/` (preload is bundled via esbuild). |
 | `npm run typecheck` | `tsc --noEmit` over `src` + `tests`. |
-| `npm test` | Vitest unit suite (101 tests, no external services). |
+| `npm test` | Vitest unit suite (105 tests, no external services). |
 | `npm run build:api` | Stage the API bundle into `resources/runtime/api` (compiles root, `npm ci --omit=dev`, Prisma generate). |
 | `npm run build:web` | Stage the Next.js standalone bundle into `resources/runtime/web` (`BRO_DESKTOP_BUILD=1`). |
 | `npm run test:e2e` | `scripts/run-e2e.mjs`: builds missing bundles, launches Electron in embedded mode, asserts bridge/config/IPC/services/health/overlay. |
@@ -140,7 +140,7 @@ even while the window is hidden:
 |---|---|---|
 | Open overlay | `Ctrl+Space` | Shows/toggles the overlay |
 | Hide overlay | `Esc` | Hides the overlay |
-| Push-to-talk | `Alt+P` | Signals push-to-talk hold (full pipeline in Stage 5) |
+| Push-to-talk | `Alt+P` | Push-to-talk hold: starts audio capture on key-down (Stage 5) |
 | Open dashboard | `Ctrl+Shift+B` | Focuses the window on `/dashboard` |
 | Toggle microphone | `Ctrl+Shift+M` | Toggles listening state |
 
@@ -184,6 +184,28 @@ assistant without leaving the current app:
 - **Shortcuts**: `Ctrl+Space` toggles the overlay, `Esc` hides it (configurable,
   Stage 3).
 
+### Voice system (Stage 5)
+
+The shell provides the driver events and persisted settings for the web app's
+voice pipeline (mic + VAD + listening engine live in `web/src/lib/voice/`):
+
+- **Shared contract** (`shared/desktop-api.ts`): `DesktopConfig.voice` holds
+  `listeningMode` (`off`/`manual`/`ptt`), mic/output device ids, TTS enable +
+  voice/rate/pitch, and the stream-processing toggles (noise suppression, echo
+  cancellation, auto gain). Values round-trip through `normalizeVoiceSettings`
+  (strict validation + rate/pitch clamping); `ipc.ts` sanitizes `voice` patches
+  through it and `CONFIG_KEYS` includes `voice`, so invalid renderer patches are
+  dropped.
+- **Push-to-talk hold** (`main/index.ts`): Electron fires global shortcuts
+  repeatedly while a combo is held, so each repeat restarts a **60s** safety
+  timer; the renderer's VAD ends the utterance on silence, and the timer only
+  guarantees a stuck "held" state can never keep the mic open indefinitely.
+  Key-down broadcasts `pushToTalkStart`, timeout broadcasts `pushToTalkStop`.
+- **Bridge**: the preload exposes `commands.onMicToggle`,
+  `commands.onPushToTalkStart/Stop`, and the tray's
+  `commands.onListeningStart/Stop`; the web `useVoice` hook wires them into the
+  shared listening engine.
+
 ### Dev mode
 
 `npm run dev` runs the root API and web app with tsx/Next watch, then launches
@@ -191,7 +213,7 @@ Electron with `BRO_DESKTOP_DEV=1`. The shell then uses `DEV_API_URL`/`DEV_WEB_UR
 instead of embedded services and the embedded Postgres, giving fast iteration
 with the real IPC surface.
 
-## Known limitations (Stage 1–4)
+## Known limitations (Stage 1–5)
 
 - Windows is the verified target; mac/Linux need the matching
   `@embedded-postgres/<platform>` package and NSIS is Windows-only (mac uses

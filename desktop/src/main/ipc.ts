@@ -10,6 +10,7 @@ import {
   type ShortcutBindings,
   type ShortcutSetResult,
   type ThemeSource,
+  normalizeVoiceSettings,
 } from '../shared/desktop-api.js';
 import { ConfigStore } from './config.js';
 import { normalizeOverlayBounds } from './overlay-bounds.js';
@@ -58,6 +59,7 @@ const CONFIG_KEYS: ReadonlyArray<keyof DesktopConfig> = [
   'browserEnabled',
   'shortcuts',
   'overlayBounds',
+  'voice',
 ];
 
 function sanitizeShortcuts(value: unknown): ShortcutBindings | undefined {
@@ -103,6 +105,11 @@ function sanitizeConfigPatch(raw: unknown): Partial<DesktopConfig> {
         patch.overlayBounds = bounds;
       } else if (value === null) {
         patch.overlayBounds = null;
+      }
+    } else if (key === 'voice') {
+      const voice = normalizeVoiceSettings(value);
+      if (voice) {
+        patch.voice = voice;
       }
     } else if (typeof value === 'boolean') {
       (patch as Record<string, unknown>)[key] = value;

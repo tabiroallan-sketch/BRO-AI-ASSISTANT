@@ -35,12 +35,11 @@ let heartbeat: Heartbeat | null = null;
 let stopNativeTheme: (() => void) | null = null;
 let quitting = false;
 let listening = false;
+let wakeWordOn = false;
 
 const setListening = (next: boolean): void => {
   listening = next;
-  if (mainWindow) {
-    tray?.setListening(mainWindow, next);
-  }
+  tray?.setListening(next);
 };
 
 /** Sends a renderer event to every live window (main + overlay). */
@@ -322,6 +321,7 @@ async function bootstrap(): Promise<void> {
   tray = new AppTray({
     iconPath: assetPath('tray.png') ?? assetPath('icon.png'),
     listening: () => listening,
+    wakeWord: () => wakeWordOn,
     onOpenDashboard: () => {
       mainWindow?.focus();
       mainWindow?.send(IPC.windowNavigate, '/dashboard');
@@ -337,9 +337,24 @@ async function bootstrap(): Promise<void> {
       setListening(false);
       broadcast(IPC.listeningStop);
     },
+    onToggleWakeWord: () => {
+      // The renderer persists the change through the config bridge; the tray
+      // label is re-synced from config.onDidChange below and flipped locally
+      // so it feels instant even if the renderer is not connected.
+      wakeWordOn = !wakeWordOn;
+      tray?.setWakeWord(wakeWordOn);
+      broadcast(IPC.wakeWordSet, wakeWordOn);
+    },
     onQuit: requestQuit,
   });
   tray.create(mainWindow);
+
+  // Keep the tray's wake-word label in sync with the persisted settings
+  // (the settings card / renderer writes through the config bridge).
+  wakeWordOn = configState.voice.wakeWordEnabled;
+  config.onDidChange((state) => {
+    tray?.setWakeWord(state.voice.wakeWordEnabled);
+  });
 
   crash.init(() => mainWindow);
   stopNativeTheme = watchNativeTheme((shouldUseDark) => {

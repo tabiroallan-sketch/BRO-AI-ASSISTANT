@@ -44,6 +44,14 @@ export type VoiceSettings = {
   noiseSuppression: boolean;
   echoCancellation: boolean;
   autoGainControl: boolean;
+  /** Wake-word listening (Stage 6): continuously listen for a phrase. */
+  wakeWordEnabled: boolean;
+  /** 0.2..1 — higher means a clearer/stabler match is required. */
+  wakeWordSensitivity: number;
+  /** Phrases that wake BRO, lowercase and normalized. */
+  wakeWordPhrases: string[];
+  /** Play an audible chime when the wake word is heard. */
+  wakeWordFeedback: boolean;
 };
 
 export const VOICE_MODES: readonly ListeningMode[] = ['off', 'manual', 'ptt'];
@@ -53,6 +61,12 @@ export const VOICE_MODE_LABELS: Record<ListeningMode, string> = {
   manual: 'Manual (click to talk)',
   ptt: 'Push-to-talk (hotkey)',
 };
+
+export const WAKE_WORD_DEFAULT_PHRASES: readonly string[] = ['hey bro', 'bro', 'wake up'];
+export const WAKE_WORD_MIN_SENSITIVITY = 0.2;
+export const WAKE_WORD_MAX_SENSITIVITY = 1;
+export const WAKE_WORD_MAX_PHRASES = 5;
+export const WAKE_WORD_MAX_PHRASE_LENGTH = 40;
 
 export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   listeningMode: 'manual',
@@ -65,7 +79,47 @@ export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   noiseSuppression: true,
   echoCancellation: true,
   autoGainControl: true,
+  wakeWordEnabled: false,
+  wakeWordSensitivity: 0.6,
+  wakeWordPhrases: [...WAKE_WORD_DEFAULT_PHRASES],
+  wakeWordFeedback: true,
 };
+
+/** Sanitizes a raw phrase list into lowercase, de-duplicated wake phrases. */
+export function normalizeWakePhrases(raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    return [...WAKE_WORD_DEFAULT_PHRASES];
+  }
+  const seen = new Set<string>();
+  const phrases: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'string') {
+      continue;
+    }
+    const cleaned = entry.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!cleaned || cleaned.length > WAKE_WORD_MAX_PHRASE_LENGTH || seen.has(cleaned)) {
+      continue;
+    }
+    seen.add(cleaned);
+    phrases.push(cleaned);
+    if (phrases.length >= WAKE_WORD_MAX_PHRASES) {
+      break;
+    }
+  }
+  return phrases.length ? phrases : [...WAKE_WORD_DEFAULT_PHRASES];
+}
+
+/** Clamps a sensitivity value into the supported 0.2..1 range. */
+export function normalizeWakeSensitivity(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return DEFAULT_VOICE_SETTINGS.wakeWordSensitivity;
+  }
+  return (
+    Math.round(
+      Math.min(WAKE_WORD_MAX_SENSITIVITY, Math.max(WAKE_WORD_MIN_SENSITIVITY, raw)) * 100,
+    ) / 100
+  );
+}
 
 const VOICE_BOOLEAN_KEYS = [
   'ttsEnabled',
@@ -118,6 +172,18 @@ export function normalizeVoiceSettings(raw: unknown): VoiceSettings | undefined 
     noiseSuppression: source.noiseSuppression as boolean,
     echoCancellation: source.echoCancellation as boolean,
     autoGainControl: source.autoGainControl as boolean,
+    // Wake-word fields are lenient: missing values default rather than
+    // invalidating, so configs written before Stage 6 keep loading.
+    wakeWordEnabled:
+      typeof source.wakeWordEnabled === 'boolean'
+        ? source.wakeWordEnabled
+        : DEFAULT_VOICE_SETTINGS.wakeWordEnabled,
+    wakeWordSensitivity: normalizeWakeSensitivity(source.wakeWordSensitivity),
+    wakeWordPhrases: normalizeWakePhrases(source.wakeWordPhrases),
+    wakeWordFeedback:
+      typeof source.wakeWordFeedback === 'boolean'
+        ? source.wakeWordFeedback
+        : DEFAULT_VOICE_SETTINGS.wakeWordFeedback,
   };
 }
 
@@ -240,6 +306,7 @@ export const IPC = {
   listeningStop: 'bro:listening:stop',
   pushToTalkStart: 'bro:push-to-talk:start',
   pushToTalkStop: 'bro:push-to-talk:stop',
+  wakeWordSet: 'bro:wake-word:set',
   shellOpenExternal: 'bro:shell:open-external',
   shellOpenPath: 'bro:shell:open-path',
   dialogPickFile: 'bro:dialog:pick-file',
@@ -300,6 +367,8 @@ export type DesktopApi = {
     onPushToTalkStart(callback: () => void): () => void;
     /** Fired when push-to-talk is released. */
     onPushToTalkStop(callback: () => void): () => void;
+    /** Fired with the desired wake-word on/off state (Stage 6 tray/shortcut). */
+    onWakeWordSet(callback: (enabled: boolean) => void): () => void;
   };
   overlay: {
     /** Ask the shell to toggle the floating overlay window. */

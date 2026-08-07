@@ -7,9 +7,12 @@ export type TrayOptions = {
   onOpenOverlay: () => void;
   onStartListening: () => void;
   onStopListening: () => void;
+  onToggleWakeWord: () => void;
   onQuit: () => void;
   /** Current listening state, read when the menu is rebuilt. */
   listening: () => boolean;
+  /** Current wake-word state, read when the menu is rebuilt. */
+  wakeWord: () => boolean;
 };
 
 /**
@@ -19,6 +22,7 @@ export type TrayOptions = {
  */
 export class AppTray {
   private tray: Tray | null = null;
+  private mainWindow: MainWindow | null = null;
   private readonly options: TrayOptions;
 
   constructor(options: TrayOptions) {
@@ -32,28 +36,36 @@ export class AppTray {
     const tray = new Tray(image);
     tray.setToolTip('BRO - AI Operating System');
     this.tray = tray;
-    this.rebuild(mainWindow);
+    this.mainWindow = mainWindow;
+    this.rebuild();
     tray.on('click', () => mainWindow.focus());
   }
 
   /** Rebuilds the context menu so it reflects the current listening state. */
-  setListening(mainWindow: MainWindow, listening: boolean): void {
+  setListening(listening: boolean): void {
     this.options.listening = () => listening;
-    if (this.tray) {
-      this.rebuild(mainWindow);
-    }
+    this.rebuild();
+  }
+
+  /** Rebuilds the context menu so it reflects the current wake-word state. */
+  setWakeWord(wakeWord: boolean): void {
+    this.options.wakeWord = () => wakeWord;
+    this.rebuild();
   }
 
   destroy(): void {
     this.tray?.destroy();
     this.tray = null;
+    this.mainWindow = null;
   }
 
-  private rebuild(mainWindow: MainWindow): void {
-    if (!this.tray) {
+  private rebuild(): void {
+    if (!this.tray || !this.mainWindow) {
       return;
     }
+    const mainWindow = this.mainWindow;
     const listening = this.options.listening();
+    const wakeWord = this.options.wakeWord();
     const template: MenuItemConstructorOptions[] = [
       {
         label: 'Open BRO',
@@ -77,6 +89,10 @@ export class AppTray {
         label: 'Stop Listening',
         enabled: listening,
         click: () => this.options.onStopListening(),
+      },
+      {
+        label: wakeWord ? 'Wake word: On' : 'Wake word: Off',
+        click: () => this.options.onToggleWakeWord(),
       },
       { type: 'separator' },
       {

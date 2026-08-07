@@ -1,12 +1,15 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ConfigStore } from '../src/main/config.js';
 import {
   DEFAULT_DESKTOP_CONFIG,
   DEFAULT_VOICE_SETTINGS,
+  WAKE_WORD_DEFAULT_PHRASES,
   normalizeVoiceSettings,
+  normalizeWakePhrases,
+  normalizeWakeSensitivity,
 } from '../src/shared/desktop-api.js';
 
 function tempFile(name = 'config.json'): string {
@@ -60,6 +63,23 @@ describe('ConfigStore', () => {
     expect(leftovers).toContain('"closeToTray": true');
     expect(() => rmSync(dir, { recursive: true })).not.toThrow();
   });
+
+  it('notifies subscribers after every set with the merged config', async () => {
+    const file = tempFile();
+    const store = new ConfigStore({ filePath: file });
+    const listener = vi.fn();
+    store.onDidChange(listener);
+    await store.set({ closeToTray: true });
+    await store.set({ theme: 'dark' });
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenLastCalledWith(
+      expect.objectContaining({ theme: 'dark', closeToTray: true }),
+    );
+    const off = store.onDidChange(listener);
+    off();
+    await store.set({ theme: 'light' });
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('voice settings', () => {
@@ -96,5 +116,37 @@ describe('voice settings', () => {
 
   it('rejects voice settings that are missing required fields', () => {
     expect(normalizeVoiceSettings({ listeningMode: 'manual' })).toBeUndefined();
+  });
+
+  it('defaults wake-word fields for Stage 5 configs (backwards compatible)', () => {
+    const legacy = { ...DEFAULT_VOICE_SETTINGS } as Record<string, unknown>;
+    delete legacy.wakeWordEnabled;
+    delete legacy.wakeWordSensitivity;
+    delete legacy.wakeWordPhrases;
+    delete legacy.wakeWordFeedback;
+    const voice = normalizeVoiceSettings(legacy);
+    expect(voice).toMatchObject({
+      wakeWordEnabled: false,
+      wakeWordSensitivity: 0.6,
+      wakeWordPhrases: [...WAKE_WORD_DEFAULT_PHRASES],
+      wakeWordFeedback: true,
+    });
+  });
+
+  it('clamps wake sensitivity and sanitizes phrases', () => {
+    const voice = normalizeVoiceSettings({
+      ...DEFAULT_VOICE_SETTINGS,
+      wakeWordSensitivity: 9,
+      wakeWordPhrases: ['BRO', 'bro', '', 'hey bro', 42],
+    });
+    expect(voice?.wakeWordSensitivity).toBe(1);
+    expect(voice?.wakeWordPhrases).toEqual(['bro', 'hey bro']);
+  });
+
+  it('normalizes sensitivity and phrase helpers directly', () => {
+    expect(normalizeWakeSensitivity(-2)).toBe(0.2);
+    expect(normalizeWakeSensitivity(undefined)).toBe(0.6);
+    expect(normalizeWakePhrases('nope')).toEqual([...WAKE_WORD_DEFAULT_PHRASES]);
+    expect(normalizeWakePhrases([' wake   up '])).toEqual(['wake up']);
   });
 });

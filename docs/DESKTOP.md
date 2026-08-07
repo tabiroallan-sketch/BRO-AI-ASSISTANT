@@ -1,4 +1,4 @@
-# Desktop Shell (Stage 1–5)
+# Desktop Shell (Stage 1–6)
 
 BRO ships as a cross-platform desktop app: an Electron shell that bundles
 PostgreSQL, the Fastify API, and the Next.js web app into a single installable
@@ -67,7 +67,7 @@ Run from `desktop/`:
 | `npm run dev` | Dev mode: builds/runs root API (`:3000`) + web (`:3001`), launches Electron pointing at them. No embedded Postgres. |
 | `npm run build` | Type-check + compile main/preload to `dist/` (preload is bundled via esbuild). |
 | `npm run typecheck` | `tsc --noEmit` over `src` + `tests`. |
-| `npm test` | Vitest unit suite (105 tests, no external services). |
+| `npm test` | Vitest unit suite (109 tests, no external services). |
 | `npm run build:api` | Stage the API bundle into `resources/runtime/api` (compiles root, `npm ci --omit=dev`, Prisma generate). |
 | `npm run build:web` | Stage the Next.js standalone bundle into `resources/runtime/web` (`BRO_DESKTOP_BUILD=1`). |
 | `npm run test:e2e` | `scripts/run-e2e.mjs`: builds missing bundles, launches Electron in embedded mode, asserts bridge/config/IPC/services/health/overlay. |
@@ -206,6 +206,34 @@ voice pipeline (mic + VAD + listening engine live in `web/src/lib/voice/`):
   `commands.onListeningStart/Stop`; the web `useVoice` hook wires them into the
   shared listening engine.
 
+### Wake word (Stage 6)
+
+Hands-free wake-up lives mostly in `web/src/lib/voice/`; the shell adds the
+persisted contract, the tray toggle, and a cross-window leader election:
+
+- **Contract** (`shared/desktop-api.ts`): `DesktopConfig.voice` now includes
+  `wakeWordEnabled`, `wakeWordSensitivity` (0.2–1), `wakeWordPhrases`
+  (defaults `hey bro` / `bro` / `wake up`, max 5 phrases × 40 chars), and
+  `wakeWordFeedback`. `normalizeWakePhrases` lowercases/dedupes/collapses
+  whitespace; `normalizeWakeSensitivity` clamps. Stage 5 configs still load —
+  missing wake fields are backfilled with defaults.
+- **Tray + IPC**: the tray shows a `Wake word: On/Off` item that broadcasts
+  `wakeWordSet` to the renderer; the renderer persists it through the same
+  `config` IPC. `ConfigStore.onDidChange` (new) lets the main process sync the
+  tray label when the setting changes from the settings page.
+- **Detection** (`web/src/lib/voice/wake-detector.ts`): Web Speech keyword
+  spotting over continuous interim results; `findWakeMatch` enforces word
+  boundaries for short phrases ("bro" won't match "broccoli"); confidence
+  grows with stable snapshots and must clear `wakeThreshold(sensitivity)`.
+- **Energy pre-gate** (`wake-engine.ts`): the shared VAD watches the mic level
+  meter and starts/stops the recognizer around speech-like audio (1.5s grace
+  after silence), so the recognizer is idle during silence/TV; 4s re-arm
+  cooldown after a trigger; chime feedback via Web Audio.
+- **Single-owner guarantee** (`wake-owner.ts`): a BroadcastChannel leader
+  election (`bro.wake-owner.v1`, 1s heartbeats, 3s stale timeout) ensures only
+  one window arms the mic; `useVoice` runs the wake engine only when this
+  window owns it and the listener isn't already active.
+
 ### Dev mode
 
 `npm run dev` runs the root API and web app with tsx/Next watch, then launches
@@ -213,7 +241,7 @@ Electron with `BRO_DESKTOP_DEV=1`. The shell then uses `DEV_API_URL`/`DEV_WEB_UR
 instead of embedded services and the embedded Postgres, giving fast iteration
 with the real IPC surface.
 
-## Known limitations (Stage 1–5)
+## Known limitations (Stage 1–6)
 
 - Windows is the verified target; mac/Linux need the matching
   `@embedded-postgres/<platform>` package and NSIS is Windows-only (mac uses

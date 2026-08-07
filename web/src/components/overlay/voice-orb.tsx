@@ -8,13 +8,14 @@ import { cn } from '@/lib/utils';
 const ACTIVE_STATES = new Set(['listening', 'thinking', 'speaking', 'executing']);
 
 /**
- * Voice visualization (Stage 4, enhanced in Stage 5). While the engine is
+ * Voice visualization (Stage 4, enhanced in Stage 5/6). While the engine is
  * listening the orb breathes with the live mic level; thinking/speaking and
- * the other experiential states keep the state-driven pulse/glow.
+ * the other experiential states keep the state-driven pulse/glow. A one-shot
+ * ring flash marks a wake-word trigger (Stage 6).
  */
 export function VoiceOrb(): React.JSX.Element {
   const ai = useAiState((store) => store.state);
-  const { state: voiceState } = useVoice();
+  const { state: voiceState, wake } = useVoice();
   const reduceMotion = useReducedMotion();
 
   const active = ACTIVE_STATES.has(ai);
@@ -25,6 +26,15 @@ export function VoiceOrb(): React.JSX.Element {
 
   return (
     <div className="relative flex h-10 w-10 shrink-0 items-center justify-center" aria-hidden>
+      {wake.lastTriggerId > 0 && (
+        <motion.span
+          key={`wake-${wake.lastTriggerId}`}
+          className="absolute inset-0 rounded-full border-2 border-neon-cyan"
+          initial={{ scale: 1, opacity: 0.9 }}
+          animate={{ scale: 2.6, opacity: 0 }}
+          transition={{ duration: 0.7, ease: 'easeOut' }}
+        />
+      )}
       {active && !listening && !reduceMotion && (
         <>
           <motion.span

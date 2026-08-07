@@ -82,3 +82,13 @@ export async function saveVoiceSettings(patch: Partial<VoiceSettings>): Promise<
   }
   return next;
 }
+
+/**
+ * Applies voice settings that changed in another window (via the desktop
+ * config broadcast) without re-persisting them.
+ */
+export function applyExternalVoiceSettings(settings: VoiceSettings): VoiceSettings {
+  const next = normalizeVoiceSettings(settings) ?? currentVoiceSettings();
+  cached = next;
+  return next;
+}

@@ -1,13 +1,17 @@
 'use client';
 
 import * as React from 'react';
-import { AudioLines, Loader2 } from 'lucide-react';
+import { AudioLines, Loader2, Radar } from 'lucide-react';
 import { useVoice } from '@/hooks/use-voice';
 import {
   VOICE_MODE_LABELS,
   VOICE_MODES,
+  WAKE_WORD_MAX_PHRASES,
+  WAKE_WORD_MAX_SENSITIVITY,
+  WAKE_WORD_MIN_SENSITIVITY,
   getDesktopApi,
   normalizeVoiceSettings,
+  normalizeWakePhrases,
   type VoiceSettings,
 } from '@/lib/desktop';
 import { initVoiceSettings, saveVoiceSettings } from '@/lib/voice/settings';
@@ -118,9 +122,20 @@ export function VoiceSettingsCard(): React.JSX.Element {
       const next = await saveVoiceSettings(patch);
       setSettings(next);
       voice.engine.applySettings(next);
+      voice.wakeEngine.applySettings(next);
     } finally {
       setSaving(false);
     }
+  }
+
+  function commitPhrases(raw: string): void {
+    const phrases = normalizeWakePhrases(
+      raw
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    );
+    void update({ wakeWordPhrases: phrases });
   }
 
   function testVoice(): void {
@@ -135,6 +150,28 @@ export function VoiceSettingsCard(): React.JSX.Element {
   }
 
   const disabled = !settings;
+
+  const wake = voice.wake;
+  let wakeStatus = 'Wake word is off.';
+  if (!settings?.wakeWordEnabled) {
+    wakeStatus = 'Wake word is off.';
+  } else if (!wake.supported) {
+    wakeStatus = wake.error ?? 'Wake word needs a browser with speech recognition.';
+  } else if (!voice.wakeOwner) {
+    wakeStatus = 'Paused — another BRO window is listening.';
+  } else if (voice.isListening) {
+    wakeStatus = 'Listening…';
+  } else if (wake.phase === 'hearing') {
+    wakeStatus = 'Speech detected — listening for the wake phrase…';
+  } else if (wake.phase === 'armed') {
+    wakeStatus = `Listening for “${settings.wakeWordPhrases.join('”, “')}”…`;
+  } else if (wake.phase === 'triggered') {
+    wakeStatus = 'Wake word heard — listening.';
+  } else if (wake.phase === 'paused') {
+    wakeStatus = 'Paused.';
+  } else if (wake.phase === 'error') {
+    wakeStatus = wake.error ?? 'Wake word is unavailable.';
+  }
 
   return (
     <Card>
@@ -312,6 +349,96 @@ export function VoiceSettingsCard(): React.JSX.Element {
                 />
                 Auto gain control
               </label>
+            </div>
+
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-center justify-between gap-4">
+                {rowLabel(
+                  'Wake word',
+                  'Say "hey bro" hands-free to start listening. Runs in a single window; the mic stays active while armed.',
+                )}
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={settings.wakeWordEnabled}
+                    onChange={(event) => void update({ wakeWordEnabled: event.target.checked })}
+                    className="h-4 w-4 accent-neon-cyan"
+                  />
+                  Enabled
+                </label>
+              </div>
+
+              <div
+                className={cn(
+                  'space-y-3',
+                  !settings.wakeWordEnabled && 'pointer-events-none opacity-50',
+                )}
+              >
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-sm">
+                  <Radar className="h-4 w-4 shrink-0 text-neon-cyan" />
+                  <span>{wakeStatus}</span>
+                </div>
+
+                {(wake.phase === 'armed' || wake.phase === 'hearing') && (
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-neon-cyan transition-[width] duration-150"
+                      style={{ width: `${Math.max(6, wake.level * 100)}%` }}
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-4">
+                  {rowLabel(
+                    'Phrases',
+                    `Comma-separated, up to ${WAKE_WORD_MAX_PHRASES}; say any of these to wake BRO.`,
+                  )}
+                  <input
+                    type="text"
+                    defaultValue={settings.wakeWordPhrases.join(', ')}
+                    onBlur={(event) => commitPhrases(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        commitPhrases((event.target as HTMLInputElement).value);
+                      }
+                    }}
+                    className="h-9 w-48 rounded-md border border-border bg-muted px-2 py-1.5 text-sm outline-none focus-visible:ring-1 focus-visible:ring-neon-cyan"
+                    aria-label="Wake word phrases"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  {rowLabel(
+                    'Sensitivity',
+                    `${settings.wakeWordSensitivity.toFixed(2)} — higher needs a clearer, stabler match.`,
+                  )}
+                  <input
+                    type="range"
+                    min={WAKE_WORD_MIN_SENSITIVITY}
+                    max={WAKE_WORD_MAX_SENSITIVITY}
+                    step={0.05}
+                    value={settings.wakeWordSensitivity}
+                    onChange={(event) =>
+                      void update({ wakeWordSensitivity: Number(event.target.value) })
+                    }
+                    className="w-40 accent-neon-cyan"
+                    aria-label="Wake word sensitivity"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  {rowLabel('Audible feedback', 'Play a chime when the wake word is heard.')}
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={settings.wakeWordFeedback}
+                      onChange={(event) => void update({ wakeWordFeedback: event.target.checked })}
+                      className="h-4 w-4 accent-neon-cyan"
+                    />
+                    Chime
+                  </label>
+                </div>
+              </div>
             </div>
           </>
         )}

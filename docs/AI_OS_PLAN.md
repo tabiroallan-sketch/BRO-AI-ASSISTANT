@@ -38,10 +38,14 @@ rate, pitch, processing). Browser-first using Web Speech API + Web Audio with
 graceful fallback in Electron; no new API endpoints. Wake word + continuous
 always-on listening are deferred to Stage 6.
 
-## Stage 6 — Wake Word Engine
-"Hey BRO" / "BRO" / "Wake up". Confidence scoring, sensitivity slider, false
-positive reduction, pause/resume, CPU optimization, offline capability, visual
-+ audio feedback.
+## Stage 6 — Wake Word Engine ✅
+"Hey BRO" / "BRO" / "Wake up" hands-free wake-up via Web Speech keyword
+spotting on continuous interim results, gated by an energy VAD pre-gate so the
+recognizer only runs during speech-like audio. Confidence scoring from stable
+snapshots, sensitivity slider (0.2–1), editable phrases, chime feedback,
+tray toggle + IPC (`wakeWordSet`), and a BroadcastChannel leader election so
+only one window arms the mic at a time. Pluggable detector interface leaves
+room for an offline model later. No new API endpoints.
 
 ## Stage 7 — Conversation Engine
 Conversation state, follow-up questions, clarification, context retention,

@@ -10,6 +10,7 @@ import { DEFAULT_DESKTOP_CONFIG, type DesktopConfig } from '../shared/desktop-ap
 export class ConfigStore {
   private readonly filePath: string;
   private cache: DesktopConfig | null = null;
+  private readonly listeners = new Set<(config: DesktopConfig) => void>();
 
   constructor(options: { filePath: string }) {
     this.filePath = options.filePath;
@@ -17,6 +18,20 @@ export class ConfigStore {
 
   get path(): string {
     return this.filePath;
+  }
+
+  /** Fired after every successful `set` with the merged config. */
+  onDidChange(listener: (config: DesktopConfig) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private emit(config: DesktopConfig): void {
+    for (const listener of this.listeners) {
+      listener(config);
+    }
   }
 
   async get(): Promise<DesktopConfig> {
@@ -49,6 +64,7 @@ export class ConfigStore {
     writeFileSync(tempPath, serialized, 'utf8');
     renameSync(tempPath, this.filePath);
     this.cache = next;
+    this.emit(next);
     return next;
   }
 }

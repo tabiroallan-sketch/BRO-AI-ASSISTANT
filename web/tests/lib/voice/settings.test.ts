@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_VOICE_SETTINGS } from '@/lib/desktop';
+import {
+  DEFAULT_VOICE_SETTINGS,
+  WAKE_WORD_DEFAULT_PHRASES,
+  normalizeVoiceSettings,
+  normalizeWakePhrases,
+  normalizeWakeSensitivity,
+} from '@/lib/desktop';
 
 type SettingsModule = typeof import('@/lib/voice/settings');
 
@@ -97,5 +103,51 @@ describe('voice settings persistence', () => {
     stubLocalStore('{ not json');
     const { currentVoiceSettings } = await freshSettings();
     expect(currentVoiceSettings()).toEqual(DEFAULT_VOICE_SETTINGS);
+  });
+});
+
+describe('wake-word settings normalization', () => {
+  it('defaults wake-word fields when they are missing (Stage 5 configs keep loading)', () => {
+    const legacy = { ...DEFAULT_VOICE_SETTINGS };
+    delete (legacy as { wakeWordEnabled?: boolean }).wakeWordEnabled;
+    delete (legacy as { wakeWordSensitivity?: number }).wakeWordSensitivity;
+    delete (legacy as { wakeWordPhrases?: string[] }).wakeWordPhrases;
+    delete (legacy as { wakeWordFeedback?: boolean }).wakeWordFeedback;
+    legacy.ttsRate = 1.25;
+    const normalized = normalizeVoiceSettings(legacy);
+    expect(normalized).toMatchObject({
+      ttsRate: 1.25,
+      wakeWordEnabled: false,
+      wakeWordSensitivity: 0.6,
+      wakeWordPhrases: [...WAKE_WORD_DEFAULT_PHRASES],
+      wakeWordFeedback: true,
+    });
+  });
+
+  it('clamps wake sensitivity into 0.2..1', () => {
+    expect(normalizeWakeSensitivity(9)).toBe(1);
+    expect(normalizeWakeSensitivity(-3)).toBe(0.2);
+    expect(normalizeWakeSensitivity('x')).toBe(0.6);
+    expect(normalizeWakeSensitivity(0.6)).toBe(0.6);
+  });
+
+  it('sanitizes phrases to lowercase, deduplicated, bounded', () => {
+    expect(normalizeWakePhrases(['  HEY BRO ', 'bro', 'BRO', '', 'hey   bro'])).toEqual([
+      'hey bro',
+      'bro',
+    ]);
+    expect(normalizeWakePhrases([123, null])).toEqual([...WAKE_WORD_DEFAULT_PHRASES]);
+  });
+
+  it('saves wake settings through the same store', async () => {
+    const { setItem } = stubLocalStore();
+    const { currentVoiceSettings, saveVoiceSettings } = await freshSettings();
+    await saveVoiceSettings({ wakeWordEnabled: true, wakeWordSensitivity: 0.85 });
+    expect(currentVoiceSettings().wakeWordEnabled).toBe(true);
+    expect(currentVoiceSettings().wakeWordSensitivity).toBe(0.85);
+    expect(setItem).toHaveBeenCalledWith(
+      'bro.voice.settings.v1',
+      expect.stringContaining('"wakeWordEnabled":true'),
+    );
   });
 });

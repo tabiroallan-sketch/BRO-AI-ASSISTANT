@@ -75,6 +75,16 @@ Planned and aspirational work for BRO, roughly in order. Status key:
   and a settings card (mode, devices, TTS, processing). `DesktopConfig.voice`
   contract + 60s PTT safety timer; wake word / continuous always-on listening
   deferred to Stage 6. Includes vad/mic/engine/settings/speech tests.
+- ✅ **Wake word (Stage 6)** — hands-free "hey BRO" / "BRO" / "wake up"
+  wake-up: Web Speech keyword spotting over continuous interim results with an
+  energy VAD pre-gate (recognizer runs only during speech-like audio, 1.5s
+  grace after silence), snapshot-stability confidence scoring, sensitivity
+  slider (0.2–1 → 0.5–0.8 threshold), editable phrase list (word-boundary
+  matching so "bro" doesn't match "broccoli"), chime feedback, 4s re-arm
+  cooldown, tray toggle + `wakeWordSet` IPC + `ConfigStore.onDidChange`, and a
+  BroadcastChannel leader election (`bro.wake-owner.v1`) so only one window
+  owns the mic. Pluggable detector factory keeps an offline model a drop-in.
+  Includes wake-detector/wake-engine/wake-owner tests.
 - 🚧 Desktop hardening — Windows-only verified today (mac/Linux need their
   `@embedded-postgres` native package); auto-update needs a real GitHub
   repo/owner to publish to; per-platform crash reporting and code signing.
@@ -91,8 +101,8 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 
 - ✅ Backend test suite — 580 tests across unit, integration, performance,
   stress, and API suites (vitest + mocked Prisma/fetch).
-- ✅ Web unit tests — 149 tests for the Next.js app (libs, API client, stores,
-  UI logic, voice VAD/mic/engine/settings) via vitest.
+- ✅ Web unit tests — 190 tests for the Next.js app (libs, API client, stores,
+  UI logic, voice VAD/mic/engine/settings/wake-word) via vitest.
 - ✅ Web UI tests — 15 Playwright specs against the running stack (auth,
   chat, dashboard, integrations, admin-gating regression).
 - ✅ OAuth tests — Google flow (PKCE + signed state, callback handling, account

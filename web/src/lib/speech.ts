@@ -18,7 +18,7 @@ type RecognitionEvent = {
   }>;
 };
 
-type RecognitionLike = {
+export type RecognitionLike = {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
@@ -29,9 +29,9 @@ type RecognitionLike = {
   stop: () => void;
 };
 
-type RecognitionConstructor = new () => RecognitionLike;
+export type RecognitionConstructor = new () => RecognitionLike;
 
-function recognitionConstructor(): RecognitionConstructor | null {
+export function getSpeechRecognitionConstructor(): RecognitionConstructor | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -43,11 +43,11 @@ function recognitionConstructor(): RecognitionConstructor | null {
 }
 
 export function isSpeechRecognitionSupported(): boolean {
-  return recognitionConstructor() !== null;
+  return getSpeechRecognitionConstructor() !== null;
 }
 
 export function createSpeechRecognizer(options: SpeechRecognizerOptions): SpeechRecognizer | null {
-  const Ctor = recognitionConstructor();
+  const Ctor = getSpeechRecognitionConstructor();
   if (!Ctor) {
     return null;
   }

@@ -51,6 +51,7 @@ const api: DesktopApi = {
     onListeningStop: (callback) => subscribe(IPC.listeningStop, callback),
     onPushToTalkStart: (callback) => subscribe(IPC.pushToTalkStart, callback),
     onPushToTalkStop: (callback) => subscribe(IPC.pushToTalkStop, callback),
+    onWakeWordSet: (callback) => subscribe<boolean>(IPC.wakeWordSet, callback),
   },
   overlay: {
     toggle: () => void ipcRenderer.invoke(IPC.overlayToggle),

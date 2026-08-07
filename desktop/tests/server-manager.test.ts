@@ -3,6 +3,7 @@ import { ServerManager } from '../src/main/servers/server-manager.js';
 import type { ManagedProcess } from '../src/main/servers/process-manager.js';
 import type { ServiceState } from '../src/shared/desktop-api.js';
 import type { PostgresLike } from '../src/main/servers/postgres-server.js';
+import { DEFAULT_DESKTOP_CONFIG } from '../src/shared/desktop-api.js';
 import type { RuntimeSecrets } from '../src/main/servers/api-server.js';
 
 const secrets: RuntimeSecrets = {
@@ -79,14 +80,7 @@ function makeManager(onStart: (label: string) => void) {
     dataDir: '/data',
     postgresDir: '/pg',
     secrets,
-    getConfig: async () => ({
-      theme: 'system',
-      closeToTray: false,
-      launchAtLogin: false,
-      launchHidden: true,
-      autoCheckUpdates: true,
-      browserEnabled: false,
-    }),
+    getConfig: async () => ({ ...DEFAULT_DESKTOP_CONFIG }),
     nodeCommand: 'node',
     runAsNode: true,
     postgresFactory: () => postgres,

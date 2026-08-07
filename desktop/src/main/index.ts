@@ -1,7 +1,7 @@
 import { app, nativeTheme } from 'electron';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { IPC } from '../shared/desktop-api.js';
+import { IPC, type ShortcutAction } from '../shared/desktop-api.js';
 import { autostart } from './autostart.js';
 import { ConfigStore } from './config.js';
 import { ConnectivityMonitor } from './connectivity.js';
@@ -147,6 +147,27 @@ async function bootstrap(): Promise<void> {
   });
   mainWindow.create(webUrl);
 
+  // Global hotkeys (Stage 3): user-configurable, applied from persisted config.
+  let pttHoldTimer: ReturnType<typeof setTimeout> | null = null;
+  let pttActive = false;
+  const pushToTalkHold = (): void => {
+    // Electron fires global shortcuts repeatedly while a combo is held, so a
+    // short idle timer turns "held" into start + delayed stop. Stage 5
+    // replaces this with real key-release handling for the audio pipeline.
+    if (!pttActive) {
+      pttActive = true;
+      mainWindow?.send(IPC.pushToTalkStart);
+    }
+    if (pttHoldTimer) {
+      clearTimeout(pttHoldTimer);
+    }
+    pttHoldTimer = setTimeout(() => {
+      pttActive = false;
+      pttHoldTimer = null;
+      mainWindow?.send(IPC.pushToTalkStop);
+    }, 400);
+  };
+
   shortcuts = new ShortcutRegistry({
     onTriggered: (id) => {
       if (id === 'open-dashboard') {
@@ -159,13 +180,29 @@ async function bootstrap(): Promise<void> {
         mainWindow?.send(IPC.micToggle);
         return;
       }
+      if (id === 'open-overlay') {
+        mainWindow?.send(IPC.overlayToggle);
+        return;
+      }
+      if (id === 'hide-overlay') {
+        mainWindow?.send(IPC.overlayHide);
+        return;
+      }
+      if (id === 'push-to-talk') {
+        pushToTalkHold();
+        return;
+      }
       mainWindow?.send(IPC.shortcutsTriggered, id);
     },
   });
-  shortcuts.register([
-    { id: 'open-dashboard', accelerator: 'CommandOrControl+Shift+B' },
-    { id: 'toggle-mic', accelerator: 'CommandOrControl+Shift+M' },
-  ]);
+  const shortcutResults = shortcuts.configure(configState.shortcuts);
+  for (const [id, ok] of Object.entries(shortcutResults)) {
+    if (!ok) {
+      onLog(
+        `shortcut ${id} could not be registered (${configState.shortcuts[id as ShortcutAction]})`,
+      );
+    }
+  }
 
   updates = new UpdateManager({
     isEnabled: () => !DEV && app.isPackaged,
@@ -305,6 +342,9 @@ async function bootstrap(): Promise<void> {
         connectivity?.stop();
         heartbeat?.stop();
         tray?.destroy();
+        if (pttHoldTimer) {
+          clearTimeout(pttHoldTimer);
+        }
         // Shutdown is best-effort: never let a hung embedded service block quit.
         await Promise.race([
           manager?.stopAll() ?? Promise.resolve(),

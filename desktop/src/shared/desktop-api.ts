@@ -23,6 +23,8 @@ export type DesktopConfig = {
   autoCheckUpdates: boolean;
   /** Enable the assistant's browser-automation tools (bundled Chromium). */
   browserEnabled: boolean;
+  /** Global shortcut bindings, per action. */
+  shortcuts: ShortcutBindings;
 };
 
 export type UpdateState =
@@ -53,6 +55,51 @@ export type ServerReport = {
   message?: string;
 };
 
+export type ShortcutAction =
+  'open-overlay' | 'hide-overlay' | 'push-to-talk' | 'open-dashboard' | 'toggle-mic';
+
+/** Accelerator per action; an empty string disables the shortcut. */
+export type ShortcutBindings = Record<ShortcutAction, string>;
+
+export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
+  'open-overlay',
+  'hide-overlay',
+  'push-to-talk',
+  'open-dashboard',
+  'toggle-mic',
+];
+
+export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
+  'open-overlay': 'Open overlay',
+  'hide-overlay': 'Hide overlay',
+  'push-to-talk': 'Push-to-talk',
+  'open-dashboard': 'Open dashboard',
+  'toggle-mic': 'Toggle microphone',
+};
+
+/**
+ * Default global shortcuts. Push-to-talk uses Alt+P rather than a bare "Alt"
+ * because the OS refuses to hand a lone modifier to globalShortcut; Stage 5
+ * builds the real hold-to-talk pipeline on top of this trigger.
+ */
+export const DEFAULT_SHORTCUTS: ShortcutBindings = {
+  'open-overlay': 'CommandOrControl+Space',
+  'hide-overlay': 'Escape',
+  'push-to-talk': 'Alt+P',
+  'open-dashboard': 'CommandOrControl+Shift+B',
+  'toggle-mic': 'CommandOrControl+Shift+M',
+};
+
+export type ShortcutSetResult =
+  | { ok: true; bindings: ShortcutBindings }
+  | {
+      ok: false;
+      error: 'invalid' | 'taken' | 'failed';
+      message: string;
+      /** The action that already owns the accelerator (for 'taken'). */
+      action?: ShortcutAction;
+    };
+
 export type PickFileResult =
   { canceled: true } | { canceled: false; path: string; content: string };
 
@@ -69,8 +116,11 @@ export const IPC = {
   windowNavigate: 'bro:window:navigate',
   micToggle: 'bro:mic:toggle',
   overlayToggle: 'bro:overlay:toggle',
+  overlayHide: 'bro:overlay:hide',
   listeningStart: 'bro:listening:start',
   listeningStop: 'bro:listening:stop',
+  pushToTalkStart: 'bro:push-to-talk:start',
+  pushToTalkStop: 'bro:push-to-talk:stop',
   shellOpenExternal: 'bro:shell:open-external',
   shellOpenPath: 'bro:shell:open-path',
   dialogPickFile: 'bro:dialog:pick-file',
@@ -79,6 +129,9 @@ export const IPC = {
   shortcutsRegister: 'bro:shortcuts:register',
   shortcutsUnregister: 'bro:shortcuts:unregister',
   shortcutsTriggered: 'bro:shortcuts:triggered',
+  shortcutsGet: 'bro:shortcuts:get',
+  shortcutsSet: 'bro:shortcuts:set',
+  shortcutsChanged: 'bro:shortcuts:changed',
   autostartIsEnabled: 'bro:autostart:is-enabled',
   autostartSet: 'bro:autostart:set',
   updatesStatus: 'bro:updates:status',
@@ -122,12 +175,20 @@ export type DesktopApi = {
     onListeningStart(callback: () => void): () => void;
     /** Fired when the tray/user asks listening to stop (voice stage). */
     onListeningStop(callback: () => void): () => void;
+    /** Fired while push-to-talk is held (Stage 5 builds the audio capture). */
+    onPushToTalkStart(callback: () => void): () => void;
+    /** Fired when push-to-talk is released. */
+    onPushToTalkStop(callback: () => void): () => void;
   };
   overlay: {
     /** Ask the shell to toggle the overlay (Stage 4 implements the window). */
     toggle(): void;
+    /** Ask the shell to hide the overlay (Esc hotkey, Stage 4 implements it). */
+    hide(): void;
     /** Fired when the shell wants the overlay shown/hidden. */
     onToggle(callback: () => void): () => void;
+    /** Fired when the shell wants the overlay hidden. */
+    onHide(callback: () => void): () => void;
   };
   shell: {
     openExternal(url: string): Promise<void>;
@@ -144,6 +205,14 @@ export type DesktopApi = {
     register(id: string, accelerator: string): Promise<boolean>;
     unregister(id: string): Promise<void>;
     onTriggered(callback: (id: string) => void): () => void;
+    /** Current accelerator per action. */
+    get(): Promise<ShortcutBindings>;
+    /**
+     * Rebind an action. Returns `ok:false` with `error:'taken'` on an
+     * in-app conflict or `error:'failed'` when the OS refused registration.
+     */
+    set(action: ShortcutAction, accelerator: string): Promise<ShortcutSetResult>;
+    onChanged(callback: (bindings: ShortcutBindings) => void): () => void;
   };
   autostart: {
     isEnabled(): Promise<boolean>;
@@ -181,4 +250,5 @@ export const DEFAULT_DESKTOP_CONFIG: DesktopConfig = {
   launchHidden: true,
   autoCheckUpdates: true,
   browserEnabled: false,
+  shortcuts: { ...DEFAULT_SHORTCUTS },
 };

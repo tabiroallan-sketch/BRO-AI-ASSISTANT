@@ -5,6 +5,9 @@ import {
   type DesktopConfig,
   type PickFileResult,
   type ServerReport,
+  type ShortcutAction,
+  type ShortcutBindings,
+  type ShortcutSetResult,
   type ThemeSource,
   type UpdateStatus,
 } from '../shared/desktop-api.js';
@@ -45,10 +48,14 @@ const api: DesktopApi = {
     onMicToggle: (callback) => subscribe(IPC.micToggle, callback),
     onListeningStart: (callback) => subscribe(IPC.listeningStart, callback),
     onListeningStop: (callback) => subscribe(IPC.listeningStop, callback),
+    onPushToTalkStart: (callback) => subscribe(IPC.pushToTalkStart, callback),
+    onPushToTalkStop: (callback) => subscribe(IPC.pushToTalkStop, callback),
   },
   overlay: {
     toggle: () => void ipcRenderer.invoke(IPC.overlayToggle),
+    hide: () => void ipcRenderer.invoke(IPC.overlayHide),
     onToggle: (callback) => subscribe(IPC.overlayToggle, callback),
+    onHide: (callback) => subscribe(IPC.overlayHide, callback),
   },
   shell: {
     openExternal: (url) => ipcRenderer.invoke(IPC.shellOpenExternal, url),
@@ -65,6 +72,10 @@ const api: DesktopApi = {
     register: (id, accelerator) => ipcRenderer.invoke(IPC.shortcutsRegister, id, accelerator),
     unregister: (id) => ipcRenderer.invoke(IPC.shortcutsUnregister, id),
     onTriggered: (callback) => subscribe<string>(IPC.shortcutsTriggered, callback),
+    get: () => ipcRenderer.invoke(IPC.shortcutsGet) as Promise<ShortcutBindings>,
+    set: (action: ShortcutAction, accelerator: string) =>
+      ipcRenderer.invoke(IPC.shortcutsSet, action, accelerator) as Promise<ShortcutSetResult>,
+    onChanged: (callback) => subscribe<ShortcutBindings>(IPC.shortcutsChanged, callback),
   },
   autostart: {
     isEnabled: () => ipcRenderer.invoke(IPC.autostartIsEnabled),

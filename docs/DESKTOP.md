@@ -1,4 +1,4 @@
-# Desktop Shell (Stage 1–2)
+# Desktop Shell (Stage 1–3)
 
 BRO ships as a cross-platform desktop app: an Electron shell that bundles
 PostgreSQL, the Fastify API, and the Next.js web app into a single installable
@@ -26,7 +26,8 @@ desktop/
       window-state.ts            # persisted window bounds
       windows.ts                 # main window (bounds, tray-close, external nav)
       tray.ts / menus.ts         # tray icon + application menu
-      shortcuts.ts               # global shortcuts (Ctrl+Shift+B/M)
+      shortcuts.ts               # global hotkey registry (configurable, Stage 3)
+      shortcut-utils.ts          # accelerator normalize/validate/conflict checks
       notifications.ts           # OS notifications
       updater.ts                 # GitHub Releases auto-update
       crash.ts / native.ts       # crash handling, native theme watch
@@ -64,7 +65,7 @@ Run from `desktop/`:
 | `npm run dev` | Dev mode: builds/runs root API (`:3000`) + web (`:3001`), launches Electron pointing at them. No embedded Postgres. |
 | `npm run build` | Type-check + compile main/preload to `dist/` (preload is bundled via esbuild). |
 | `npm run typecheck` | `tsc --noEmit` over `src` + `tests`. |
-| `npm test` | Vitest unit suite (61 tests, no external services). |
+| `npm test` | Vitest unit suite (91 tests, no external services). |
 | `npm run build:api` | Stage the API bundle into `resources/runtime/api` (compiles root, `npm ci --omit=dev`, Prisma generate). |
 | `npm run build:web` | Stage the Next.js standalone bundle into `resources/runtime/web` (`BRO_DESKTOP_BUILD=1`). |
 | `npm run test:e2e` | `scripts/run-e2e.mjs`: builds missing bundles, launches Electron in embedded mode, asserts bridge/config/IPC/services/health. |
@@ -128,6 +129,33 @@ BRO stays alive when the window is hidden to the tray:
   restarted by the next heartbeat cycle; a dead Postgres is caught by the TCP
   liveness probe.
 
+### Global hotkeys (Stage 3)
+
+Five user-configurable shortcuts are registered with `globalShortcut` and fire
+even while the window is hidden:
+
+| Action | Default | Behavior |
+|---|---|---|
+| Open overlay | `Ctrl+Space` | Shows/toggles the overlay |
+| Hide overlay | `Esc` | Hides the overlay |
+| Push-to-talk | `Alt+P` | Signals push-to-talk hold (full pipeline in Stage 5) |
+| Open dashboard | `Ctrl+Shift+B` | Focuses the window on `/dashboard` |
+| Toggle microphone | `Ctrl+Shift+M` | Toggles listening state |
+
+- **Registry** (`main/shortcuts.ts`): binds actions to accelerators, re-registers
+  on change (unchanged accelerators are a no-op), and never crashes on a
+  malformed/OS-rejected accelerator. An empty accelerator disables an action.
+- **Validation** (`main/shortcut-utils.ts`): canonicalizes modifiers/key aliases
+  (`CommandOrControl`, `Cmd`/`Ctrl`, arrows), rejects modifier-only and
+  multi-key combos, and detects in-app conflicts between actions.
+- **Persistence + UI**: bindings live in `config.shortcuts`; the renderer
+  settings page (`web/src/components/shortcuts-card.tsx`) captures key
+  combinations, shows conflicts/invalid messages, supports per-action disable
+  and reset-all, and live-updates via `IPC.shortcutsChanged`.
+- **Design note**: Electron's `globalShortcut` throws when handed a bare
+  modifier (`Alt`/`Ctrl` alone), so push-to-talk defaults to `Alt+P` instead of
+  the originally-planned bare `Alt`.
+
 ### Dev mode
 
 `npm run dev` runs the root API and web app with tsx/Next watch, then launches
@@ -135,7 +163,7 @@ Electron with `BRO_DESKTOP_DEV=1`. The shell then uses `DEV_API_URL`/`DEV_WEB_UR
 instead of embedded services and the embedded Postgres, giving fast iteration
 with the real IPC surface.
 
-## Known limitations (Stage 1–2)
+## Known limitations (Stage 1–3)
 
 - Windows is the verified target; mac/Linux need the matching
   `@embedded-postgres/<platform>` package and NSIS is Windows-only (mac uses

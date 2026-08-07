@@ -37,6 +37,14 @@ Planned and aspirational work for BRO, roughly in order. Status key:
   notifications.
 - ✅ Google Calendar/Gmail/Drive/Docs/Sheets/Tasks/Contacts, GitHub, Slack, Discord, Notion, WhatsApp.
 - ✅ n8n workflow orchestration and browser automation.
+- ✅ **Computer control (Stage 9)** — OS actions with explicit confirmation for
+  destructive ones: launch/terminate apps, list processes, recursive file
+  search, rename/move, Recycle-Bin delete (never permanent), folder creation,
+  shell commands, npm/bun scripts, clipboard read/write, browser/VS
+  Code/terminal launchers, window focus/minimize. Twelve `system_*` tools;
+  destructive tools emit a `tool_confirmation` SSE event and pause until
+  approved via `GET /system/actions` + `POST /system/actions/:id/decision`.
+  Web: Computer dashboard page + in-chat Approve/Reject bubbles.
 - 🎯 More providers: Microsoft 365, Telegram, Linear, Jira, Todoist, Teams.
 - 🎯 Scheduled/triggered automations driven by n8n webhooks into BRO.
 - 🎯 Upload attachments into the sandbox from the web UI.
@@ -99,10 +107,11 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 
 ## Testing & Quality
 
-- ✅ Backend test suite — 580 tests across unit, integration, performance,
-  stress, and API suites (vitest + mocked Prisma/fetch).
-- ✅ Web unit tests — 190 tests for the Next.js app (libs, API client, stores,
-  UI logic, voice VAD/mic/engine/settings/wake-word) via vitest.
+- ✅ Backend test suite — 712 tests across unit, integration, performance,
+  stress, and API suites (vitest + mocked Prisma/fetch), including the
+  `src/system/` computer-control layer (43 unit + 12 route tests).
+- ✅ Web unit tests — 203 tests for the Next.js app (libs, API client, stores,
+  UI logic, voice VAD/mic/engine/settings/wake-word, computer client) via vitest.
 - ✅ Web UI tests — 15 Playwright specs against the running stack (auth,
   chat, dashboard, integrations, admin-gating regression).
 - ✅ OAuth tests — Google flow (PKCE + signed state, callback handling, account

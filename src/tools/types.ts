@@ -25,5 +25,12 @@ export interface Tool {
    * tools whose result needs no reformatting (e.g. current time).
    */
   answerFinal?: boolean;
+  /**
+   * When true, the chat route does not execute the tool directly. It creates a
+   * pending action and asks the user for explicit confirmation first (via the
+   * confirmation API). Use for destructive or privileged OS actions (e.g.
+   * deleting files, running shell commands).
+   */
+  requireConfirmation?: boolean;
   execute(args: Record<string, unknown>, context: ToolContext): Promise<string> | string;
 }

@@ -6,6 +6,7 @@ import { Bot, ExternalLink, History, Loader2, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatInput } from '@/components/chat/chat-input';
 import { MessageBubble } from '@/components/chat/message-bubble';
+import { ToolBubble } from '@/components/chat/tool-bubble';
 import { OverlayResizeHandle } from '@/components/overlay/overlay-resize-handle';
 import { VoiceOrb } from '@/components/overlay/voice-orb';
 import { ApiError } from '@/lib/api';
@@ -145,6 +146,22 @@ export default function OverlayPage(): React.JSX.Element {
             setActiveId(event.conversationId);
           } else if (event.type === 'tool_start') {
             setToolActivity((current) => [...current, { name: event.name, args: event.args }]);
+          } else if (event.type === 'tool_confirmation') {
+            setToolActivity((current) => {
+              const index = current.findLastIndex(
+                (activity) => activity.name === event.name && activity.confirmationId === undefined,
+              );
+              if (index === -1) {
+                return current;
+              }
+              const next = [...current];
+              next[index] = {
+                ...next[index]!,
+                confirmationId: event.id,
+                confirmationSummary: event.summary,
+              };
+              return next;
+            });
           } else if (event.type === 'tool_result') {
             setToolActivity((current) => {
               const index = current.findLastIndex(
@@ -168,13 +185,13 @@ export default function OverlayPage(): React.JSX.Element {
             setStreamingContent((current) => current + event.content);
           } else if (event.type === 'done') {
             setStreamingContent('');
-            setToolActivity([]);
+            setToolActivity((current) => current.filter((activity) => activity.confirmationId));
             setMessages((current) => [...current, event.message]);
             setStreaming(false);
             useAiState.getState().setState('idle');
           } else if (event.type === 'error') {
             setStreamingContent('');
-            setToolActivity([]);
+            setToolActivity((current) => current.filter((activity) => activity.confirmationId));
             setStreaming(false);
             setError(event.message);
             useAiState.getState().setState('error');
@@ -369,6 +386,15 @@ export default function OverlayPage(): React.JSX.Element {
             )}
             {streaming && streamingContent.length > 0 && (
               <MessageBubble role="ASSISTANT" content={streamingContent} streaming />
+            )}
+            {!streaming && toolActivity.some((activity) => activity.confirmationId) && (
+              <div className="flex flex-col gap-1.5">
+                {toolActivity
+                  .filter((activity) => activity.confirmationId)
+                  .map((activity, index) => (
+                    <ToolBubble key={`${activity.name}-${index}`} activity={activity} />
+                  ))}
+              </div>
             )}
             {streaming && streamingContent.length === 0 && toolActivity.length === 0 && (
               <div className="glass-chat flex w-fit items-center gap-1 rounded-2xl px-4 py-3">

@@ -135,6 +135,22 @@ export default function ChatPage(): React.JSX.Element {
             setActiveId(event.conversationId);
           } else if (event.type === 'tool_start') {
             setToolActivity((current) => [...current, { name: event.name, args: event.args }]);
+          } else if (event.type === 'tool_confirmation') {
+            setToolActivity((current) => {
+              const index = current.findLastIndex(
+                (activity) => activity.name === event.name && activity.confirmationId === undefined,
+              );
+              if (index === -1) {
+                return current;
+              }
+              const next = [...current];
+              next[index] = {
+                ...next[index]!,
+                confirmationId: event.id,
+                confirmationSummary: event.summary,
+              };
+              return next;
+            });
           } else if (event.type === 'tool_result') {
             setToolActivity((current) => {
               const index = current.findLastIndex(
@@ -158,13 +174,13 @@ export default function ChatPage(): React.JSX.Element {
             setStreamingContent((current) => current + event.content);
           } else if (event.type === 'done') {
             setStreamingContent('');
-            setToolActivity([]);
+            setToolActivity((current) => current.filter((activity) => activity.confirmationId));
             setMessages((current) => [...current, event.message]);
             setStreaming(false);
             void loadConversations();
           } else if (event.type === 'error') {
             setStreamingContent('');
-            setToolActivity([]);
+            setToolActivity((current) => current.filter((activity) => activity.confirmationId));
             setStreaming(false);
             setError(event.message);
             void loadConversations();
@@ -257,20 +273,23 @@ export default function ChatPage(): React.JSX.Element {
               ))}
             </AnimatePresence>
             <AnimatePresence initial={false}>
-              {streaming && streamingContent.length === 0 && toolActivity.length > 0 && (
-                <motion.div
-                  key="tool-activity"
-                  initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 6 }}
-                  transition={{ duration: 0.25 }}
-                  className="space-y-2"
-                >
-                  {toolActivity.map((activity, index) => (
-                    <ToolBubble key={`${activity.name}-${index}`} activity={activity} />
-                  ))}
-                </motion.div>
-              )}
+              {((streaming && streamingContent.length === 0) ||
+                (!streaming &&
+                  toolActivity.some((activity) => activity.confirmationId !== undefined))) &&
+                toolActivity.length > 0 && (
+                  <motion.div
+                    key="tool-activity"
+                    initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 6 }}
+                    transition={{ duration: 0.25 }}
+                    className="space-y-2"
+                  >
+                    {toolActivity.map((activity, index) => (
+                      <ToolBubble key={`${activity.name}-${index}`} activity={activity} />
+                    ))}
+                  </motion.div>
+                )}
               {streaming && streamingContent.length === 0 && toolActivity.length === 0 && (
                 <TypingIndicator key="typing" />
               )}

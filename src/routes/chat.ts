@@ -45,6 +45,7 @@ import {
   rankMemoriesForChat,
 } from '../memory-engine/index.js';
 import { persistMemoryExtraction, reinforceMemories } from '../lib/memory-store.js';
+import { createPendingAction, describeAction } from '../system/index.js';
 import { isProviderError } from '../integrations/errors.js';
 import { toUserMessage } from '../integrations/errors.js';
 import { getProvider } from '../integrations/providers.js';
@@ -302,6 +303,9 @@ type ToolExecutionResult = {
   connectProviderId?: string;
   connectLabel?: string;
   permissionDenied?: boolean;
+  /** Present when a requireConfirmation tool was held for user approval. */
+  confirmationId?: string;
+  confirmationSummary?: string;
 };
 
 async function executeTool(
@@ -312,6 +316,23 @@ async function executeTool(
   const tool = getTool(call.name);
   if (!tool) {
     return { ok: false, output: `Error: unknown tool "${call.name}"` };
+  }
+  if (tool.requireConfirmation) {
+    const pending = createPendingAction({
+      userId,
+      toolName: tool.name,
+      args,
+      summary: describeAction(tool.name, args),
+    });
+    return {
+      ok: true,
+      confirmationId: pending.id,
+      confirmationSummary: pending.summary,
+      output:
+        `This action needs the user's approval before it can run: ${pending.summary}. ` +
+        `Tell the user that an approval is pending and ask them to confirm it in the interface. ` +
+        `Do not call this tool again.`,
+    };
   }
   try {
     const output = validateToolOutput(await tool.execute(args, { userId }));
@@ -548,6 +569,15 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
             const args = parseToolArguments(toolCall.arguments);
             sendEvent(reply, { type: 'tool_start', name: toolCall.name, args });
             const result = await executeTool(toolCall, args, userId);
+            if (result.confirmationId) {
+              sendEvent(reply, {
+                type: 'tool_confirmation',
+                id: result.confirmationId,
+                name: toolCall.name,
+                args,
+                summary: result.confirmationSummary,
+              });
+            }
             sendEvent(reply, {
               type: 'tool_result',
               name: toolCall.name,

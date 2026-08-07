@@ -48,6 +48,29 @@ import {
 import { notifyTool } from './notify.js';
 import { pdfReaderTool } from './pdf-reader.js';
 import { registerTool } from './registry.js';
+import { systemRunCommandTool, systemRunScriptTool } from './system/command-tools.js';
+import {
+  systemCreateFolderTool,
+  systemDeleteTool,
+  systemRenameTool,
+  systemSearchFilesTool,
+} from './system/file-tools.js';
+import { systemReadClipboardTool, systemWriteClipboardTool } from './system/clipboard-tools.js';
+import {
+  systemOpenBrowserTool,
+  systemOpenEditorTool,
+  systemOpenTerminalTool,
+} from './system/launcher-tools.js';
+import {
+  systemLaunchAppTool,
+  systemListProcessesTool,
+  systemTerminateAppTool,
+} from './system/process-tools.js';
+import {
+  systemFocusWindowTool,
+  systemListWindowsTool,
+  systemMinimizeWindowTool,
+} from './system/window-tools.js';
 import {
   slackGetStatusTool,
   slackListChannelsTool,
@@ -81,6 +104,23 @@ registerTool(filesystemTool);
 registerTool(pdfReaderTool);
 registerTool(clipboardTool);
 registerTool(notifyTool);
+registerTool(systemLaunchAppTool);
+registerTool(systemTerminateAppTool);
+registerTool(systemListProcessesTool);
+registerTool(systemRunCommandTool);
+registerTool(systemRunScriptTool);
+registerTool(systemSearchFilesTool);
+registerTool(systemRenameTool);
+registerTool(systemDeleteTool);
+registerTool(systemCreateFolderTool);
+registerTool(systemOpenBrowserTool);
+registerTool(systemOpenEditorTool);
+registerTool(systemOpenTerminalTool);
+registerTool(systemReadClipboardTool);
+registerTool(systemWriteClipboardTool);
+registerTool(systemListWindowsTool);
+registerTool(systemFocusWindowTool);
+registerTool(systemMinimizeWindowTool);
 registerTool(calendarListEventsTool);
 registerTool(calendarCreateEventTool);
 registerTool(gmailSearchTool);

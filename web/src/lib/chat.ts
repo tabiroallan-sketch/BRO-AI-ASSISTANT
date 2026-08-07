@@ -37,11 +37,21 @@ export type ToolActivity = {
   connectProviderId?: string;
   connectLabel?: string;
   permissionDenied?: boolean;
+  /** Set when a tool needs explicit user approval before it can run. */
+  confirmationId?: string;
+  confirmationSummary?: string;
 };
 
 export type StreamEvent =
   | { type: 'start'; conversationId: string; messageId: string }
   | { type: 'tool_start'; name: string; args: Record<string, unknown> }
+  | {
+      type: 'tool_confirmation';
+      id: string;
+      name: string;
+      args: Record<string, unknown>;
+      summary: string;
+    }
   | {
       type: 'tool_result';
       name: string;

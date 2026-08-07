@@ -12,6 +12,7 @@ export async function toolRoutes(app: FastifyInstance): Promise<void> {
       tools: tools.map((tool) => ({
         name: tool.name,
         description: tool.description,
+        requireConfirmation: Boolean(tool.requireConfirmation),
       })),
     };
   });

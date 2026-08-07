@@ -18,7 +18,9 @@ export type AuditAction =
   | 'integration.revoke'
   | 'integration.permissions.update'
   | 'integration.primary.change'
-  | 'integration.auto_reconnect';
+  | 'integration.auto_reconnect'
+  | 'system.action.approve'
+  | 'system.action.reject';
 
 export type AuditEvent = {
   id: string;

@@ -81,11 +81,25 @@ applies decay-based vitality. API: enriched `GET/POST/PATCH /memories`
 editor, semantic search, kind filter, strength + recall readouts, digest card)
 and a new timeline view.
 
-## Stage 9 — Computer Control
+## Stage 9 — Computer Control ✅
 Launch/terminate apps, file search/folders/rename/move/delete (confirm), read
 PDFs, launch VS Code/browser/terminal, shell commands (confirm), bun/npm
 scripts, n8n workflows, clipboard, window management. Destructive actions
-require explicit confirmation.
+require explicit confirmation. Implemented as a `src/system/` layer over an
+injectable `Runner` (real `node:child_process` at runtime, fake in tests):
+launch/terminate/list processes, recursive file search (skips
+node_modules/.git/dist), rename, Recycle-Bin delete (Windows,
+`Microsoft.VisualBasic.FileIO` — never permanent), recursive folder creation,
+shell commands, npm/bun scripts, clipboard read/write, browser/VS Code/terminal
+launchers, and window focus/minimize. Twelve `system_*` tools registered;
+destructive ones (terminate app, rename, delete, create folder, run command,
+run script) carry `requireConfirmation` and pause as an approval request instead
+of running. Chat SSE emits a `tool_confirmation` event; pending actions are
+listed via `GET /api/v1/system/actions` and resolved via
+`POST /api/v1/system/actions/:id/decision` (approve executes the tool,
+reject audits without running; 404/403/409/expiry handled). Web: Computer page
+in the dashboard for approvals + capability listing, and in-chat Approve/Reject
+bubbles.
 
 ## Stage 10 — Automation Engine
 Task planner, tool selection, multi-step execution, retries, progress tracking,

@@ -93,6 +93,26 @@ describe('parseSseStream', () => {
     });
   });
 
+  it('passes through tool_confirmation fields', async () => {
+    const payload = sse([
+      {
+        type: 'tool_confirmation',
+        id: 'act-9',
+        name: 'system_delete',
+        args: { path: 'C:\\tmp\\notes.txt' },
+        summary: 'Delete C:\\tmp\\notes.txt (moves it to the Recycle Bin)',
+      },
+    ]);
+    const events = await collect(payload, 1024);
+    expect(events[0]).toEqual({
+      type: 'tool_confirmation',
+      id: 'act-9',
+      name: 'system_delete',
+      args: { path: 'C:\\tmp\\notes.txt' },
+      summary: 'Delete C:\\tmp\\notes.txt (moves it to the Recycle Bin)',
+    });
+  });
+
   it('handles an empty stream', async () => {
     const events = await collect('', 1024);
     expect(events).toEqual([]);

@@ -13,6 +13,7 @@ import { protectedMarketplaceRoutes } from './marketplace.js';
 import { memoryRoutes } from './memories.js';
 import { notificationRoutes } from './notifications.js';
 import { pluginRoutes } from './plugins.js';
+import { systemRoutes } from './system.js';
 import { toolRoutes } from './tools.js';
 
 export async function appRoutes(app: FastifyInstance): Promise<void> {
@@ -29,6 +30,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       await v1.register(protectedMarketplaceRoutes);
       await v1.register(llmRoutes);
       await v1.register(toolRoutes);
+      await v1.register(systemRoutes);
       await v1.register(automationRoutes);
       await v1.register(analyticsRoutes);
       await v1.register(logRoutes);

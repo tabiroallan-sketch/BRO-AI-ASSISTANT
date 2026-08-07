@@ -2,17 +2,22 @@
 
 import * as React from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { CheckCircle2, Loader2, PlugZap, Wrench, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, PlugZap, ShieldQuestion, Wrench, XCircle } from 'lucide-react';
 import type { ToolActivity } from '@/lib/chat';
 import { getIntegrationConnectUrl } from '@/lib/integrations';
+import { decideAction } from '@/lib/computer';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export function ToolBubble({ activity }: { activity: ToolActivity }): React.JSX.Element {
   const running = activity.ok === undefined;
   const needsConnect = activity.connectProviderId !== undefined;
+  const needsConfirmation = activity.confirmationId !== undefined;
   const [connecting, setConnecting] = React.useState(false);
   const [connectError, setConnectError] = React.useState<string | null>(null);
+  const [deciding, setDeciding] = React.useState<'approve' | 'reject' | null>(null);
+  const [decideError, setDecideError] = React.useState<string | null>(null);
+  const [decidedResult, setDecidedResult] = React.useState<string | null>(null);
   const reduceMotion = useReducedMotion();
 
   async function handleConnect(): Promise<void> {
@@ -31,6 +36,27 @@ export function ToolBubble({ activity }: { activity: ToolActivity }): React.JSX.
     }
   }
 
+  async function handleDecide(decision: 'approve' | 'reject'): Promise<void> {
+    const id = activity.confirmationId;
+    if (!id || deciding) {
+      return;
+    }
+    setDeciding(decision);
+    setDecideError(null);
+    try {
+      const action = await decideAction(id, decision);
+      setDecidedResult(action.result ?? (decision === 'approve' ? 'Approved.' : 'Rejected.'));
+    } catch (err) {
+      setDecideError(err instanceof Error ? err.message : 'Could not send your decision.');
+    } finally {
+      setDeciding(null);
+    }
+  }
+
+  const confirmText =
+    activity.confirmationSummary ??
+    `This action ${activity.name} needs your approval before it can run.`;
+
   return (
     <motion.div
       layout={reduceMotion ? false : true}
@@ -38,7 +64,7 @@ export function ToolBubble({ activity }: { activity: ToolActivity }): React.JSX.
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 6, scale: 0.97 }}
       transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className={cn('flex w-full gap-3', running && 'relative')}
+      className={cn('flex w-full gap-3', (running || needsConfirmation) && 'relative')}
     >
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-muted">
         <Wrench className="h-4 w-4" />
@@ -82,7 +108,49 @@ export function ToolBubble({ activity }: { activity: ToolActivity }): React.JSX.
         <code className="mt-1 block max-h-28 overflow-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">
           {JSON.stringify(activity.args)}
         </code>
-        {!running && activity.ok && activity.output !== '' && (
+        {needsConfirmation && !decidedResult && (
+          <div className="mt-3 space-y-2">
+            <p className="flex items-start gap-2 whitespace-pre-wrap text-xs text-muted-foreground">
+              <ShieldQuestion className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon-cyan" />
+              {confirmText}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void handleDecide('approve')}
+                disabled={deciding !== null}
+              >
+                {deciding === 'approve' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
+                Approve
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => void handleDecide('reject')}
+                disabled={deciding !== null}
+              >
+                {deciding === 'reject' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <XCircle className="h-3.5 w-3.5" />
+                )}
+                Reject
+              </Button>
+            </div>
+          </div>
+        )}
+        {decidedResult && (
+          <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{decidedResult}</p>
+        )}
+        {decideError && <p className="mt-2 text-xs text-destructive">{decideError}</p>}
+        {!needsConfirmation && !running && activity.ok && activity.output !== '' && (
           <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
             {activity.output}
           </p>

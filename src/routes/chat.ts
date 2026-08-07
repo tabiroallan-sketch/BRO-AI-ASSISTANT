@@ -29,7 +29,6 @@ import {
   formatContextBlock,
   needsClarification,
   parseConversationState,
-  rankMemories,
   recordPendingTask,
   serializeConversationState,
   shouldSummarize,
@@ -37,7 +36,15 @@ import {
   type ConversationIntent,
   type ConversationState,
   type HistoryEntry,
+  type MemoryFact,
 } from '../conversation-engine/index.js';
+import {
+  extractMemoriesFromConversation,
+  mergeExtraction,
+  parseMemoryRecord,
+  rankMemoriesForChat,
+} from '../memory-engine/index.js';
+import { persistMemoryExtraction, reinforceMemories } from '../lib/memory-store.js';
 import { isProviderError } from '../integrations/errors.js';
 import { toUserMessage } from '../integrations/errors.js';
 import { getProvider } from '../integrations/providers.js';
@@ -350,6 +357,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     if (!prisma) {
       throw new HttpError(503, 'Database not configured');
     }
+    const db = prisma;
 
     if (!anyProviderConfigured()) {
       throw new HttpError(503, 'AI is not configured');
@@ -419,24 +427,52 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     try {
       const memoriesPromise = prisma.memory.findMany({
         where: { userId },
+        orderBy: { updatedAt: 'desc' },
         take: MEMORY_LIMIT,
-        select: { key: true, value: true, category: true, updatedAt: true },
+        select: {
+          id: true,
+          key: true,
+          value: true,
+          category: true,
+          metadata: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
-      const [allMemories, integrationAwareness] = await Promise.all([
+      const [memoryRows, integrationAwareness] = await Promise.all([
         memoriesPromise,
         buildIntegrationAwareness(userId),
       ]);
+      const memoryRecords = memoryRows.map((row) => parseMemoryRecord(row));
 
       const recentHistory = [...historyEntries]
         .slice(-CONTEXT_RECENT_LIMIT)
         .map((entry) => entry.content)
         .join('\n');
-      const rankedMemories = rankMemories(allMemories, message, recentHistory, MEMORY_RANK_TOP_K);
-      const clarify = needsClarification(message, intent, allMemories.length > 0);
+      const now = new Date();
+      const rankedMemories = rankMemoriesForChat(
+        memoryRecords,
+        message,
+        recentHistory,
+        now,
+        MEMORY_RANK_TOP_K,
+      );
+      reinforceMemories(
+        db,
+        rankedMemories.map((record) => record.id),
+        now,
+      ).catch((error) => request.log.warn({ err: error }, 'Failed to reinforce recalled memories'));
+      const contextMemories: MemoryFact[] = rankedMemories.map((record) => ({
+        key: record.key,
+        value: record.value,
+        category: record.category,
+        updatedAt: record.updatedAt,
+      }));
+      const clarify = needsClarification(message, intent, memoryRecords.length > 0);
       const contextBlock = buildContextBlock(
         historyEntries,
         conversationState,
-        rankedMemories,
+        contextMemories,
         intent,
         clarify
           ? "The user's request is vague or incomplete. Ask one short clarifying question instead of guessing what they mean."
@@ -610,6 +646,26 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       persistConversationState(conversation, nextState).catch((error) =>
         request.log.warn({ err: error }, 'Failed to persist conversation state'),
       );
+
+      if (full.trim()) {
+        extractMemoriesFromConversation(
+          [
+            { role: 'USER', content: message },
+            { role: 'ASSISTANT', content: full },
+          ],
+          preferredProviderId,
+        )
+          .then(async (drafts) => {
+            if (drafts.length === 0) {
+              return;
+            }
+            const extraction = mergeExtraction(drafts, memoryRecords);
+            await persistMemoryExtraction(db, userId, extraction, memoryRecords);
+          })
+          .catch((error) =>
+            request.log.warn({ err: error }, 'Background memory extraction failed'),
+          );
+      }
 
       if (shouldSummarize(nextState, historyEntries.length)) {
         summarizeConversation(historyEntries, nextState, preferredProviderId)

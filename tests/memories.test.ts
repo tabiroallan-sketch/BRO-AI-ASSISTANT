@@ -36,6 +36,7 @@ type MockMemory = {
   key: string;
   value: string;
   category: string | null;
+  metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -123,6 +124,7 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
     key: string,
     value: string,
     category: string | null,
+    metadata: unknown = null,
   ): MockMemory {
     const now = new Date();
     return {
@@ -131,6 +133,7 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
       key,
       value,
       category,
+      metadata,
       createdAt: now,
       updatedAt: now,
     };
@@ -178,8 +181,14 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
     },
     async upsert(args: {
       where: { userId_key: { userId: string; key: string } };
-      create: { userId: string; key: string; value: string; category: string | null };
-      update: { value: string; category: string | null };
+      create: {
+        userId: string;
+        key: string;
+        value: string;
+        category: string | null;
+        metadata?: unknown;
+      };
+      update: { value: string; category: string | null; metadata?: unknown };
       select?: unknown;
     }): Promise<MockMemory> {
       const existing = await memoryModel.findUnique({ where: args.where });
@@ -188,6 +197,7 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
           ...existing,
           value: args.update.value,
           category: args.update.category,
+          ...(args.update.metadata !== undefined ? { metadata: args.update.metadata } : {}),
           updatedAt: new Date(),
         };
         memories.set(updated.id, updated);
@@ -198,13 +208,14 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
         args.create.key,
         args.create.value,
         args.create.category,
+        args.create.metadata,
       );
       memories.set(memory.id, memory);
       return memory;
     },
     async update(args: {
       where: { id: string };
-      data: { value?: string; category?: string | null };
+      data: { value?: string; category?: string | null; metadata?: unknown };
     }): Promise<MockMemory> {
       const memory = memories.get(args.where.id);
       if (!memory) {
@@ -214,6 +225,7 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
         ...memory,
         ...(args.data.value !== undefined ? { value: args.data.value } : {}),
         ...(args.data.category !== undefined ? { category: args.data.category } : {}),
+        ...(args.data.metadata !== undefined ? { metadata: args.data.metadata } : {}),
         updatedAt: new Date(),
       };
       memories.set(updated.id, updated);
@@ -441,5 +453,160 @@ describe('memories', () => {
       payload: { key: '', value: 'x' },
     });
     expect(response.statusCode).toBe(400);
+  });
+
+  it('stores kind, importance and tags in memory metadata', async () => {
+    const headers = await authHeaders('rich@example.com');
+
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/v1/memories',
+      headers,
+      payload: {
+        key: 'stage-8',
+        value: 'ship long term memory',
+        category: 'work',
+        kind: 'project',
+        importance: 9,
+        tags: ['bro', 'roadmap'],
+      },
+    });
+    expect(create.statusCode).toBe(201);
+    const { memory } = JSON.parse(create.body);
+    expect(memory.kind).toBe('project');
+    expect(memory.importance).toBe(9);
+    expect(memory.tags).toEqual(['bro', 'roadmap']);
+    expect(memory.accessCount).toBe(0);
+
+    const list = await app.inject({ method: 'GET', url: '/api/v1/memories', headers });
+    expect(JSON.parse(list.body).memories[0].kind).toBe('project');
+  });
+
+  it('patches kind, importance and tags while preserving recall stats', async () => {
+    const headers = await authHeaders('patch@example.com');
+
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/v1/memories',
+      headers,
+      payload: { key: 'client', value: 'Acme', kind: 'client', importance: 6 },
+    });
+    const { memory } = JSON.parse(create.body);
+
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/memories/${memory.id}`,
+      headers,
+      payload: { importance: 8, tags: ['acme', 'enterprise'] },
+    });
+    expect(patch.statusCode).toBe(200);
+    const patched = JSON.parse(patch.body).memory;
+    expect(patched.importance).toBe(8);
+    expect(patched.tags).toEqual(['acme', 'enterprise']);
+    expect(patched.kind).toBe('client');
+  });
+
+  it('searches memories by semantic relevance', async () => {
+    const headers = await authHeaders('search@example.com');
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/memories',
+      headers,
+      payload: { key: 'name', value: 'Alice' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/memories',
+      headers,
+      payload: { key: 'city', value: 'lives in Paris' },
+    });
+
+    const search = await app.inject({
+      method: 'GET',
+      url: '/api/v1/memories?q=where%20does%20she%20live',
+      headers,
+    });
+    expect(search.statusCode).toBe(200);
+    const { memories } = JSON.parse(search.body);
+    expect(memories[0].key).toBe('city');
+  });
+
+  it('filters memories by category and kind', async () => {
+    const headers = await authHeaders('filter@example.com');
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/memories',
+      headers,
+      payload: { key: 'project', value: 'stage 8', category: 'work', kind: 'project' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/memories',
+      headers,
+      payload: { key: 'name', value: 'Alice', category: 'personal' },
+    });
+
+    const byCategory = await app.inject({
+      method: 'GET',
+      url: '/api/v1/memories?category=personal',
+      headers,
+    });
+    const categoryResult = JSON.parse(byCategory.body).memories;
+    expect(categoryResult).toHaveLength(1);
+    expect(categoryResult[0].key).toBe('name');
+
+    const byKind = await app.inject({
+      method: 'GET',
+      url: '/api/v1/memories?kind=project',
+      headers,
+    });
+    const kindResult = JSON.parse(byKind.body).memories;
+    expect(kindResult).toHaveLength(1);
+    expect(kindResult[0].key).toBe('project');
+  });
+
+  it('returns a timeline grouped by recency', async () => {
+    const headers = await authHeaders('timeline@example.com');
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/memories',
+      headers,
+      payload: { key: 'note', value: 'a fresh memory' },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/memories/timeline',
+      headers,
+    });
+    expect(response.statusCode).toBe(200);
+    const { groups } = JSON.parse(response.body);
+    expect(Array.isArray(groups)).toBe(true);
+    expect(groups.length).toBeGreaterThan(0);
+    expect(groups[0].label).toBe('Today');
+    expect(groups[0].items[0].key).toBe('note');
+    expect(groups[0].items[0].activity).toBe('updated');
+  });
+
+  it('returns a null memory digest when no AI provider is configured', async () => {
+    const headers = await authHeaders('digest@example.com');
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/memories',
+      headers,
+      payload: { key: 'name', value: 'Alice' },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/memories/summary',
+      headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ summary: null });
   });
 });

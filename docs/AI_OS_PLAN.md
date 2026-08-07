@@ -64,10 +64,22 @@ messages, re-summarize every 10) with provider fallback and JSON output. No new
 API endpoints; chat UI shows suggestion chips and a "continued from an earlier
 part" banner.
 
-## Stage 8 — Long Term Memory
+## Stage 8 — Long Term Memory ✅
 Projects, goals, clients, preferences, coding style, meetings, ideas, tasks;
 relationships, importance, decay, semantic/vector search, summaries, editable
-memories, timeline, viewer, management UI.
+memories, timeline, viewer, management UI. Implemented as a pure
+`src/memory-engine/` module (heuristics unit-tested, no deps): 10 memory kinds,
+1–10 importance, tags + related-memory links, TF-IDF + char 3-gram cosine
+semantic search (typo tolerant, pure JS), 30-day half-life decay with vitality
+ranking, timeline bucketing, LLM digest summaries, and background LLM extraction
+of memories from chat turns. New fields persist in the existing
+`Memory.metadata` JSONB column (no schema migration); recall in chat is
+relevance- + history-ranked, reinforces `accessCount`/`lastAccessedAt`, and
+applies decay-based vitality. API: enriched `GET/POST/PATCH /memories`
+(`q`, `category`, `kind`), `GET /memories/timeline`, `GET /memories/summary`
+(15-min cached digest). Web: upgraded memories manager (kind/importance/tags
+editor, semantic search, kind filter, strength + recall readouts, digest card)
+and a new timeline view.
 
 ## Stage 9 — Computer Control
 Launch/terminate apps, file search/folders/rename/move/delete (confirm), read

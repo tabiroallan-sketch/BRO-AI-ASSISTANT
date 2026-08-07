@@ -54,6 +54,7 @@ type MockMemory = {
   key: string;
   value: string;
   category: string | null;
+  metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -91,422 +92,498 @@ type MockIntegration = {
   updatedAt: Date;
 };
 
-const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory, seedIntegration } =
-  vi.hoisted(() => {
-    const users = new Map<string, MockUser>();
-    const sessions = new Map<string, MockSession>();
-    const conversations = new Map<string, MockConversation>();
-    const messages = new Map<string, MockMessage>();
-    const memories = new Map<string, MockMemory>();
-    const aiConfigs = new Map<string, MockAiConfig>();
-    const integrations = new Map<string, MockIntegration>();
-    let lastMessageAt = 0;
+const {
+  mockPrisma,
+  resetDb,
+  registerAndLogin,
+  seedConversation,
+  seedMemory,
+  seedIntegration,
+  memoryUpsert,
+} = vi.hoisted(() => {
+  const users = new Map<string, MockUser>();
+  const sessions = new Map<string, MockSession>();
+  const conversations = new Map<string, MockConversation>();
+  const messages = new Map<string, MockMessage>();
+  const memories = new Map<string, MockMemory>();
+  const aiConfigs = new Map<string, MockAiConfig>();
+  const integrations = new Map<string, MockIntegration>();
+  let lastMessageAt = 0;
 
-    function nextCreatedAt(): Date {
-      const now = Date.now();
-      lastMessageAt = now > lastMessageAt ? now : lastMessageAt + 1;
-      return new Date(lastMessageAt);
-    }
+  function nextCreatedAt(): Date {
+    const now = Date.now();
+    lastMessageAt = now > lastMessageAt ? now : lastMessageAt + 1;
+    return new Date(lastMessageAt);
+  }
 
-    const userModel = {
-      async findUnique(args: { where: { id?: string; email?: string } }): Promise<MockUser | null> {
-        if (args.where.id !== undefined) {
-          return users.get(args.where.id) ?? null;
-        }
-        if (args.where.email !== undefined) {
-          for (const user of users.values()) {
-            if (user.email === args.where.email) {
-              return user;
-            }
+  const userModel = {
+    async findUnique(args: { where: { id?: string; email?: string } }): Promise<MockUser | null> {
+      if (args.where.id !== undefined) {
+        return users.get(args.where.id) ?? null;
+      }
+      if (args.where.email !== undefined) {
+        for (const user of users.values()) {
+          if (user.email === args.where.email) {
+            return user;
           }
         }
-        return null;
-      },
-    };
+      }
+      return null;
+    },
+  };
 
-    const sessionModel = {
-      async findFirst(args: {
-        where: { token: string };
-        include?: { user: { select?: unknown } };
-      }): Promise<(MockSession & { user: MockUser }) | null> {
-        for (const session of sessions.values()) {
-          if (session.token === args.where.token) {
-            const user = users.get(session.userId);
-            if (user) {
-              return { ...session, user };
-            }
+  const sessionModel = {
+    async findFirst(args: {
+      where: { token: string };
+      include?: { user: { select?: unknown } };
+    }): Promise<(MockSession & { user: MockUser }) | null> {
+      for (const session of sessions.values()) {
+        if (session.token === args.where.token) {
+          const user = users.get(session.userId);
+          if (user) {
+            return { ...session, user };
           }
         }
-        return null;
-      },
-    };
+      }
+      return null;
+    },
+  };
 
-    const conversationModel = {
-      async create(args: {
-        data: { userId: string; title: string | null };
-      }): Promise<MockConversation> {
-        const now = new Date();
-        const conversation: MockConversation = {
-          id: randomUUID(),
-          userId: args.data.userId,
-          title: args.data.title ?? null,
-          metadata: null,
-          createdAt: now,
-          updatedAt: now,
-        };
-        conversations.set(conversation.id, conversation);
-        return conversation;
-      },
-      async findFirst(args: {
-        where: { id?: string; userId?: string };
-        include?: { messages?: { orderBy?: unknown; select?: unknown } };
-      }): Promise<(MockConversation & { messages?: MockMessage[] }) | null> {
-        for (const conversation of conversations.values()) {
-          if (args.where.id && conversation.id !== args.where.id) {
-            continue;
-          }
-          if (args.where.userId && conversation.userId !== args.where.userId) {
-            continue;
-          }
-          if (args.include?.messages) {
-            const thread = [...messages.values()]
-              .filter((message) => message.conversationId === conversation.id)
-              .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-            return { ...conversation, messages: thread };
-          }
-          return conversation;
-        }
-        return null;
-      },
-      async update(args: {
-        where: { id: string };
-        data: { title?: string | null; updatedAt?: Date; metadata?: string | null };
-      }): Promise<MockConversation> {
-        const conversation = conversations.get(args.where.id);
-        if (!conversation) {
-          throw new Error('Conversation not found');
-        }
-        const updated: MockConversation = {
-          ...conversation,
-          ...(args.data.title !== undefined ? { title: args.data.title } : {}),
-          ...(args.data.updatedAt ? { updatedAt: args.data.updatedAt } : {}),
-          ...(args.data.metadata !== undefined ? { metadata: args.data.metadata } : {}),
-        };
-        conversations.set(updated.id, updated);
-        return updated;
-      },
-    };
-
-    const messageModel = {
-      async create(args: {
-        data: { conversationId: string; role: MockMessage['role']; content: string };
-      }): Promise<MockMessage> {
-        const message: MockMessage = {
-          id: randomUUID(),
-          conversationId: args.data.conversationId,
-          role: args.data.role,
-          content: args.data.content,
-          createdAt: nextCreatedAt(),
-        };
-        messages.set(message.id, message);
-        return message;
-      },
-      async findMany(args: {
-        where: { conversationId: string };
-        orderBy?: { createdAt?: 'asc' | 'desc' };
-        take?: number;
-        select?: unknown;
-      }): Promise<MockMessage[]> {
-        let list = [...messages.values()].filter(
-          (message) => message.conversationId === args.where.conversationId,
-        );
-        if (args.orderBy?.createdAt === 'asc') {
-          list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-        }
-        if (args.orderBy?.createdAt === 'desc') {
-          list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-        }
-        if (args.take !== undefined) {
-          list = list.slice(0, args.take);
-        }
-        return list;
-      },
-      async update(args: {
-        where: { id: string };
-        data: { metadata?: unknown };
-      }): Promise<MockMessage> {
-        const message = messages.get(args.where.id);
-        if (!message) {
-          throw new Error('Message not found');
-        }
-        const updated: MockMessage = {
-          ...message,
-          ...(args.data.metadata !== undefined ? { metadata: args.data.metadata } : {}),
-        };
-        messages.set(updated.id, updated);
-        return updated;
-      },
-    };
-
-    const memoryModel = {
-      async findMany(args: {
-        where: { userId: string };
-        take?: number;
-        select?: unknown;
-      }): Promise<MockMemory[]> {
-        let list = [...memories.values()].filter((memory) => memory.userId === args.where.userId);
-        if (args.take !== undefined) {
-          list = list.slice(0, args.take);
-        }
-        return list;
-      },
-    };
-
-    const aiConfigModel = {
-      async findUnique(args: { where: { id: string } }): Promise<MockAiConfig | null> {
-        return aiConfigs.get(args.where.id) ?? null;
-      },
-      async upsert(args: {
-        where: { id: string };
-        create: Partial<MockAiConfig>;
-        update: Partial<MockAiConfig>;
-      }): Promise<MockAiConfig> {
-        const existing = aiConfigs.get(args.where.id);
-        const merged: MockAiConfig = {
-          id: args.where.id,
-          providerId: null,
-          model: null,
-          apiKey: null,
-          lastStatus: null,
-          lastMessage: null,
-          lastLatencyMs: null,
-          lastTestedAt: null,
-          ...existing,
-          ...args.create,
-          ...args.update,
-        };
-        aiConfigs.set(merged.id, merged);
-        return merged;
-      },
-      async update(args: {
-        where: { id: string };
-        data: Partial<MockAiConfig>;
-      }): Promise<MockAiConfig> {
-        const existing = aiConfigs.get(args.where.id) ?? {
-          id: args.where.id,
-          providerId: null,
-          model: null,
-          apiKey: null,
-          lastStatus: null,
-          lastMessage: null,
-          lastLatencyMs: null,
-          lastTestedAt: null,
-        };
-        const merged: MockAiConfig = { ...existing, ...args.data, id: args.where.id };
-        aiConfigs.set(merged.id, merged);
-        return merged;
-      },
-    };
-
-    const integrationModel = {
-      async findFirst(args: {
-        where: { userId: string; provider: string; isPrimary?: boolean };
-      }): Promise<MockIntegration | null> {
-        const matches = [...integrations.values()].filter(
-          (integration) =>
-            integration.userId === args.where.userId &&
-            integration.provider === args.where.provider,
-        );
-        if (args.where.isPrimary) {
-          return matches.find((integration) => integration.isPrimary) ?? null;
-        }
-        return matches[0] ?? null;
-      },
-      async findUnique(args: {
-        where: {
-          userId_provider_accountKey: { userId: string; provider: string; accountKey: string };
-        };
-      }): Promise<MockIntegration | null> {
-        const { userId, provider, accountKey } = args.where.userId_provider_accountKey;
-        for (const integration of integrations.values()) {
-          if (
-            integration.userId === userId &&
-            integration.provider === provider &&
-            integration.accountKey === accountKey
-          ) {
-            return integration;
-          }
-        }
-        return null;
-      },
-      async findMany(args: { where: { userId: string } }): Promise<MockIntegration[]> {
-        return [...integrations.values()].filter(
-          (integration) => integration.userId === args.where.userId,
-        );
-      },
-    };
-
-    async function registerAndLogin(email: string): Promise<string> {
-      const now = new Date();
-      const user: MockUser = {
-        id: randomUUID(),
-        email,
-        passwordHash: 'hash',
-        displayName: null,
-        avatarUrl: null,
-        role: 'USER',
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      };
-      users.set(user.id, user);
-      sessions.set(randomUUID(), {
-        id: randomUUID(),
-        userId: user.id,
-        token: `token-${user.id}`,
-        expiresAt: new Date(Date.now() + 1000 * 60 * 60),
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      const { signAccessToken } = await import('../src/lib/jwt.js');
-      return signAccessToken(user.id, user.role);
-    }
-
-    async function seedConversation(
-      userId: string,
-      title: string | null,
-      metadata: unknown = null,
-    ): Promise<MockConversation> {
+  const conversationModel = {
+    async create(args: {
+      data: { userId: string; title: string | null };
+    }): Promise<MockConversation> {
       const now = new Date();
       const conversation: MockConversation = {
         id: randomUUID(),
-        userId,
-        title,
-        metadata,
+        userId: args.data.userId,
+        title: args.data.title ?? null,
+        metadata: null,
         createdAt: now,
         updatedAt: now,
       };
       conversations.set(conversation.id, conversation);
       return conversation;
-    }
+    },
+    async findFirst(args: {
+      where: { id?: string; userId?: string };
+      include?: { messages?: { orderBy?: unknown; select?: unknown } };
+    }): Promise<(MockConversation & { messages?: MockMessage[] }) | null> {
+      for (const conversation of conversations.values()) {
+        if (args.where.id && conversation.id !== args.where.id) {
+          continue;
+        }
+        if (args.where.userId && conversation.userId !== args.where.userId) {
+          continue;
+        }
+        if (args.include?.messages) {
+          const thread = [...messages.values()]
+            .filter((message) => message.conversationId === conversation.id)
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+          return { ...conversation, messages: thread };
+        }
+        return conversation;
+      }
+      return null;
+    },
+    async update(args: {
+      where: { id: string };
+      data: { title?: string | null; updatedAt?: Date; metadata?: string | null };
+    }): Promise<MockConversation> {
+      const conversation = conversations.get(args.where.id);
+      if (!conversation) {
+        throw new Error('Conversation not found');
+      }
+      const updated: MockConversation = {
+        ...conversation,
+        ...(args.data.title !== undefined ? { title: args.data.title } : {}),
+        ...(args.data.updatedAt ? { updatedAt: args.data.updatedAt } : {}),
+        ...(args.data.metadata !== undefined ? { metadata: args.data.metadata } : {}),
+      };
+      conversations.set(updated.id, updated);
+      return updated;
+    },
+  };
 
-    function seedMemory(userId: string, key: string, value: string): MockMemory {
+  const messageModel = {
+    async create(args: {
+      data: { conversationId: string; role: MockMessage['role']; content: string };
+    }): Promise<MockMessage> {
+      const message: MockMessage = {
+        id: randomUUID(),
+        conversationId: args.data.conversationId,
+        role: args.data.role,
+        content: args.data.content,
+        createdAt: nextCreatedAt(),
+      };
+      messages.set(message.id, message);
+      return message;
+    },
+    async findMany(args: {
+      where: { conversationId: string };
+      orderBy?: { createdAt?: 'asc' | 'desc' };
+      take?: number;
+      select?: unknown;
+    }): Promise<MockMessage[]> {
+      let list = [...messages.values()].filter(
+        (message) => message.conversationId === args.where.conversationId,
+      );
+      if (args.orderBy?.createdAt === 'asc') {
+        list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      }
+      if (args.orderBy?.createdAt === 'desc') {
+        list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      }
+      if (args.take !== undefined) {
+        list = list.slice(0, args.take);
+      }
+      return list;
+    },
+    async update(args: {
+      where: { id: string };
+      data: { metadata?: unknown };
+    }): Promise<MockMessage> {
+      const message = messages.get(args.where.id);
+      if (!message) {
+        throw new Error('Message not found');
+      }
+      const updated: MockMessage = {
+        ...message,
+        ...(args.data.metadata !== undefined ? { metadata: args.data.metadata } : {}),
+      };
+      messages.set(updated.id, updated);
+      return updated;
+    },
+  };
+
+  const memoryUpsert = vi.fn(
+    async (args: {
+      where: { userId_key: { userId: string; key: string } };
+      create: {
+        userId: string;
+        key: string;
+        value: string;
+        category: string | null;
+        metadata?: unknown;
+      };
+      update: { value: string; category: string | null; metadata?: unknown };
+    }): Promise<MockMemory> => {
       const now = new Date();
       const memory: MockMemory = {
         id: randomUUID(),
-        userId,
-        key,
-        value,
-        category: null,
+        userId: args.create.userId,
+        key: args.create.key,
+        value: args.create.value,
+        category: args.create.category,
+        metadata: args.create.metadata ?? null,
         createdAt: now,
         updatedAt: now,
       };
       memories.set(memory.id, memory);
       return memory;
-    }
-
-    function seedIntegration(
-      userId: string,
-      provider: string,
-      options: { accountName?: string | null; accessToken?: string } = {},
-    ): MockIntegration {
-      const now = new Date();
-      const integration: MockIntegration = {
-        id: randomUUID(),
-        userId,
-        provider,
-        accountKey: 'default',
-        accountName: options.accountName ?? null,
-        externalId: null,
-        accessToken: options.accessToken ?? 'test-token',
-        refreshToken: null,
-        refreshTokenHash: null,
-        tokenExpiresAt: null,
-        scopes: null,
-        metadata: null,
-        isPrimary: true,
-        lastRefreshedAt: null,
-        refreshCount: 0,
-        revokedAt: null,
-        revokedReason: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      integrations.set(integration.id, integration);
-      return integration;
-    }
-
-    return {
-      mockPrisma: {
-        user: userModel,
-        session: sessionModel,
-        conversation: conversationModel,
-        message: messageModel,
-        memory: memoryModel,
-        aiConfig: aiConfigModel,
-        integration: integrationModel,
-        $disconnect: async (): Promise<void> => undefined,
-      },
-      resetDb: (): void => {
-        users.clear();
-        sessions.clear();
-        conversations.clear();
-        messages.clear();
-        memories.clear();
-        aiConfigs.clear();
-        integrations.clear();
-        lastMessageAt = 0;
-      },
-      registerAndLogin,
-      seedConversation,
-      seedMemory,
-      seedIntegration,
-    };
-  });
-
-const { mockStreamChatCompletion, mockProvidersList, mockFallbackExecute } = vi.hoisted(() => {
-  const fakeProvider = {
-    descriptor: {
-      id: 'test',
-      label: 'Test',
-      requiresApiKey: false,
-      envVar: 'TEST_API_KEY',
-      defaultBaseUrl: '',
-      defaultModel: 'test-model',
     },
-    initialize: async (): Promise<void> => undefined,
-    streamChat: async function* (request: {
-      messages: unknown[];
-      tools?: unknown[];
-    }): AsyncGenerator<unknown> {
-      yield* mockStreamChatCompletion(request.messages, request.tools);
+  );
+
+  const memoryModel = {
+    async findMany(args: {
+      where?: { userId?: string };
+      orderBy?: { updatedAt?: 'asc' | 'desc' };
+      take?: number;
+      select?: unknown;
+    }): Promise<MockMemory[]> {
+      let list = [...memories.values()];
+      if (args.where?.userId) {
+        list = list.filter((memory) => memory.userId === args.where?.userId);
+      }
+      if (args.orderBy?.updatedAt === 'desc') {
+        list.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+      }
+      if (args.take !== undefined) {
+        list = list.slice(0, args.take);
+      }
+      return list;
+    },
+    async update(args: {
+      where: { id: string };
+      data: { value?: string; metadata?: unknown };
+    }): Promise<MockMemory> {
+      const memory = memories.get(args.where.id);
+      if (!memory) {
+        throw new Error('Memory not found');
+      }
+      const updated: MockMemory = {
+        ...memory,
+        ...(args.data.value !== undefined ? { value: args.data.value } : {}),
+        ...(args.data.metadata !== undefined ? { metadata: args.data.metadata } : {}),
+        updatedAt: new Date(),
+      };
+      memories.set(updated.id, updated);
+      return updated;
+    },
+    upsert: memoryUpsert,
+  };
+
+  const aiConfigModel = {
+    async findUnique(args: { where: { id: string } }): Promise<MockAiConfig | null> {
+      return aiConfigs.get(args.where.id) ?? null;
+    },
+    async upsert(args: {
+      where: { id: string };
+      create: Partial<MockAiConfig>;
+      update: Partial<MockAiConfig>;
+    }): Promise<MockAiConfig> {
+      const existing = aiConfigs.get(args.where.id);
+      const merged: MockAiConfig = {
+        id: args.where.id,
+        providerId: null,
+        model: null,
+        apiKey: null,
+        lastStatus: null,
+        lastMessage: null,
+        lastLatencyMs: null,
+        lastTestedAt: null,
+        ...existing,
+        ...args.create,
+        ...args.update,
+      };
+      aiConfigs.set(merged.id, merged);
+      return merged;
+    },
+    async update(args: {
+      where: { id: string };
+      data: Partial<MockAiConfig>;
+    }): Promise<MockAiConfig> {
+      const existing = aiConfigs.get(args.where.id) ?? {
+        id: args.where.id,
+        providerId: null,
+        model: null,
+        apiKey: null,
+        lastStatus: null,
+        lastMessage: null,
+        lastLatencyMs: null,
+        lastTestedAt: null,
+      };
+      const merged: MockAiConfig = { ...existing, ...args.data, id: args.where.id };
+      aiConfigs.set(merged.id, merged);
+      return merged;
     },
   };
+
+  const integrationModel = {
+    async findFirst(args: {
+      where: { userId: string; provider: string; isPrimary?: boolean };
+    }): Promise<MockIntegration | null> {
+      const matches = [...integrations.values()].filter(
+        (integration) =>
+          integration.userId === args.where.userId && integration.provider === args.where.provider,
+      );
+      if (args.where.isPrimary) {
+        return matches.find((integration) => integration.isPrimary) ?? null;
+      }
+      return matches[0] ?? null;
+    },
+    async findUnique(args: {
+      where: {
+        userId_provider_accountKey: { userId: string; provider: string; accountKey: string };
+      };
+    }): Promise<MockIntegration | null> {
+      const { userId, provider, accountKey } = args.where.userId_provider_accountKey;
+      for (const integration of integrations.values()) {
+        if (
+          integration.userId === userId &&
+          integration.provider === provider &&
+          integration.accountKey === accountKey
+        ) {
+          return integration;
+        }
+      }
+      return null;
+    },
+    async findMany(args: { where: { userId: string } }): Promise<MockIntegration[]> {
+      return [...integrations.values()].filter(
+        (integration) => integration.userId === args.where.userId,
+      );
+    },
+  };
+
+  async function registerAndLogin(email: string): Promise<string> {
+    const now = new Date();
+    const user: MockUser = {
+      id: randomUUID(),
+      email,
+      passwordHash: 'hash',
+      displayName: null,
+      avatarUrl: null,
+      role: 'USER',
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    users.set(user.id, user);
+    sessions.set(randomUUID(), {
+      id: randomUUID(),
+      userId: user.id,
+      token: `token-${user.id}`,
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const { signAccessToken } = await import('../src/lib/jwt.js');
+    return signAccessToken(user.id, user.role);
+  }
+
+  async function seedConversation(
+    userId: string,
+    title: string | null,
+    metadata: unknown = null,
+  ): Promise<MockConversation> {
+    const now = new Date();
+    const conversation: MockConversation = {
+      id: randomUUID(),
+      userId,
+      title,
+      metadata,
+      createdAt: now,
+      updatedAt: now,
+    };
+    conversations.set(conversation.id, conversation);
+    return conversation;
+  }
+
+  function seedMemory(
+    userId: string,
+    key: string,
+    value: string,
+    metadata: unknown = null,
+  ): MockMemory {
+    const now = new Date();
+    const memory: MockMemory = {
+      id: randomUUID(),
+      userId,
+      key,
+      value,
+      category: null,
+      metadata,
+      createdAt: now,
+      updatedAt: now,
+    };
+    memories.set(memory.id, memory);
+    return memory;
+  }
+
+  function seedIntegration(
+    userId: string,
+    provider: string,
+    options: { accountName?: string | null; accessToken?: string } = {},
+  ): MockIntegration {
+    const now = new Date();
+    const integration: MockIntegration = {
+      id: randomUUID(),
+      userId,
+      provider,
+      accountKey: 'default',
+      accountName: options.accountName ?? null,
+      externalId: null,
+      accessToken: options.accessToken ?? 'test-token',
+      refreshToken: null,
+      refreshTokenHash: null,
+      tokenExpiresAt: null,
+      scopes: null,
+      metadata: null,
+      isPrimary: true,
+      lastRefreshedAt: null,
+      refreshCount: 0,
+      revokedAt: null,
+      revokedReason: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    integrations.set(integration.id, integration);
+    return integration;
+  }
+
   return {
-    mockStreamChatCompletion: vi.fn<
-      (
-        messages: unknown[],
-        tools?: unknown[],
-      ) => AsyncGenerator<
-        | { type: 'content'; content: string }
-        | {
-            type: 'tool_calls';
-            toolCalls: {
-              id: string;
-              name: string;
-              arguments: string;
-              extraContent?: Record<string, unknown>;
-            }[];
-          }
-      >
-    >(),
-    mockProvidersList: vi.fn<() => unknown[]>(),
-    mockFallbackExecute: vi.fn(
-      async <T>(fn: (provider: typeof fakeProvider) => Promise<T>): Promise<T> => fn(fakeProvider),
-    ),
+    mockPrisma: {
+      user: userModel,
+      session: sessionModel,
+      conversation: conversationModel,
+      message: messageModel,
+      memory: memoryModel,
+      aiConfig: aiConfigModel,
+      integration: integrationModel,
+      $disconnect: async (): Promise<void> => undefined,
+    },
+    resetDb: (): void => {
+      users.clear();
+      sessions.clear();
+      conversations.clear();
+      messages.clear();
+      memories.clear();
+      aiConfigs.clear();
+      integrations.clear();
+      lastMessageAt = 0;
+    },
+    registerAndLogin,
+    seedConversation,
+    seedMemory,
+    seedIntegration,
+    memoryUpsert,
   };
 });
+
+const { mockStreamChatCompletion, mockCompleteChat, mockProvidersList, mockFallbackExecute } =
+  vi.hoisted(() => {
+    const fakeProvider = {
+      descriptor: {
+        id: 'test',
+        label: 'Test',
+        requiresApiKey: false,
+        envVar: 'TEST_API_KEY',
+        defaultBaseUrl: '',
+        defaultModel: 'test-model',
+      },
+      initialize: async (): Promise<void> => undefined,
+      streamChat: async function* (request: {
+        messages: unknown[];
+        tools?: unknown[];
+      }): AsyncGenerator<unknown> {
+        yield* mockStreamChatCompletion(request.messages, request.tools);
+      },
+      completeChat: async (request: {
+        messages: unknown[];
+        temperature?: number;
+        maxTokens?: number;
+      }): Promise<{ content: string }> => ({
+        content: mockCompleteChat(request),
+      }),
+    };
+    return {
+      mockStreamChatCompletion: vi.fn<
+        (
+          messages: unknown[],
+          tools?: unknown[],
+        ) => AsyncGenerator<
+          | { type: 'content'; content: string }
+          | {
+              type: 'tool_calls';
+              toolCalls: {
+                id: string;
+                name: string;
+                arguments: string;
+                extraContent?: Record<string, unknown>;
+              }[];
+            }
+        >
+      >(),
+      mockCompleteChat: vi.fn<(request: unknown) => string>(),
+      mockProvidersList: vi.fn<() => unknown[]>(),
+      mockFallbackExecute: vi.fn(
+        async <T>(fn: (provider: typeof fakeProvider) => Promise<T>): Promise<T> =>
+          fn(fakeProvider),
+      ),
+    };
+  });
 
 vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }));
 vi.mock('../src/llm/index.js', () => ({
@@ -548,6 +625,8 @@ describe('chat', () => {
     mockStreamChatCompletion.mockImplementation(async function* () {
       yield { type: 'content', content: 'Hello world' };
     });
+    mockCompleteChat.mockReset();
+    mockCompleteChat.mockReturnValue('{}');
   });
 
   async function authHeaders(email: string): Promise<{ authorization: string }> {
@@ -700,6 +779,60 @@ describe('chat', () => {
     expect(aiMessages[0]!.role).toBe('system');
     expect(aiMessages[0]!.content).toContain('- name: Alice');
     expect(aiMessages[0]!.content).toContain('- timezone: Europe/Berlin');
+  });
+
+  it('reinforces recalled memories after a chat turn', async () => {
+    const token = await registerAndLogin('reinforce@example.com');
+    const headers = { authorization: `Bearer ${token}` };
+    const { verifyAccessToken } = await import('../src/lib/jwt.js');
+    const payload = await verifyAccessToken(token);
+    seedMemory(payload.sub, 'name', 'Alice');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { message: 'Hi there' },
+    });
+    expect(response.statusCode).toBe(200);
+
+    await vi.waitFor(async () => {
+      const list = await app.inject({ method: 'GET', url: '/api/v1/memories', headers });
+      const { memories } = JSON.parse(list.body);
+      expect(memories[0].accessCount).toBe(1);
+      expect(memories[0].lastAccessedAt).toEqual(expect.any(String));
+    });
+  });
+
+  it('extracts memories from a chat turn in the background', async () => {
+    mockCompleteChat.mockReturnValue(
+      '{"memories":[{"key":"client","value":"works at Acme","category":"work","kind":"client","importance":7}]}',
+    );
+    const token = await registerAndLogin('extract@example.com');
+    const headers = { authorization: `Bearer ${token}` };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { message: 'I work at Acme now' },
+    });
+    expect(response.statusCode).toBe(200);
+
+    await vi.waitFor(() => expect(memoryUpsert).toHaveBeenCalled());
+    const upsertCall = memoryUpsert.mock.calls[0]![0] as {
+      create: {
+        key: string;
+        value: string;
+        category: string;
+        metadata: { kind: string; importance: number };
+      };
+    };
+    expect(upsertCall.create.key).toBe('client');
+    expect(upsertCall.create.value).toBe('works at Acme');
+    expect(upsertCall.create.category).toBe('work');
+    expect(upsertCall.create.metadata.kind).toBe('client');
+    expect(upsertCall.create.metadata.importance).toBe(7);
   });
 
   it('injects integration awareness into the system prompt', async () => {

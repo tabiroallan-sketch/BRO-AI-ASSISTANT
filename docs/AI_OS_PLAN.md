@@ -137,9 +137,21 @@ hours, important senders, custom endpoint monitors, run-now + status). 80 new
 backend tests + 16 new web tests. Migration:
 `20260807120000_add_proactive_notifications`.
 
-## Stage 12 — Desktop Dashboard
+## Stage 12 — Desktop Dashboard ✅
 Three operating modes (Desktop / Overlay / Voice) with instant switching,
-shared conversation history, memory, and settings.
+shared conversation history, memory, and settings. The desktop shell owns the
+active mode, persisted in the config file, and broadcasts it to every window
+(and the tray Mode submenu, with radio state). Switching orchestrates the
+windows: Desktop shows the main window on `/dashboard` and hides the overlay,
+Overlay summons the floating glass window, and Voice shows the main window on
+the new hands-free `/voice` surface. The web app got a shared mode store
+(zustand; localStorage in a plain browser, desktop bridge + IPC broadcast in
+Electron), a `ModeSwitcher` segmented control in the dashboard sidebar, the AI
+OS status bar and the overlay header, and the `/voice` page (immersive orb,
+wake-word status, mic toggle, streaming chat, TTS read-aloud). Mic permission
+for the Electron windows: the voice route overrides the global
+`Permissions-Policy` with `microphone=(self)`. 5 new desktop tests + 6 new web
+tests.
 
 ## Stage 13 — Mobile Companion
 Android + iOS apps: auth, secure pairing (QR), chat, voice, push notifications,

@@ -12,6 +12,18 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: '/voice',
+        headers: [
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
+        ],
+      },
+      {
+        source: '/voice/:path*',
+        headers: [
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
+        ],
+      },
+      {
         source: '/:path*',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },

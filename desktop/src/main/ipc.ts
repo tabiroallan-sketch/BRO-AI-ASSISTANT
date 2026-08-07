@@ -5,11 +5,14 @@ import {
   SHORTCUT_ACTIONS,
   SHORTCUT_LABELS,
   type DesktopConfig,
+  type OperatingMode,
   type ServerReport,
   type ShortcutAction,
   type ShortcutBindings,
   type ShortcutSetResult,
   type ThemeSource,
+  isOperatingMode,
+  normalizeOperatingMode,
   normalizeVoiceSettings,
 } from '../shared/desktop-api.js';
 import { ConfigStore } from './config.js';
@@ -46,12 +49,14 @@ export type IpcDependencies = {
   };
   network: { isOnline(): Promise<boolean> };
   theme: { getSource(): ThemeSource; setSource(source: ThemeSource): void };
+  mode: { get(): OperatingMode; set(mode: OperatingMode): OperatingMode };
   quit: () => void;
   getWindow: () => BrowserWindow | null;
 };
 
 const CONFIG_KEYS: ReadonlyArray<keyof DesktopConfig> = [
   'theme',
+  'mode',
   'closeToTray',
   'launchAtLogin',
   'launchHidden',
@@ -93,6 +98,10 @@ function sanitizeConfigPatch(raw: unknown): Partial<DesktopConfig> {
     if (key === 'theme') {
       if (value === 'system' || value === 'light' || value === 'dark') {
         patch.theme = value;
+      }
+    } else if (key === 'mode') {
+      if (isOperatingMode(value)) {
+        patch.mode = value;
       }
     } else if (key === 'shortcuts') {
       const shortcuts = sanitizeShortcuts(value);
@@ -251,6 +260,8 @@ export function registerIpc(deps: IpcDependencies): void {
 
   ipcMain.handle(IPC.networkStatus, () => deps.network.isOnline());
   ipcMain.handle(IPC.themeGet, () => deps.theme.getSource());
+  ipcMain.handle(IPC.modeGet, () => deps.mode.get());
+  ipcMain.handle(IPC.modeSet, (_event, raw: unknown) => deps.mode.set(normalizeOperatingMode(raw)));
 }
 
 export function watchNativeTheme(onChange: (shouldUseDark: boolean) => void): () => void {

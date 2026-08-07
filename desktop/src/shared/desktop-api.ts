@@ -10,6 +10,30 @@
 
 export type ThemeSource = 'system' | 'light' | 'dark';
 
+/**
+ * The operating mode of the BRO surface (Stage 12). One mode is active across
+ * every window at a time; switching is instant and shared history, memory and
+ * settings follow the user between modes because they are server-side.
+ */
+export type OperatingMode = 'desktop' | 'overlay' | 'voice';
+
+export const OPERATING_MODES: readonly OperatingMode[] = ['desktop', 'overlay', 'voice'];
+
+export const OPERATING_MODE_LABELS: Record<OperatingMode, string> = {
+  desktop: 'Desktop',
+  overlay: 'Overlay',
+  voice: 'Voice',
+};
+
+export function isOperatingMode(value: unknown): value is OperatingMode {
+  return typeof value === 'string' && (OPERATING_MODES as readonly string[]).includes(value);
+}
+
+/** Coerces an arbitrary persisted value into an OperatingMode (default: desktop). */
+export function normalizeOperatingMode(raw: unknown): OperatingMode {
+  return isOperatingMode(raw) ? raw : 'desktop';
+}
+
 /** Rectangle describing the overlay window's position and size. */
 export type OverlayBounds = {
   x: number;
@@ -190,6 +214,8 @@ export function normalizeVoiceSettings(raw: unknown): VoiceSettings | undefined 
 export type DesktopConfig = {
   /** Theme source applied to nativeTheme and synced to the web app. */
   theme: ThemeSource;
+  /** Active operating mode (desktop / overlay / voice), persisted across restarts. */
+  mode: OperatingMode;
   /** Closing the window hides it instead of quitting (tray keeps it alive). */
   closeToTray: boolean;
   /** Launch BRO automatically when the user logs into Windows. */
@@ -333,6 +359,9 @@ export const IPC = {
   networkChanged: 'bro:network:changed',
   themeGet: 'bro:theme:get',
   themeChanged: 'bro:theme:changed',
+  modeGet: 'bro:mode:get',
+  modeSet: 'bro:mode:set',
+  modeChanged: 'bro:mode:changed',
 } as const;
 
 /** The surface exposed to the renderer via contextBridge. */
@@ -355,6 +384,8 @@ export type DesktopApi = {
     show(): void;
     /** Ask the renderer to navigate (tray/hotkey shortcuts). */
     navigate(path: string): void;
+    /** Fired when the shell asks this window to navigate to a route. */
+    onNavigate(callback: (path: string) => void): () => void;
   };
   commands: {
     /** Fired when a push-to-talk style command is requested (voice stage). */
@@ -433,10 +464,18 @@ export type DesktopApi = {
     get(): Promise<ThemeSource>;
     onChange(callback: (shouldUseDark: boolean) => void): () => void;
   };
+  mode: {
+    get(): Promise<OperatingMode>;
+    /** Switch the active operating mode; the shell orchestrates the windows. */
+    set(mode: OperatingMode): Promise<OperatingMode>;
+    /** Fired when the mode changes (this window, another window, or the tray). */
+    onChanged(callback: (mode: OperatingMode) => void): () => void;
+  };
 };
 
 export const DEFAULT_DESKTOP_CONFIG: DesktopConfig = {
   theme: 'system',
+  mode: 'desktop',
   closeToTray: false,
   launchAtLogin: false,
   launchHidden: true,

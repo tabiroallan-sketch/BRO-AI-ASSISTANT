@@ -101,7 +101,7 @@ export function createLevelMeterLoop(
 }
 
 export function createMicManager(
-  devices: MediaDevicesLike | null = typeof navigator !== 'undefined'
+  devices: MediaDevicesLike | null = isMediaDevicesAvailable()
     ? (navigator.mediaDevices as unknown as MediaDevicesLike)
     : null,
 ): MicManager {

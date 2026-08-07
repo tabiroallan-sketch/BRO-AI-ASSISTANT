@@ -1,7 +1,13 @@
 import { app, nativeTheme } from 'electron';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { IPC, type ShortcutAction } from '../shared/desktop-api.js';
+import {
+  IPC,
+  type OperatingMode,
+  type ShortcutAction,
+  normalizeOperatingMode,
+} from '../shared/desktop-api.js';
+import { planModeTransition } from './operating-mode.js';
 import { autostart } from './autostart.js';
 import { ConfigStore } from './config.js';
 import { ConnectivityMonitor } from './connectivity.js';
@@ -33,9 +39,11 @@ let updates: UpdateManager | null = null;
 let connectivity: ConnectivityMonitor | null = null;
 let heartbeat: Heartbeat | null = null;
 let stopNativeTheme: (() => void) | null = null;
+let configStore: ConfigStore | null = null;
 let quitting = false;
 let listening = false;
 let wakeWordOn = false;
+let activeMode: OperatingMode = 'desktop';
 
 const setListening = (next: boolean): void => {
   listening = next;
@@ -46,6 +54,34 @@ const setListening = (next: boolean): void => {
 const broadcast = (channel: string, payload?: unknown): void => {
   mainWindow?.send(channel, payload);
   overlay?.send(channel, payload);
+};
+
+/**
+ * Switches the operating mode (Stage 12). Persists the choice, syncs every
+ * window, and orchestrates the windows so switching feels instant (see
+ * `planModeTransition`).
+ */
+const setMode = (raw: unknown): OperatingMode => {
+  const { mode, route, showMain, hideMain, showOverlay } = planModeTransition(raw);
+  activeMode = mode;
+  void configStore?.set({ mode });
+  tray?.setMode(mode);
+  broadcast(IPC.modeChanged, mode);
+  if (hideMain) {
+    mainWindow?.hide();
+  }
+  if (showOverlay) {
+    overlay?.show();
+  } else {
+    overlay?.hide();
+  }
+  if (showMain) {
+    mainWindow?.focus();
+    if (route) {
+      mainWindow?.send(IPC.windowNavigate, route);
+    }
+  }
+  return mode;
 };
 
 app.setName('BRO');
@@ -96,6 +132,7 @@ async function bootstrap(): Promise<void> {
   mkdirSync(logDir, { recursive: true });
 
   const config = new ConfigStore({ filePath: join(userData, 'config.json') });
+  configStore = config;
   const secrets = new SecretStore({ filePath: join(userData, 'secrets.json') }).ensure();
   const notifier = createNotifier();
   const native = createNativeBridge();
@@ -153,6 +190,15 @@ async function bootstrap(): Promise<void> {
     onQuitRequested: requestQuit,
   });
   mainWindow.create(webUrl);
+
+  // Restore the persisted operating mode on launch: voice opens straight on
+  // the hands-free surface, overlay mode can be reached from the tray.
+  activeMode = normalizeOperatingMode(configState.mode);
+  if (activeMode === 'voice') {
+    mainWindow.instance?.webContents.once('did-finish-load', () => {
+      mainWindow?.send(IPC.windowNavigate, '/voice');
+    });
+  }
 
   // Floating overlay (Stage 4): lazily created on first summon, hidden to the
   // tray when idle, bounds persisted to config on move/resize.
@@ -301,6 +347,10 @@ async function bootstrap(): Promise<void> {
       isOnline: () => Promise.resolve(connectivity ? connectivity.onlineState : true),
     },
     theme,
+    mode: {
+      get: () => activeMode,
+      set: setMode,
+    },
     quit: requestQuit,
     getWindow,
   });
@@ -322,6 +372,8 @@ async function bootstrap(): Promise<void> {
     iconPath: assetPath('tray.png') ?? assetPath('icon.png'),
     listening: () => listening,
     wakeWord: () => wakeWordOn,
+    mode: () => activeMode,
+    onSetMode: setMode,
     onOpenDashboard: () => {
       mainWindow?.focus();
       mainWindow?.send(IPC.windowNavigate, '/dashboard');

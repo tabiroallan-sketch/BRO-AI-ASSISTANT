@@ -3,6 +3,7 @@ import {
   IPC,
   type DesktopApi,
   type DesktopConfig,
+  type OperatingMode,
   type PickFileResult,
   type ServerReport,
   type ShortcutAction,
@@ -44,6 +45,7 @@ const api: DesktopApi = {
     onMaximized: (callback) => subscribe<boolean>(IPC.windowMaximized, callback),
     show: () => void ipcRenderer.invoke(IPC.windowShow),
     navigate: (path) => void ipcRenderer.invoke(IPC.windowNavigate, path),
+    onNavigate: (callback) => subscribe<string>(IPC.windowNavigate, callback),
   },
   commands: {
     onMicToggle: (callback) => subscribe(IPC.micToggle, callback),
@@ -106,6 +108,11 @@ const api: DesktopApi = {
   theme: {
     get: () => ipcRenderer.invoke(IPC.themeGet) as Promise<ThemeSource>,
     onChange: (callback) => subscribe<boolean>(IPC.themeChanged, callback),
+  },
+  mode: {
+    get: () => ipcRenderer.invoke(IPC.modeGet) as Promise<OperatingMode>,
+    set: (mode) => ipcRenderer.invoke(IPC.modeSet, mode) as Promise<OperatingMode>,
+    onChanged: (callback) => subscribe<OperatingMode>(IPC.modeChanged, callback),
   },
 };
 

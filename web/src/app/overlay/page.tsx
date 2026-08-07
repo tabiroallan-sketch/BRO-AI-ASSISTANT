@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ChatInput } from '@/components/chat/chat-input';
 import { MessageBubble } from '@/components/chat/message-bubble';
 import { ToolBubble } from '@/components/chat/tool-bubble';
+import { ModeSwitcher } from '@/components/mode-switcher';
 import { OverlayResizeHandle } from '@/components/overlay/overlay-resize-handle';
 import { VoiceOrb } from '@/components/overlay/voice-orb';
 import { ApiError } from '@/lib/api';
@@ -259,6 +260,7 @@ export default function OverlayPage(): React.JSX.Element {
             className="flex items-center gap-1"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
+            <ModeSwitcher compact />
             <Button
               type="button"
               size="icon"

@@ -9,7 +9,7 @@ import { Navbar } from '@/components/navbar';
  * Routes that render inside the AI OS chrome (status bar, background,
  * shell) instead of the legacy marketing navbar + footer.
  */
-const OS_ROUTES = ['/dashboard', '/overlay'];
+const OS_ROUTES = ['/dashboard', '/overlay', '/voice'];
 
 export function AppFrame({ children }: { children: React.ReactNode }): React.JSX.Element {
   const pathname = usePathname();

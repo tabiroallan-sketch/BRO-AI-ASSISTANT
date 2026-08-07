@@ -1,4 +1,9 @@
 import { app, Menu, Tray, nativeImage, type MenuItemConstructorOptions } from 'electron';
+import {
+  OPERATING_MODE_LABELS,
+  OPERATING_MODES,
+  type OperatingMode,
+} from '../shared/desktop-api.js';
 import type { MainWindow } from './windows.js';
 
 export type TrayOptions = {
@@ -8,11 +13,14 @@ export type TrayOptions = {
   onStartListening: () => void;
   onStopListening: () => void;
   onToggleWakeWord: () => void;
+  onSetMode: (mode: OperatingMode) => void;
   onQuit: () => void;
   /** Current listening state, read when the menu is rebuilt. */
   listening: () => boolean;
   /** Current wake-word state, read when the menu is rebuilt. */
   wakeWord: () => boolean;
+  /** Current operating mode, read when the menu is rebuilt. */
+  mode: () => OperatingMode;
 };
 
 /**
@@ -53,6 +61,12 @@ export class AppTray {
     this.rebuild();
   }
 
+  /** Rebuilds the context menu so it reflects the current operating mode. */
+  setMode(mode: OperatingMode): void {
+    this.options.mode = () => mode;
+    this.rebuild();
+  }
+
   destroy(): void {
     this.tray?.destroy();
     this.tray = null;
@@ -78,6 +92,15 @@ export class AppTray {
       {
         label: 'Open Overlay',
         click: () => this.options.onOpenOverlay(),
+      },
+      {
+        label: 'Mode',
+        submenu: OPERATING_MODES.map((mode) => ({
+          label: OPERATING_MODE_LABELS[mode],
+          type: 'radio' as const,
+          checked: this.options.mode() === mode,
+          click: () => this.options.onSetMode(mode),
+        })),
       },
       { type: 'separator' },
       {

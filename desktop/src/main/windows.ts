@@ -148,6 +148,13 @@ export class MainWindow {
     return this.window !== null && this.window.isVisible();
   }
 
+  /** Hides the main window (used when the overlay becomes the active mode). */
+  hide(): void {
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.hide();
+    }
+  }
+
   minimize(): void {
     this.window?.minimize();
   }

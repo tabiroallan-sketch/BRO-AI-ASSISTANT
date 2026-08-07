@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { ModeSwitcher } from '@/components/mode-switcher';
 
 const items: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
@@ -92,6 +93,7 @@ export function DashboardSidebar(): React.JSX.Element {
           </Link>
         );
       })}
+      <ModeSwitcher className="mx-auto md:mt-auto md:flex-col md:rounded-2xl" />
     </nav>
   );
 }

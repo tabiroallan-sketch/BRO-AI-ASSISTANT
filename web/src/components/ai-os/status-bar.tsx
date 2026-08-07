@@ -15,6 +15,7 @@ import {
 import { NotificationsMenu } from '@/components/notifications-menu';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
+import { ModeSwitcher } from '@/components/mode-switcher';
 import { useAiState, AI_STATE_COLORS, AI_STATE_LABELS } from '@/lib/ai-state';
 import { useAuth } from '@/lib/auth';
 import type { MicMode } from '@/lib/audio-engine';
@@ -108,6 +109,7 @@ export function StatusBar({ micMode }: { micMode: MicMode }): React.JSX.Element 
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <ModeSwitcher className="mr-1 hidden sm:inline-flex" />
           <span className="hidden rounded border border-white/10 bg-foreground/5 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline">
             Ctrl K
           </span>

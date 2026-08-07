@@ -67,6 +67,17 @@ Planned and aspirational work for BRO, roughly in order. Status key:
   `PROACTIVE_MONITOR_INTERVAL_MS`). Web: dashboard Notifications center and a
   Proactive settings page (sources, thresholds, quiet hours, important
   senders, custom monitors, run-now + status).
+- ✅ **Desktop Dashboard (Stage 12)** — three operating modes (Desktop /
+  Overlay / Voice) with instant switching and shared conversation history,
+  memory, and settings. The desktop shell owns the active mode (persisted in
+  config, broadcast to every window, tray Mode submenu with radio state) and
+  orchestrates the windows: Desktop shows the main window on `/dashboard`,
+  Overlay summons the floating glass window, Voice shows the new hands-free
+  `/voice` surface (immersive orb, wake-word status, mic toggle, streaming
+  chat, TTS read-aloud). Web: shared zustand mode store (localStorage in a
+  plain browser, IPC broadcast in Electron) + `ModeSwitcher` in the sidebar,
+  status bar, and overlay header; `/voice` route grants `microphone=(self)` in
+  the Permissions-Policy override.
 - 🎯 More providers: Microsoft 365, Telegram, Linear, Jira, Todoist, Teams.
 - 🎯 Scheduled/triggered automations driven by n8n webhooks into BRO.
 - 🎯 Upload attachments into the sandbox from the web UI.

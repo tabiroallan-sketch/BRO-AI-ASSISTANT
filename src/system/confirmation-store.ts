@@ -13,6 +13,9 @@ export type PendingAction = {
   status: ConfirmationStatus;
   decidedAt?: string;
   result?: string;
+  /** Link back to the automation task/step that paused on this approval, when applicable. */
+  taskId?: string;
+  stepId?: string;
 };
 
 export type PendingActionInput = {
@@ -20,6 +23,8 @@ export type PendingActionInput = {
   toolName: string;
   args: Record<string, unknown>;
   summary: string;
+  taskId?: string;
+  stepId?: string;
 };
 
 export const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
@@ -53,6 +58,8 @@ export function createPendingAction(input: PendingActionInput): PendingAction {
     createdAt: new Date(now).toISOString(),
     expiresAt: new Date(now + CONFIRMATION_TTL_MS).toISOString(),
     status: 'pending',
+    ...(input.taskId ? { taskId: input.taskId } : {}),
+    ...(input.stepId ? { stepId: input.stepId } : {}),
   };
   actions.set(action.id, action);
   order.set(action.id, nextOrder);

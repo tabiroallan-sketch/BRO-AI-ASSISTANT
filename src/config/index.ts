@@ -101,4 +101,6 @@ export const config = {
     10,
   ),
   autoReconnectEnabled: process.env.INTEGRATIONS_AUTO_RECONNECT_ENABLED !== 'false',
+  automationMaxTasksPerUser: parseInt(process.env.AUTOMATION_MAX_TASKS_PER_USER ?? '100', 10),
+  automationQueueConcurrency: parseInt(process.env.AUTOMATION_QUEUE_CONCURRENCY ?? '1', 10),
 } as const;

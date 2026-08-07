@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { automationEngine } from '../automation/index.js';
 import { HttpError, requireAuth } from '../lib/auth.js';
 import { recordAudit } from '../lib/audit.js';
 import { getTool } from '../tools/registry.js';
@@ -84,6 +85,13 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
         target: decided.toolName,
         detail: decided.summary,
       });
+      if (decided.taskId && decided.stepId) {
+        automationEngine.continueAfterDecision({
+          taskId: decided.taskId,
+          stepId: decided.stepId,
+          decision: 'reject',
+        });
+      }
       return { action: serializeAction(decided) };
     }
 
@@ -103,6 +111,14 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
         target: decided.toolName,
         detail: `${decided.summary} — failed: ${message}`,
       });
+      if (decided.taskId && decided.stepId) {
+        automationEngine.continueAfterDecision({
+          taskId: decided.taskId,
+          stepId: decided.stepId,
+          decision: 'approve',
+          output: `Error: ${message}`,
+        });
+      }
       return reply
         .status(200)
         .send({ action: serializeAction({ ...decided, result: `Error: ${message}` }) });
@@ -114,6 +130,14 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
       target: decided.toolName,
       detail: `${decided.summary} — ${result}`,
     });
+    if (decided.taskId && decided.stepId) {
+      automationEngine.continueAfterDecision({
+        taskId: decided.taskId,
+        stepId: decided.stepId,
+        decision: 'approve',
+        output: result,
+      });
+    }
     return { action: serializeAction(updated) };
   });
 }

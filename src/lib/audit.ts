@@ -20,7 +20,12 @@ export type AuditAction =
   | 'integration.primary.change'
   | 'integration.auto_reconnect'
   | 'system.action.approve'
-  | 'system.action.reject';
+  | 'system.action.reject'
+  | 'automation.task.create'
+  | 'automation.task.cancel'
+  | 'automation.task.retry'
+  | 'automation.task.complete'
+  | 'automation.task.failed';
 
 export type AuditEvent = {
   id: string;

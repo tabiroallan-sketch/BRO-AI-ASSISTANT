@@ -34,12 +34,12 @@ const items: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: '/dashboard/health', label: 'Health', icon: Activity },
   { href: '/dashboard/permissions', label: 'Permissions', icon: KeyRound },
   { href: '/dashboard/tools', label: 'Installed tools', icon: Wrench },
+  { href: '/dashboard/automations', label: 'Automations', icon: Workflow },
   { href: '/dashboard/plugins', label: 'Plugins', icon: Box },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
 const adminItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
-  { href: '/dashboard/automations', label: 'Automations', icon: Workflow },
   { href: '/dashboard/logs', label: 'Logs', icon: ScrollText },
   { href: '/dashboard/admin', label: 'Admin', icon: ShieldCheck },
 ];

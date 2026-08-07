@@ -101,9 +101,20 @@ reject audits without running; 404/403/409/expiry handled). Web: Computer page
 in the dashboard for approvals + capability listing, and in-chat Approve/Reject
 bubbles.
 
-## Stage 10 — Automation Engine
-Task planner, tool selection, multi-step execution, retries, progress tracking,
-execution logs, background tasks, task queue, cancellation.
+## Stage 10 — Automation Engine ✅
+In-memory task planner, tool selection, multi-step execution, retries, progress
+tracking, execution logs, FIFO task queue, cancellation/retry, and real-time
+progress over SSE. Tasks are per-user (cap 100, oldest terminal tasks evicted);
+completion uses the existing notification store (no new Prisma model). The
+planner prefers an LLM (JSON `{"steps":[...]}` validated against the tool
+registry) and falls back to heuristic keyword recipes (launch/search/terminate/
+run command/weather/time/web search/notify/list processes). Steps that require
+explicit approval pause the task (`awaiting_confirmation`) and resume or fail
+via the existing `POST /system/actions/:id/decision` flow. Exposed through
+`POST/GET /automations/tasks`, `GET /:id`, `POST /:id/cancel`, `POST /:id/retry`,
+`GET /:id/stream` (SSE), and the dashboard Automations page (create form, live
+task list, step/log detail panel, cancel/retry) while the admin-only n8n
+workflow overview is preserved. 51 new backend tests + 11 new web tests.
 
 ## Stage 11 — Proactive Mode
 Notifications for build failures, email, calendar, client replies, GitHub

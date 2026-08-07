@@ -45,6 +45,14 @@ Planned and aspirational work for BRO, roughly in order. Status key:
   destructive tools emit a `tool_confirmation` SSE event and pause until
   approved via `GET /system/actions` + `POST /system/actions/:id/decision`.
   Web: Computer dashboard page + in-chat Approve/Reject bubbles.
+- ✅ **Automation engine (Stage 10)** — in-memory task planner (LLM with
+  heuristic fallback), multi-step execution, FIFO queue, retries with backoff,
+  progress SSE streams, execution logs, cancel/retry, and pause/resume on
+  explicit confirmation (`awaiting_confirmation` via the decision route).
+  Per-user task store (cap 100, evicts oldest terminal tasks) with completion
+  notifications reusing the existing notification store. Web: dashboard
+  Automations page (create form, live task list, step/log detail, cancel/retry)
+  while the admin-only n8n overview is preserved.
 - 🎯 More providers: Microsoft 365, Telegram, Linear, Jira, Todoist, Teams.
 - 🎯 Scheduled/triggered automations driven by n8n webhooks into BRO.
 - 🎯 Upload attachments into the sandbox from the web UI.
@@ -107,11 +115,13 @@ Planned and aspirational work for BRO, roughly in order. Status key:
 
 ## Testing & Quality
 
-- ✅ Backend test suite — 712 tests across unit, integration, performance,
+- ✅ Backend test suite — 763 tests across unit, integration, performance,
   stress, and API suites (vitest + mocked Prisma/fetch), including the
-  `src/system/` computer-control layer (43 unit + 12 route tests).
-- ✅ Web unit tests — 203 tests for the Next.js app (libs, API client, stores,
-  UI logic, voice VAD/mic/engine/settings/wake-word, computer client) via vitest.
+  `src/system/` computer-control layer (43 unit + 12 route tests) and the
+  `src/automation/` engine (42 unit + 9 route tests).
+- ✅ Web unit tests — 214 tests for the Next.js app (libs, API client, stores,
+  UI logic, voice VAD/mic/engine/settings/wake-word, computer + automation
+  clients) via vitest.
 - ✅ Web UI tests — 15 Playwright specs against the running stack (auth,
   chat, dashboard, integrations, admin-gating regression).
 - ✅ OAuth tests — Google flow (PKCE + signed state, callback handling, account

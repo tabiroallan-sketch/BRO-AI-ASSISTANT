@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { HttpError, requireAuth } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
+import { parseConversationState } from '../conversation-engine/index.js';
 
 const createSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
@@ -120,7 +121,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(404, 'Conversation not found');
     }
 
-    return { conversation };
+    const conversationState = parseConversationState(conversation.metadata);
+    return {
+      conversation,
+      summary: conversationState.summary ?? null,
+      suggestions: conversationState.suggestions ?? [],
+    };
   });
 
   app.patch('/conversations/:id', async (request, reply) => {

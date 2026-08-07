@@ -8,6 +8,8 @@ export type ChatMessage = {
   role: MessageRole;
   content: string;
   createdAt: string;
+  /** One-tap follow-up questions suggested by the assistant. */
+  suggestions?: string[];
 };
 
 export type Conversation = {
@@ -20,6 +22,10 @@ export type Conversation = {
 
 export type ConversationDetail = Conversation & {
   messages: ChatMessage[];
+  /** Rolling summary of the earlier part of the conversation, if any. */
+  summary?: string | null;
+  /** Follow-up suggestions from the most recent assistant reply. */
+  suggestions?: string[];
 };
 
 export type ToolActivity = {
@@ -74,10 +80,18 @@ export async function createConversation(title?: string): Promise<Conversation> 
 }
 
 export async function getConversation(id: string): Promise<ConversationDetail> {
-  const result = await request<{ conversation: ConversationDetail }>(`/conversations/${id}`, {
+  const result = await request<{
+    conversation: ConversationDetail;
+    summary?: string | null;
+    suggestions?: string[];
+  }>(`/conversations/${id}`, {
     token: authToken(),
   });
-  return result.conversation;
+  return {
+    ...result.conversation,
+    summary: result.summary ?? null,
+    suggestions: result.suggestions ?? [],
+  };
 }
 
 export async function renameConversation(id: string, title: string): Promise<Conversation> {

@@ -47,9 +47,22 @@ tray toggle + IPC (`wakeWordSet`), and a BroadcastChannel leader election so
 only one window arms the mic at a time. Pluggable detector interface leaves
 room for an offline model later. No new API endpoints.
 
-## Stage 7 — Conversation Engine
+## Stage 7 — Conversation Engine ✅
 Conversation state, follow-up questions, clarification, context retention,
-intent recognition, task continuation, summaries, memory recall.
+intent recognition, task continuation, summaries, memory recall. Implemented as
+a pure `src/conversation-engine/` module (heuristics unit-tested, no deps) with
+thin LLM wiring in `index.ts`. Each turn is classified (`question`, `task`,
+`chitchat`, `followup`, `continuation`, `clarification`); the system prompt
+gains an intent hint, a clarification instruction for vague requests, a
+relevance-ranked memory block (prefix-token scoring over the last 30
+messages), and an unfinished-task reminder. Follow-up suggestions are extracted
+from the reply and surfaced on the SSE `done` event and the conversation detail
+endpoint. State (rolling summary, summaryMessageCount, pendingTask, suggestions)
+persists in the existing `Conversation.metadata` JSONB column — no schema
+migration. Summaries run async best-effort after each response (threshold 20
+messages, re-summarize every 10) with provider fallback and JSON output. No new
+API endpoints; chat UI shows suggestion chips and a "continued from an earlier
+part" banner.
 
 ## Stage 8 — Long Term Memory
 Projects, goals, clients, preferences, coding style, meetings, ideas, tasks;

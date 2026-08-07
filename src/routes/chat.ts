@@ -4,6 +4,7 @@ import { config } from '../config/index.js';
 import { HttpError, requireAuth } from '../lib/auth.js';
 import { sanitizeOutputText, validateToolOutput } from '../lib/output-validate.js';
 import { prisma } from '../lib/prisma.js';
+import type { Prisma } from '../lib/prisma.js';
 import { getSecret } from '../lib/secrets.js';
 import { getTool, listTools } from '../tools/registry.js';
 import type { Tool } from '../tools/types.js';
@@ -18,6 +19,25 @@ import {
   buildIntegrationAwareness,
   formatIntegrationAwareness,
 } from '../llm/integration-awareness.js';
+import {
+  CONTEXT_RECENT_LIMIT,
+  MEMORY_RANK_TOP_K,
+  buildContextBlock,
+  buildHistoryWindow,
+  classifyIntent,
+  extractFollowupCandidates,
+  formatContextBlock,
+  needsClarification,
+  parseConversationState,
+  rankMemories,
+  recordPendingTask,
+  serializeConversationState,
+  shouldSummarize,
+  summarizeConversation,
+  type ConversationIntent,
+  type ConversationState,
+  type HistoryEntry,
+} from '../conversation-engine/index.js';
 import { isProviderError } from '../integrations/errors.js';
 import { toUserMessage } from '../integrations/errors.js';
 import { getProvider } from '../integrations/providers.js';
@@ -34,7 +54,7 @@ const chatSchema = z.object({
   message: z.string().trim().min(1).max(4000),
 });
 
-const HISTORY_LIMIT = 30;
+const FULL_HISTORY_LIMIT = 500;
 const TITLE_MAX = 60;
 const MEMORY_LIMIT = 100;
 const TOOL_CALL_LIMIT = 5;
@@ -50,26 +70,18 @@ const SYSTEM_PROMPT =
   'itself: use its output to answer the user naturally, in your own words, as if ' +
   'you performed the action yourself.';
 
-type MemoryFact = { key: string; value: string; category: string | null };
-
 function buildSystemPrompt(
-  memories: MemoryFact[],
+  contextBlock: ReturnType<typeof buildContextBlock>,
   integrationAwareness: ReturnType<typeof formatIntegrationAwareness>,
 ): string {
   const parts = [SYSTEM_PROMPT];
-
-  if (memories.length > 0) {
-    const lines = memories.map((memory) => `- ${memory.key}: ${memory.value}`).join('\n');
-    parts.push(
-      `You have these stored facts about the user. Use them to personalize your ` +
-        `answers; do not repeat them unless relevant.\n${lines}`,
-    );
+  const engineBlock = formatContextBlock(contextBlock);
+  if (engineBlock) {
+    parts.push(engineBlock);
   }
-
   if (integrationAwareness) {
     parts.push(integrationAwareness);
   }
-
   return parts.join('\n\n');
 }
 
@@ -79,11 +91,21 @@ function deriveTitle(message: string): string {
   return title || 'New conversation';
 }
 
+async function persistConversationState(
+  conversationId: string,
+  state: ConversationState,
+): Promise<void> {
+  await prisma?.conversation.update({
+    where: { id: conversationId },
+    data: { metadata: serializeConversationState(state) as unknown as Prisma.InputJsonValue },
+  });
+}
+
 async function getOrCreateConversation(
   userId: string,
   conversationId: string | undefined,
   message: string,
-): Promise<string> {
+): Promise<{ id: string; metadata: unknown }> {
   if (conversationId) {
     const existing = await prisma?.conversation.findFirst({
       where: { id: conversationId, userId },
@@ -91,7 +113,7 @@ async function getOrCreateConversation(
     if (!existing) {
       throw new HttpError(404, 'Conversation not found');
     }
-    return conversationId;
+    return { id: conversationId, metadata: existing.metadata ?? null };
   }
 
   const conversation = await prisma?.conversation.create({
@@ -100,7 +122,7 @@ async function getOrCreateConversation(
   if (!conversation) {
     throw new HttpError(503, 'Database not configured');
   }
-  return conversation.id;
+  return { id: conversation.id, metadata: null };
 }
 
 function sendEvent(reply: FastifyReply, event: Record<string, unknown>): void {
@@ -334,7 +356,12 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const { conversationId, message } = parsed.data;
-    const conversation = await getOrCreateConversation(userId, conversationId, message);
+    const { id: conversation, metadata } = await getOrCreateConversation(
+      userId,
+      conversationId,
+      message,
+    );
+    const conversationState = parseConversationState(metadata);
 
     const userMessage = await prisma.message.create({
       data: { conversationId: conversation, role: 'USER', content: message },
@@ -347,10 +374,27 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     const history = await prisma.message.findMany({
       where: { conversationId: conversation },
       orderBy: { createdAt: 'desc' },
-      take: HISTORY_LIMIT,
+      take: FULL_HISTORY_LIMIT,
       select: { role: true, content: true },
     });
     history.reverse();
+    const historyEntries: HistoryEntry[] = history.map((entry) => ({
+      role: entry.role,
+      content: entry.content,
+    }));
+
+    const lastAssistant = [...historyEntries]
+      .reverse()
+      .find((entry) => entry.role === 'ASSISTANT')?.content;
+    const intent: ConversationIntent = classifyIntent(message, lastAssistant);
+    try {
+      await prisma.message.update({
+        where: { id: userMessage.id },
+        data: { metadata: { v: 1, intent } },
+      });
+    } catch (error) {
+      request.log.warn({ err: error }, 'Failed to persist message intent');
+    }
 
     reply.hijack();
     reply.raw.writeHead(200, {
@@ -371,23 +415,44 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     request.raw.once('close', onAbort);
 
     let full = '';
+    let taskUnfinished = false;
     try {
       const memoriesPromise = prisma.memory.findMany({
         where: { userId },
         take: MEMORY_LIMIT,
-        select: { key: true, value: true, category: true },
+        select: { key: true, value: true, category: true, updatedAt: true },
       });
-      const [memories, integrationAwareness] = await Promise.all([
+      const [allMemories, integrationAwareness] = await Promise.all([
         memoriesPromise,
         buildIntegrationAwareness(userId),
       ]);
 
+      const recentHistory = [...historyEntries]
+        .slice(-CONTEXT_RECENT_LIMIT)
+        .map((entry) => entry.content)
+        .join('\n');
+      const rankedMemories = rankMemories(allMemories, message, recentHistory, MEMORY_RANK_TOP_K);
+      const clarify = needsClarification(message, intent, allMemories.length > 0);
+      const contextBlock = buildContextBlock(
+        historyEntries,
+        conversationState,
+        rankedMemories,
+        intent,
+        clarify
+          ? "The user's request is vague or incomplete. Ask one short clarifying question instead of guessing what they mean."
+          : undefined,
+      );
+
+      const { recent } = buildHistoryWindow(historyEntries, conversationState);
       const llmMessages: LLMMessage[] = [
         {
           role: 'system',
-          content: buildSystemPrompt(memories, formatIntegrationAwareness(integrationAwareness)),
+          content: buildSystemPrompt(
+            contextBlock,
+            formatIntegrationAwareness(integrationAwareness),
+          ),
         },
-        ...history.map((entry) => ({
+        ...recent.map((entry) => ({
           role: toLLMRole(entry.role),
           content: entry.content,
         })),
@@ -435,6 +500,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           }
           if (round === TOOL_CALL_LIMIT) {
             full = content || 'I could not finish before running out of tool calls. Try again.';
+            taskUnfinished = true;
             break;
           }
 
@@ -511,6 +577,17 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
       full = sanitizeOutputText(full);
 
+      const suggestions = extractFollowupCandidates(full);
+      let nextState: ConversationState = {
+        ...conversationState,
+        suggestions,
+      };
+      if (taskUnfinished) {
+        nextState = recordPendingTask(nextState, message);
+      } else if (intent !== 'continuation') {
+        nextState = { ...nextState, pendingTask: undefined, pendingTaskAt: undefined };
+      }
+
       const assistantMessage = await prisma.message.create({
         data: { conversationId: conversation, role: 'ASSISTANT', content: full },
       });
@@ -526,8 +603,27 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           role: 'ASSISTANT',
           content: assistantMessage.content,
           createdAt: assistantMessage.createdAt,
+          ...(suggestions.length > 0 ? { suggestions } : {}),
         },
       });
+
+      persistConversationState(conversation, nextState).catch((error) =>
+        request.log.warn({ err: error }, 'Failed to persist conversation state'),
+      );
+
+      if (shouldSummarize(nextState, historyEntries.length)) {
+        summarizeConversation(historyEntries, nextState, preferredProviderId)
+          .then((result) =>
+            persistConversationState(conversation, {
+              ...nextState,
+              summary: result.summary,
+              summaryMessageCount: historyEntries.length,
+            }),
+          )
+          .catch((error) =>
+            request.log.warn({ err: error }, 'Background conversation summary failed'),
+          );
+      }
     } catch (error) {
       request.log.error({ err: error }, 'Chat stream failed');
       if (full) {

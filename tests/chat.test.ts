@@ -34,6 +34,7 @@ type MockConversation = {
   id: string;
   userId: string;
   title: string | null;
+  metadata: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -43,6 +44,7 @@ type MockMessage = {
   conversationId: string;
   role: 'USER' | 'ASSISTANT' | 'SYSTEM';
   content: string;
+  metadata?: unknown;
   createdAt: Date;
 };
 
@@ -148,6 +150,7 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory, see
           id: randomUUID(),
           userId: args.data.userId,
           title: args.data.title ?? null,
+          metadata: null,
           createdAt: now,
           updatedAt: now,
         };
@@ -177,7 +180,7 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory, see
       },
       async update(args: {
         where: { id: string };
-        data: { title?: string | null; updatedAt?: Date };
+        data: { title?: string | null; updatedAt?: Date; metadata?: string | null };
       }): Promise<MockConversation> {
         const conversation = conversations.get(args.where.id);
         if (!conversation) {
@@ -187,6 +190,7 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory, see
           ...conversation,
           ...(args.data.title !== undefined ? { title: args.data.title } : {}),
           ...(args.data.updatedAt ? { updatedAt: args.data.updatedAt } : {}),
+          ...(args.data.metadata !== undefined ? { metadata: args.data.metadata } : {}),
         };
         conversations.set(updated.id, updated);
         return updated;
@@ -226,6 +230,21 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory, see
           list = list.slice(0, args.take);
         }
         return list;
+      },
+      async update(args: {
+        where: { id: string };
+        data: { metadata?: unknown };
+      }): Promise<MockMessage> {
+        const message = messages.get(args.where.id);
+        if (!message) {
+          throw new Error('Message not found');
+        }
+        const updated: MockMessage = {
+          ...message,
+          ...(args.data.metadata !== undefined ? { metadata: args.data.metadata } : {}),
+        };
+        messages.set(updated.id, updated);
+        return updated;
       },
     };
 
@@ -357,12 +376,14 @@ const { mockPrisma, resetDb, registerAndLogin, seedConversation, seedMemory, see
     async function seedConversation(
       userId: string,
       title: string | null,
+      metadata: unknown = null,
     ): Promise<MockConversation> {
       const now = new Date();
       const conversation: MockConversation = {
         id: randomUUID(),
         userId,
         title,
+        metadata,
         createdAt: now,
         updatedAt: now,
       };
@@ -810,7 +831,13 @@ describe('chat', () => {
     args?: Record<string, unknown>;
     ok?: boolean;
     output?: string;
-    message?: { id: string; role: string; content: string; createdAt: string };
+    message?: {
+      id: string;
+      role: string;
+      content: string;
+      createdAt: string;
+      suggestions?: string[];
+    };
   };
 
   function parseEvents(response: { body: string }): ChatEvent[] {
@@ -976,5 +1003,124 @@ describe('chat', () => {
     expect(events[events.length - 1]!.type).toBe('done');
     expect(events.filter((event) => event.type === 'tool_start')).toHaveLength(5);
     expect(mockStreamChatCompletion).toHaveBeenCalledTimes(6);
+  });
+
+  it('injects the rolling summary and intent into the system prompt', async () => {
+    const token = await registerAndLogin('summary@example.com');
+    const headers = { authorization: `Bearer ${token}` };
+    const { verifyAccessToken } = await import('../src/lib/jwt.js');
+    const payload = await verifyAccessToken(token);
+    const conversation = await seedConversation(payload.sub, 'Thread', {
+      v: 1,
+      summaryMessageCount: 40,
+      summary: 'The user asked about the project roadmap and got a plan.',
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { conversationId: conversation.id, message: 'and the timeline?' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const aiMessages = mockStreamChatCompletion.mock.calls[0]![0] as {
+      role: string;
+      content: string;
+    }[];
+    expect(aiMessages[0]!.content).toContain(
+      'The user asked about the project roadmap and got a plan.',
+    );
+    expect(aiMessages[0]!.content).toContain("Intent of the user's latest message: followup.");
+  });
+
+  it('injects a task-continuation reminder for continuation messages', async () => {
+    const token = await registerAndLogin('cont@example.com');
+    const headers = { authorization: `Bearer ${token}` };
+    const { verifyAccessToken } = await import('../src/lib/jwt.js');
+    const payload = await verifyAccessToken(token);
+    const conversation = await seedConversation(payload.sub, 'Task', {
+      v: 1,
+      summaryMessageCount: 0,
+      pendingTask: 'finish the release notes',
+      pendingTaskAt: new Date().toISOString(),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { conversationId: conversation.id, message: 'continue' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const aiMessages = mockStreamChatCompletion.mock.calls[0]![0] as {
+      role: string;
+      content: string;
+    }[];
+    expect(aiMessages[0]!.content).toContain('finish the release notes');
+  });
+
+  it('injects a clarification instruction for vague requests', async () => {
+    const headers = await authHeaders('vague@example.com');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { message: 'fix it' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const aiMessages = mockStreamChatCompletion.mock.calls[0]![0] as {
+      role: string;
+      content: string;
+    }[];
+    expect(aiMessages[0]!.content).toContain('Ask one short clarifying question');
+  });
+
+  it('returns follow-up suggestions on the done event', async () => {
+    const headers = await authHeaders('followups@example.com');
+    mockStreamChatCompletion.mockImplementation(async function* () {
+      yield {
+        type: 'content',
+        content: 'Here you go.\n- Next: want me to send it?\n- Try: should I save it?',
+      };
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { message: 'draft it' },
+    });
+
+    const events = parseEvents(response);
+    const done = events[events.length - 1]!;
+    expect(done.message?.suggestions).toEqual(['want me to send it?', 'should I save it?']);
+  });
+
+  it('injects ranked memories into the system prompt', async () => {
+    const token = await registerAndLogin('rank@example.com');
+    const headers = { authorization: `Bearer ${token}` };
+    const { verifyAccessToken } = await import('../src/lib/jwt.js');
+    const payload = await verifyAccessToken(token);
+    seedMemory(payload.sub, 'name', 'Alice');
+    seedMemory(payload.sub, 'city', 'Paris');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/chat',
+      headers,
+      payload: { message: 'what is my name?' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const aiMessages = mockStreamChatCompletion.mock.calls[0]![0] as {
+      role: string;
+      content: string;
+    }[];
+    expect(aiMessages[0]!.content).toContain('- name: Alice');
+    expect(aiMessages[0]!.content).toContain('- city: Paris');
   });
 });

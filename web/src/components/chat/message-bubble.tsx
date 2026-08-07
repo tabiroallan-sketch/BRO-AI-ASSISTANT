@@ -13,10 +13,14 @@ export function MessageBubble({
   role,
   content,
   streaming,
+  suggestions,
+  onSuggestionClick,
 }: {
   role: MessageRole;
   content: string;
   streaming?: boolean;
+  suggestions?: string[];
+  onSuggestionClick?: (suggestion: string) => void;
 }): React.JSX.Element {
   const isUser = role === 'USER';
   const [speaking, setSpeaking] = React.useState(false);
@@ -66,6 +70,20 @@ export function MessageBubble({
           <p className="whitespace-pre-wrap text-sm leading-relaxed">{content}</p>
         ) : (
           <Markdown content={content} />
+        )}
+        {suggestions && suggestions.length > 0 && !streaming && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {suggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => onSuggestionClick?.(suggestion)}
+                className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-neon-cyan/60 hover:text-foreground"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
         )}
         {streaming && <span className="ml-0.5 inline-block h-3 w-0.5 animate-pulse bg-current" />}
       </div>

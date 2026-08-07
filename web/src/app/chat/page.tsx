@@ -48,6 +48,7 @@ export default function ChatPage(): React.JSX.Element {
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
+  const [conversationSummary, setConversationSummary] = React.useState<string | null>(null);
   const [streaming, setStreaming] = React.useState(false);
   const [streamingContent, setStreamingContent] = React.useState('');
   const [toolActivity, setToolActivity] = React.useState<ToolActivity[]>([]);
@@ -88,6 +89,7 @@ export default function ChatPage(): React.JSX.Element {
       const conversation = await getConversation(id);
       setActiveId(id);
       setMessages(conversation.messages);
+      setConversationSummary(conversation.summary ?? null);
       setStreamingContent('');
       setToolActivity([]);
     } catch (err) {
@@ -102,6 +104,7 @@ export default function ChatPage(): React.JSX.Element {
     setError(null);
     setActiveId(null);
     setMessages([]);
+    setConversationSummary(null);
     setStreamingContent('');
     setToolActivity([]);
   }, []);
@@ -238,8 +241,19 @@ export default function ChatPage(): React.JSX.Element {
               </motion.div>
             )}
             <AnimatePresence initial={false} mode="popLayout">
+              {conversationSummary && !streaming && (
+                <p className="rounded-lg border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  Continued from an earlier part of this conversation.
+                </p>
+              )}
               {messages.map((entry) => (
-                <MessageBubble key={entry.id} role={entry.role} content={entry.content} />
+                <MessageBubble
+                  key={entry.id}
+                  role={entry.role}
+                  content={entry.content}
+                  suggestions={entry.suggestions}
+                  onSuggestionClick={(suggestion) => void handleSend(suggestion)}
+                />
               ))}
             </AnimatePresence>
             <AnimatePresence initial={false}>

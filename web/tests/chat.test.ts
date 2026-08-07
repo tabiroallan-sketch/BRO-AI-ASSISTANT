@@ -107,6 +107,24 @@ describe('conversation client', () => {
 
     expect(result.messages[0].content).toBe('hi');
   });
+
+  it('includes the rolling summary and follow-up suggestions', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        conversation: {
+          id: 'c1',
+          messages: [],
+        },
+        summary: 'Earlier context',
+        suggestions: ['Want me to schedule it?'],
+      }),
+    );
+
+    const result = await getConversation('c1');
+
+    expect(result.summary).toBe('Earlier context');
+    expect(result.suggestions).toEqual(['Want me to schedule it?']);
+  });
 });
 
 describe('SSE parser', () => {
@@ -248,6 +266,33 @@ describe('streamChat', () => {
       'delta',
       'done',
     ]);
+  });
+
+  it('carries follow-up suggestions on the done event', async () => {
+    fetchMock.mockResolvedValue(
+      sseResponse({
+        type: 'done',
+        message: {
+          id: 'a1',
+          role: 'ASSISTANT',
+          content: 'Done.',
+          createdAt: '',
+          suggestions: ['Want me to schedule it?', 'Should I email you?'],
+        },
+      }),
+    );
+
+    const events: StreamEvent[] = [];
+    const stream = await streamChat('draft it');
+    for await (const event of stream) {
+      events.push(event);
+    }
+
+    const done = events.find((event) => event.type === 'done');
+    expect(done?.type).toBe('done');
+    if (done?.type === 'done') {
+      expect(done.message.suggestions).toEqual(['Want me to schedule it?', 'Should I email you?']);
+    }
   });
 
   it('omits conversationId for a new conversation', async () => {

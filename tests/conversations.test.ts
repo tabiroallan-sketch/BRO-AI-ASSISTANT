@@ -34,6 +34,7 @@ type MockConversation = {
   id: string;
   userId: string;
   title: string | null;
+  metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -174,6 +175,7 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
         id: randomUUID(),
         userId: args.data.userId,
         title: args.data.title ?? null,
+        metadata: {},
         createdAt: now,
         updatedAt: now,
       };
@@ -203,7 +205,7 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
     },
     async update(args: {
       where: { id: string };
-      data: { title?: string | null; updatedAt?: Date };
+      data: { title?: string | null; updatedAt?: Date; metadata?: unknown };
     }): Promise<MockConversation> {
       const conversation = conversations.get(args.where.id);
       if (!conversation) {
@@ -213,6 +215,7 @@ const { mockPrisma, resetDb, registerAndLogin } = vi.hoisted(() => {
         ...conversation,
         ...(args.data.title !== undefined ? { title: args.data.title } : {}),
         ...(args.data.updatedAt ? { updatedAt: args.data.updatedAt } : {}),
+        ...(args.data.metadata !== undefined ? { metadata: args.data.metadata } : {}),
       };
       conversations.set(updated.id, updated);
       return updated;

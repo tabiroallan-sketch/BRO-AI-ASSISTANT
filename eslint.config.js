@@ -54,6 +54,9 @@ export default [
       '**/*.d.ts',
       'web/**',
       'web-e2e/**',
+      'desktop/dist/**',
+      'desktop/resources/runtime/**',
+      '**/.next/**',
     ],
   },
 ];

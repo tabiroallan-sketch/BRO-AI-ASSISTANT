@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { _electron as electron } from 'playwright';
 
+/* global window */
+
 /**
  * End-to-end smoke test for the desktop shell. Builds the API + web runtime
  * bundles (if missing), launches the packaged-style app in embedded mode with

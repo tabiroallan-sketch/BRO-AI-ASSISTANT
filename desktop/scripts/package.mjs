@@ -24,7 +24,7 @@ function run(command, args, cwd) {
 run('node', ['scripts/make-icons.mjs'], desktopDir);
 run('node', ['scripts/build-api.mjs'], desktopDir);
 run('node', ['scripts/build-web.mjs'], desktopDir);
-run('npm', ['run', 'build'], desktopDir);
+run(npm, ['run', 'build'], desktopDir);
 
 console.log('[package] running electron-builder...');
 const builderArgs = ['--config', 'electron-builder.yml'];

@@ -36,7 +36,7 @@ type EngineHarness = {
 function harness(settings: VoiceSettings, overrides: Record<string, unknown> = {}): EngineHarness {
   const onWake = vi.fn();
   const chime = vi.fn();
-  let currentSettings = settings;
+  const currentSettings = settings;
   let acquired = 0;
   let released = 0;
   let onLevel: ((level: number) => void) | null = null;

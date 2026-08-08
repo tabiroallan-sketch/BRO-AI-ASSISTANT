@@ -20,6 +20,7 @@ import {
   Loader2,
   MessageCircle,
   MessagesSquare,
+  Plug,
   RefreshCw,
   Send,
   ShoppingBag,
@@ -332,7 +333,7 @@ function Section({
 
 export default function IntegrationsPage(): React.JSX.Element {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [marketplace, setMarketplace] = React.useState<MarketplaceResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
@@ -412,6 +413,29 @@ export default function IntegrationsPage(): React.JSX.Element {
     }
   }
 
+  async function handleInstallAll(): Promise<void> {
+    if (!marketplace || marketplace.available.length === 0) {
+      return;
+    }
+    setBusy('install-all');
+    setError(null);
+    setNotice(null);
+    try {
+      for (const item of marketplace.available) {
+        await installMarketplaceItem(item.id);
+      }
+      await load();
+      const count = marketplace.available.length;
+      setNotice(
+        `Installed ${count} available adapter${count === 1 ? '' : 's'}. Configure accounts from Settings.`,
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Install all failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function handleConnect(item: MarketplaceItem): void {
     window.location.href = connectUrl(item.providerIds[0]);
   }
@@ -451,6 +475,24 @@ export default function IntegrationsPage(): React.JSX.Element {
           Browse, install, and connect third-party services. Installed adapters are shared
           server-wide; connections are per user and managed in Settings.
         </p>
+        {user?.role === 'ADMIN' && (
+          <div className="mt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleInstallAll()}
+              disabled={busy !== null || marketplace === null || marketplace.available.length === 0}
+              title="Install every available adapter so it can be configured from Settings"
+            >
+              {busy === 'install-all' ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Plug className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Install all available
+            </Button>
+          </div>
+        )}
       </div>
 
       {error && (

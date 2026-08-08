@@ -18,6 +18,7 @@ import {
   MessagesSquare,
   RefreshCw,
   Slack,
+  ShieldCheck,
   Table2,
   Users,
   Zap,
@@ -28,6 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { grantAllPermissions } from '@/lib/dashboard';
 import {
   listPermissions,
   updatePermissions,
@@ -249,9 +251,10 @@ function ProviderCard({
 
 export default function PermissionsPage(): React.JSX.Element {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [providers, setProviders] = React.useState<PermissionCenterProvider[] | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [granting, setGranting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
 
@@ -320,6 +323,34 @@ export default function PermissionsPage(): React.JSX.Element {
     }
   }
 
+  async function grantAll(): Promise<void> {
+    setGranting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await grantAllPermissions();
+      await load();
+      setNotice(
+        result.permissionsGranted > 0
+          ? `Enabled ${result.permissionsGranted} permissions across ${result.providersUpdated.length} provider${result.providersUpdated.length === 1 ? '' : 's'} for ${result.user.email}. Providers that are not connected yet are skipped — connect them from Settings first.`
+          : `No connected providers found for ${result.user.email}. Connect providers from Settings, then grant all permissions again.`,
+      );
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        await logout();
+        router.replace('/login');
+        return;
+      }
+      if (err instanceof ApiError && err.status === 403) {
+        setError('Only admins can grant all permissions.');
+        return;
+      }
+      setError(err instanceof ApiError ? err.message : 'Failed to grant permissions.');
+    } finally {
+      setGranting(false);
+    }
+  }
+
   const connectedCount = providers?.filter((provider) => provider.connected).length ?? 0;
   const grantedCount =
     providers?.reduce(
@@ -354,6 +385,19 @@ export default function PermissionsPage(): React.JSX.Element {
           <span className="h-2 w-2 rounded-full bg-emerald-400" />
           {formatCount(enabledCount)} enabled
         </span>
+        {user?.role === 'ADMIN' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void grantAll()}
+            disabled={granting || providers === null}
+            title="Enable every permission for every connected provider"
+          >
+            {granting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+            Grant all permissions
+          </Button>
+        )}
         <Button asChild variant="outline" size="sm" className="ml-auto">
           <Link href="/settings">
             Manage connections

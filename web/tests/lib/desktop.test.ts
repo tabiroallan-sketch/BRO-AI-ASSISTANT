@@ -1,5 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import { acceleratorFromEvent, formatAccelerator } from '@/lib/desktop';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import {
+  DEFAULT_SHORTCUTS,
+  acceleratorFromEvent,
+  formatAccelerator,
+  getDesktopApi,
+  type DesktopApi,
+} from '@/lib/desktop';
+
+function installWindow(broDesktop?: DesktopApi | null): void {
+  const target = { ...(broDesktop ? { broDesktop } : {}) };
+  globalThis.window = target as unknown as Window & typeof globalThis;
+}
 
 function keyEvent(partial: Partial<KeyboardEvent>): KeyboardEvent {
   return {
@@ -53,5 +64,46 @@ describe('acceleratorFromEvent', () => {
 
   it('returns empty for unprintable keys', () => {
     expect(acceleratorFromEvent(keyEvent({ key: 'Dead' }))).toBe('');
+  });
+});
+
+describe('getDesktopApi', () => {
+  beforeEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it('returns null when no desktop shell is present', () => {
+    installWindow();
+    expect(getDesktopApi()).toBeNull();
+  });
+
+  it('fills gaps in a partial/stale bridge so callers never crash', async () => {
+    const realBindings = { ...DEFAULT_SHORTCUTS, 'open-overlay': 'Ctrl+Alt+O' };
+    installWindow({
+      shortcuts: { get: vi.fn().mockResolvedValue(realBindings) },
+      mode: { get: vi.fn().mockResolvedValue('voice') },
+    } as unknown as DesktopApi);
+
+    const api = getDesktopApi();
+    expect(api).not.toBeNull();
+    if (!api) {
+      throw new Error('expected a bridge');
+    }
+
+    // Real members are preserved and used.
+    await expect(api.shortcuts.get()).resolves.toEqual(realBindings);
+
+    // A partially-present group keeps its real members and fills the rest.
+    await expect(api.mode.get()).resolves.toBe('voice');
+    expect(typeof api.mode.onChanged).toBe('function');
+    expect(api.mode.onChanged(() => {})).toEqual(expect.any(Function));
+
+    // A fully-missing group falls back to safe defaults.
+    await expect(api.config.get()).resolves.toMatchObject({ mode: 'desktop' });
+    expect(typeof api.config.onChanged).toBe('function');
+
+    // Fire-and-forget commands exist and are inert.
+    expect(() => api.window.minimize()).not.toThrow();
+    expect(() => api.overlay.resize(400, 300)).not.toThrow();
   });
 });

@@ -25,6 +25,9 @@ function parseTrustProxy(value: string | undefined): FastifyTrustProxy {
 
 type FastifyTrustProxy = boolean | number | string;
 
+const DEFAULT_CORS_ORIGINS = 'http://localhost:3001,http://127.0.0.1:3001';
+const corsOrigins = csv(process.env.CORS_ORIGIN ?? DEFAULT_CORS_ORIGINS);
+
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3000', 10),
@@ -69,7 +72,8 @@ export const config = {
   clickupClientId: getSecret('CLICKUP_CLIENT_ID'),
   clickupClientSecret: getSecret('CLICKUP_CLIENT_SECRET'),
   whatsappApiUrl: process.env.WHATSAPP_API_URL ?? 'https://graph.facebook.com/v18.0',
-  corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:3001',
+  corsOrigin: corsOrigins[0] ?? 'http://localhost:3001',
+  corsOrigins,
   appVersion: process.env.BRO_VERSION ?? '0.1.0',
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
   rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',

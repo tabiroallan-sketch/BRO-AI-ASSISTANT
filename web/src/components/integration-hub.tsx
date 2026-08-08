@@ -620,12 +620,14 @@ function ProviderCard({
             void handleSave();
           }}
         >
-          {(CONFIG_FIELDS[provider.id] ?? []).map((field) => (
+          {(provider.fields ?? CONFIG_FIELDS[provider.id] ?? []).map((field) => (
             <div key={field.name} className="flex flex-col gap-1">
               <Label htmlFor={`${provider.id}-${field.name}`}>{field.label}</Label>
               <Input
                 id={`${provider.id}-${field.name}`}
-                type={field.type ?? 'text'}
+                type={
+                  field.type ?? (field.name.toLowerCase().includes('key') ? 'password' : 'text')
+                }
                 placeholder={field.placeholder}
                 value={draft[field.name] ?? ''}
                 onChange={(event) =>

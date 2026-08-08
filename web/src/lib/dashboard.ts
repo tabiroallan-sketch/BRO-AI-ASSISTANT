@@ -156,3 +156,18 @@ export async function getAuditLogs(limit = 200): Promise<AuditEvent[]> {
   );
   return result.events;
 }
+
+export type GrantAllPermissionsResult = {
+  ok: boolean;
+  user: { id: string; email: string };
+  providersUpdated: string[];
+  permissionsGranted: number;
+};
+
+export async function grantAllPermissions(email?: string): Promise<GrantAllPermissionsResult> {
+  return request<GrantAllPermissionsResult>('/admin/permissions/grant-all', {
+    method: 'POST',
+    token: authToken(),
+    body: email ? { email } : {},
+  });
+}

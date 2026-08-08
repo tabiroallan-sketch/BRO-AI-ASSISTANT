@@ -3,8 +3,8 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bot } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { Logo } from '@/components/logo';
 import { NotificationsMenu } from '@/components/notifications-menu';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ export function Navbar(): React.JSX.Element {
       <div className="container mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2 font-semibold">
-            <Bot className="h-5 w-5" />
+            <Logo icon className="h-6 w-auto" />
             <span>BRO</span>
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">

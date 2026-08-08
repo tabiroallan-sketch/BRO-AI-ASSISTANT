@@ -8,6 +8,6 @@ type HudState = {
 };
 
 export const useHud = create<HudState>((set) => ({
-  panels: { telemetry: true, core: true, status: true },
+  panels: { telemetry: false, core: false, status: false },
   togglePanel: (id) => set((state) => ({ panels: { ...state.panels, [id]: !state.panels[id] } })),
 }));

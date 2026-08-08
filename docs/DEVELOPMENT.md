@@ -23,7 +23,8 @@ npm run dev                   # web on :3001
 
 The API listens on `:3000` (Swagger at `http://localhost:3000/docs`), the web
 app on `:3001`. The backend CORS origin must include the frontend origin
-(`CORS_ORIGIN`, default `http://localhost:3001`).
+(`CORS_ORIGIN`, a comma-separated list; defaults to
+`http://localhost:3001,http://127.0.0.1:3001` so the desktop dev shell works).
 
 ## Scripts (root)
 

@@ -21,7 +21,7 @@ import {
   type DesktopConfig,
   type OperatingMode,
 } from '@/lib/desktop';
-import { initModeSync, modeRoute, useModeStore } from '@/lib/mode-store';
+import { initModeSync, modeRoute, setModeNavigator, useModeStore } from '@/lib/mode-store';
 
 /** The slice of the desktop bridge that mode-store actually consumes. */
 type ModeApi = {
@@ -61,6 +61,7 @@ function installWindow(broDesktop?: DesktopApi | null): void {
 beforeEach(() => {
   store.clear();
   vi.restoreAllMocks();
+  setModeNavigator(() => {});
   delete (globalThis as { window?: unknown }).window;
   useModeStore.setState({ mode: 'desktop', ready: false });
 });
@@ -139,5 +140,18 @@ describe('initModeSync (desktop shell present)', () => {
     installWindow();
     expect(() => initModeSync()).not.toThrow();
     expect(useModeStore.getState().ready).toBe(true);
+  });
+});
+
+describe('mode navigation', () => {
+  it('routes to the matching surface when the mode changes', () => {
+    const pushes: string[] = [];
+    setModeNavigator((path) => pushes.push(path));
+
+    useModeStore.getState().setMode('voice');
+    useModeStore.getState().setMode('desktop');
+    useModeStore.getState().applyExternal('overlay');
+
+    expect(pushes).toEqual(['/voice', '/dashboard', '/overlay']);
   });
 });

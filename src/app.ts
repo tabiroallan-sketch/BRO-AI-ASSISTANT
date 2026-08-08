@@ -7,6 +7,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import { config } from './config/index.js';
 import { createPinoStream } from './config/logging.js';
 import { HttpError } from './lib/auth.js';
+import { isOriginAllowed } from './lib/cors.js';
 import { prisma } from './lib/prisma.js';
 import { applyRateLimits } from './lib/rate-limit.js';
 import { redis } from './lib/redis.js';
@@ -43,7 +44,12 @@ export function buildApp(): FastifyInstance {
   });
 
   app.register(cors, {
-    origin: config.corsOrigin,
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+      return callback(null, isOriginAllowed(origin));
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
@@ -92,16 +98,7 @@ export function buildApp(): FastifyInstance {
     if (!origin) {
       return;
     }
-    let corsOrigin = config.corsOrigin;
-    if (corsOrigin !== '*') {
-      try {
-        corsOrigin = new URL(config.corsOrigin).origin;
-      } catch {
-        // Fall back to the raw value.
-      }
-    }
-    const allowed = corsOrigin === '*' || origin === corsOrigin;
-    if (!allowed) {
+    if (!isOriginAllowed(origin)) {
       throw new HttpError(403, 'Cross-origin request rejected');
     }
   });

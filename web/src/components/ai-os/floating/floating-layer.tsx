@@ -83,7 +83,7 @@ export function FloatingLayer(): React.JSX.Element | null {
       )}
 
       {closed.length > 0 && (
-        <div className="pointer-events-auto absolute bottom-4 left-4 flex flex-col gap-2">
+        <div className="pointer-events-auto absolute bottom-4 right-4 flex flex-col gap-2">
           {closed.map((panel) => (
             <button
               key={panel.id}

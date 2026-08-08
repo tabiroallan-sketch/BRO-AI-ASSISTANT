@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { automationEngine } from '../automation/index.js';
 import { config } from '../config/index.js';
 import { HttpError, requireAuth, requireRole } from '../lib/auth.js';
+import { isOriginAllowed } from '../lib/cors.js';
 import {
   isN8nConfigured,
   listN8nExecutions,
@@ -210,7 +211,9 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
       // reply.hijack() bypasses @fastify/cors (which attaches headers in its
       // onSend hook), so the hijacked SSE response must carry the CORS headers
       // itself or the browser will drop the stream for cross-origin requests.
-      'Access-Control-Allow-Origin': config.corsOrigin,
+      'Access-Control-Allow-Origin': isOriginAllowed(request.headers.origin)
+        ? request.headers.origin
+        : config.corsOrigin,
       'Access-Control-Allow-Credentials': 'true',
     });
 

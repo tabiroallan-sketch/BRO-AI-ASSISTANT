@@ -16,6 +16,22 @@ export function modeRoute(mode: OperatingMode): string {
   return MODE_ROUTES[mode];
 }
 
+/**
+ * Navigation callback registered by a client component (see `setModeNavigator`)
+ * so the store can route to the matching surface when the mode changes, in a
+ * plain browser and inside the desktop shell alike.
+ */
+let navigate: ((path: string) => void) | null = null;
+
+/** Registers the router-backed navigator used when the operating mode changes. */
+export function setModeNavigator(navigator: (path: string) => void): void {
+  navigate = navigator;
+}
+
+function routeToMode(mode: OperatingMode): void {
+  navigate?.(modeRoute(mode));
+}
+
 type ModeStore = {
   mode: OperatingMode;
   /** True once the persisted/desktop mode has been loaded and sync is wired. */
@@ -56,12 +72,16 @@ export const useModeStore = create<ModeStore>((set) => ({
   setMode: (mode) => {
     persistMode(mode);
     set({ mode });
+    routeToMode(mode);
     const api = getDesktopApi();
     if (api) {
       void api.mode.set(mode);
     }
   },
-  applyExternal: (mode) => set({ mode }),
+  applyExternal: (mode) => {
+    set({ mode });
+    routeToMode(mode);
+  },
 }));
 
 /**

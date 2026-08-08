@@ -11,6 +11,7 @@ export type AuditAction =
   | 'auth.oauth'
   | 'admin.user.update'
   | 'admin.secrets.read'
+  | 'admin.permissions.grant_all'
   | 'plugins.reload'
   | 'integration.connect'
   | 'integration.disconnect'

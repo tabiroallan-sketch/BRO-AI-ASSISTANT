@@ -11,6 +11,9 @@ import { getAuditLogs, readAuditLogs, recordAudit } from '../lib/audit.js';
 import { isEncryptionEnabled } from '../lib/encryption.js';
 import { prisma } from '../lib/prisma.js';
 import { listSecretStatuses } from '../lib/secrets.js';
+import { listProviders } from '../integrations/providers.js';
+import { getIntegration } from '../integrations/store.js';
+import { updatePermissionSet } from '../integrations/trust-store.js';
 
 function encryptionStatus(): boolean {
   try {
@@ -28,6 +31,10 @@ const updateUserSchema = z
   .refine((value) => value.role !== undefined || value.isActive !== undefined, {
     message: 'Provide role and/or isActive',
   });
+
+const grantPermissionsSchema = z.object({
+  email: z.string().email().optional(),
+});
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);
@@ -132,5 +139,70 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         ? await readAuditLogs(limit)
         : getAuditLogs(limit);
     return { count: events.length, events };
+  });
+
+  /**
+   * Enables every Permission Center permission for every provider the target
+   * user has connected, so an admin can grant full capability access in one
+   * step. Providers without a connection are skipped (a permission set is tied
+   * to an integration record), and unknown permission ids are never stored.
+   */
+  app.post('/admin/permissions/grant-all', async (request, reply) => {
+    const parsed = grantPermissionsSchema.safeParse(request.body);
+    if (!parsed.success) {
+      throw new HttpError(400, 'Invalid request body');
+    }
+    const email = (parsed.data.email ?? request.user?.email)?.toLowerCase().trim();
+    if (!email) {
+      throw new HttpError(400, 'An email is required');
+    }
+    if (!prisma) {
+      throw new HttpError(503, 'Database not configured');
+    }
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true },
+    });
+    if (!user) {
+      throw new HttpError(404, 'User not found');
+    }
+
+    const providersUpdated: string[] = [];
+    let permissionsGranted = 0;
+    for (const provider of listProviders()) {
+      const record = await getIntegration(user.id, provider.id);
+      if (!record) {
+        continue;
+      }
+      const allPermissionIds = provider.permissions
+        .map((permission) => permission.id)
+        .filter(Boolean);
+      if (allPermissionIds.length === 0) {
+        continue;
+      }
+      await updatePermissionSet(record.id, allPermissionIds);
+      providersUpdated.push(provider.id);
+      permissionsGranted += allPermissionIds.length;
+    }
+
+    recordAudit({
+      actorId: request.user?.id,
+      actorEmail: request.user?.email,
+      action: 'admin.permissions.grant_all',
+      target: user.id,
+      detail: JSON.stringify({
+        email: user.email,
+        providers: providersUpdated,
+        permissionsGranted,
+      }),
+      ip: request.ip,
+    });
+
+    return reply.send({
+      ok: true,
+      user: { id: user.id, email: user.email },
+      providersUpdated,
+      permissionsGranted,
+    });
   });
 }

@@ -228,7 +228,7 @@ production:
 | `CACHE_TTL_MS` / `ANALYTICS_CACHE_MS` | In-process TTL cache; analytics per-user staleness |
 | `AUTH_USER_CACHE_MS` | Cache auth user rows (`0` = off; role/isActive changes lag by TTL) |
 | `TRUST_PROXY` | `false` / `loopback` / hop count (e.g. `1`) / proxy IP or CIDR. Controls client IP detection (rate limiting, audit) and secure cookies behind a proxy. |
-| `CORS_ORIGIN` | Browser origins allowed cross-origin (default `http://localhost:3001`). Set it to your web app's public origin. |
+| `CORS_ORIGIN` | Browser origins allowed cross-origin. Comma-separated list (default `http://localhost:3001,http://127.0.0.1:3001`). Set it to your web app's public origin(s). |
 | `BRO_VERSION` | Version reported by `/health` and the web footer (default `0.1.0`). |
 | `LOG_LEVEL` | `trace`/`debug`/`info`/`warn`/`error`/`fatal`/`silent` (default `info`). |
 

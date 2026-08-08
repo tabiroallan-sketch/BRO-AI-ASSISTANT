@@ -120,6 +120,7 @@ export type HubProvider = IntegrationInfo & {
   health: HubHealth | null;
   lastSync: HubSync | null;
   accountCount: number;
+  fields?: MarketplaceTokenField[];
 };
 
 export type PermissionCenterPermission = {
@@ -181,7 +182,12 @@ export type SyncRecord = {
   createdAt: string;
 };
 
-export type MarketplaceTokenField = { name: string; label: string; placeholder: string };
+export type MarketplaceTokenField = {
+  name: string;
+  label: string;
+  placeholder: string;
+  type?: 'text' | 'password';
+};
 
 export type MarketplaceItem = {
   id: string;

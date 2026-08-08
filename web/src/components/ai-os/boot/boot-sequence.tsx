@@ -84,7 +84,7 @@ export function BootSequence(): React.JSX.Element | null {
       }
       setVisible(false);
       sendWelcome();
-    }, 1500);
+    }, 1100);
 
     return () => {
       window.clearInterval(lineTimer);
@@ -97,7 +97,7 @@ export function BootSequence(): React.JSX.Element | null {
     <AnimatePresence>
       {visible && (
         <motion.div
-          className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-6 bg-background"
+          className="pointer-events-none fixed inset-0 z-[60] flex flex-col items-center justify-center gap-6 bg-background"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}

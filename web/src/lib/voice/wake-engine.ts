@@ -6,14 +6,20 @@
  * injectable, so the whole state machine is unit-testable.
  *
  * CPU / false-positive strategy — the recognizer is energy-gated: a mic level
- * meter + VAD runs while armed, and the SpeechRecognition keyword recognizer
+ * meter + VAD runs while armed, and the recording keyword detector
  * only starts while speech-like audio is present (with a short grace period
  * after silence so trailing words are caught). Quiet rooms and background
  * noise therefore cost almost nothing and can't trigger.
  */
 
 import { createVad, type Vad, type VadOptions } from './vad';
-import { createMicManager, type MicManager } from './mic';
+import {
+  createMicManager,
+  describeMicError,
+  micErrorKind,
+  type MicErrorKind,
+  type MicManager,
+} from './mic';
 import { currentVoiceSettings } from './settings';
 import { playWakeChime, type ChimeContext } from './wake-feedback';
 import {
@@ -36,9 +42,11 @@ export type WakeState = {
   lastConfidence: number;
   /** Increments on every trigger so UI animations can re-key. */
   lastTriggerId: number;
-  /** Whether speech recognition is available in this environment. */
+  /** Whether audio transcription is available in this environment. */
   supported: boolean;
   error: string | null;
+  /** Category of the last microphone failure (drives the fix in the UI). */
+  micError: MicErrorKind | null;
 };
 
 export type WakeEngineDeps = {
@@ -46,7 +54,7 @@ export type WakeEngineDeps = {
   detectorFactory: WakeDetectorFactory;
   vadFactory: (options: VadOptions) => Vad;
   settings: () => VoiceSettings;
-  /** Whether speech recognition is available; injectable for tests. */
+  /** Whether audio transcription is available; injectable for tests. */
   supported?: () => boolean;
   /** Fired when the wake word is detected (drives manual listening). */
   onWake?: (phrase: string, confidence: number) => void;
@@ -66,7 +74,7 @@ export const DEFAULT_WAKE_GRACE_MS = 1_500;
 export function createWakeState(enabled: boolean, supported: boolean): WakeState {
   return {
     // Always start unarmed; applySettings()/arm() drive the phase. An enabled
-    // engine that lacks speech recognition surfaces its error immediately.
+    // engine that lacks audio transcription surfaces its error immediately.
     phase: enabled && !supported ? 'error' : 'disabled',
     enabled,
     level: 0,
@@ -74,7 +82,8 @@ export function createWakeState(enabled: boolean, supported: boolean): WakeState
     lastConfidence: 0,
     lastTriggerId: 0,
     supported,
-    error: enabled && !supported ? 'Wake word needs a browser with speech recognition.' : null,
+    error: enabled && !supported ? 'Wake word needs voice transcription.' : null,
+    micError: null,
   };
 }
 
@@ -155,6 +164,7 @@ export class WakeWordEngine {
         phase: 'disabled',
         supported,
         error: null,
+        micError: null,
         lastPhrase: null,
       });
       return;
@@ -165,7 +175,8 @@ export class WakeWordEngine {
         enabled: true,
         phase: 'error',
         supported,
-        error: 'Wake word needs a browser with speech recognition.',
+        error: 'Wake word needs voice transcription.',
+        micError: null,
       });
       return;
     }
@@ -221,7 +232,7 @@ export class WakeWordEngine {
       return;
     }
     this.arming = true;
-    this.set({ phase: 'armed', level: 0, error: null });
+    this.set({ phase: 'armed', level: 0, error: null, micError: null });
 
     const settings = this.deps.settings();
     try {
@@ -244,13 +255,13 @@ export class WakeWordEngine {
         onDetected: (detection) => this.trigger(detection.phrase, detection.confidence),
         onEnd: () => this.onDetectorEnd(),
       };
-      const detector = this.deps.detectorFactory(this.detectorOptions);
+      const detector = this.deps.detectorFactory(this.stream, this.detectorOptions);
       if (!detector) {
         this.teardown();
         this.set({
           phase: 'error',
           supported: false,
-          error: 'Wake word needs a browser with speech recognition.',
+          error: 'Wake word needs voice transcription.',
         });
         return;
       }
@@ -290,7 +301,8 @@ export class WakeWordEngine {
       this.teardown();
       this.set({
         phase: 'error',
-        error: error instanceof Error ? error.message : 'Could not access the microphone.',
+        error: describeMicError(error),
+        micError: micErrorKind(error),
       });
     }
   }

@@ -26,9 +26,19 @@ export function VoiceOrb({ size = 'sm' }: { size?: keyof typeof SIZES }): React.
 
   const active = ACTIVE_STATES.has(ai);
   const listening = ai === 'listening';
+  // The wake engine is "hearing" whenever the VAD senses speech-like audio
+  // while armed; breathe with that live level too so the sphere visibly reacts
+  // to the voice even before the wake word is confirmed.
+  const wakeHearing = wake.phase === 'hearing';
+  const reacting = listening || wakeHearing;
   // Flatten the live level so a silent mic keeps a faint baseline.
-  const level = listening ? Math.max(0.12, voiceState.level) : 1;
-  const color = listening ? 'var(--neon-cyan)' : 'var(--neon-purple)';
+  const level = reacting ? Math.max(0.12, listening ? voiceState.level : wake.level) : 1;
+  const speaking = ai === 'speaking';
+  const color = speaking
+    ? 'var(--neon-blue)'
+    : reacting
+      ? 'var(--neon-cyan)'
+      : 'var(--neon-purple)';
 
   return (
     <div className={`relative flex ${box.box} shrink-0 items-center justify-center`} aria-hidden>
@@ -41,7 +51,7 @@ export function VoiceOrb({ size = 'sm' }: { size?: keyof typeof SIZES }): React.
           transition={{ duration: 0.7, ease: 'easeOut' }}
         />
       )}
-      {active && !listening && !reduceMotion && (
+      {active && !reacting && !reduceMotion && (
         <>
           <motion.span
             className="absolute inset-0 rounded-full border"
@@ -59,7 +69,7 @@ export function VoiceOrb({ size = 'sm' }: { size?: keyof typeof SIZES }): React.
           />
         </>
       )}
-      {listening && (
+      {reacting && (
         <motion.span
           className="absolute inset-0 rounded-full border"
           style={{ borderColor: color, opacity: 0.35 + 0.45 * level }}
@@ -69,19 +79,23 @@ export function VoiceOrb({ size = 'sm' }: { size?: keyof typeof SIZES }): React.
         />
       )}
       <motion.span
-        className={cn('block rounded-full', listening ? 'bg-neon-cyan' : 'bg-neon-purple', box.dot)}
+        className={cn(
+          'block rounded-full',
+          speaking ? 'bg-neon-blue' : reacting ? 'bg-neon-cyan' : 'bg-neon-purple',
+          box.dot,
+        )}
         style={{ boxShadow: `0 0 ${10 + 16 * level}px ${color}` }}
         initial={false}
         animate={
-          listening
+          reacting
             ? { scale: 1 + 0.45 * level }
             : active && !reduceMotion
               ? { scale: [1, 1.25, 1] }
               : { scale: 1 }
         }
         transition={{
-          duration: listening ? 0.12 : 0.9,
-          repeat: listening ? 0 : Infinity,
+          duration: reacting ? 0.12 : 0.9,
+          repeat: reacting ? 0 : Infinity,
           ease: 'easeInOut',
         }}
       />

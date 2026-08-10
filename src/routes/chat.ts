@@ -70,9 +70,28 @@ const TOOL_CALL_LIMIT = 5;
 const ROUND_TIMEOUT_MS = 90_000;
 
 const SYSTEM_PROMPT =
-  'You are BRO, a helpful, concise AI assistant. Answer the user directly and ' +
-  'accurately. Prefer short answers unless detail is requested.\n' +
-  'Use tools sparingly. Never call a tool for casual conversation, greetings, or ' +
+  'You are BRO, a warm, intelligent, and deeply human AI assistant. You talk the way a ' +
+  'thoughtful, well-read friend talks: natural, genuine, and easy to understand — never ' +
+  'robotic, stiff, or evasive.\n' +
+  '\n' +
+  'Personality:\n' +
+  '- Be warm, curious, and engaging. Use contractions and vary your sentence length so ' +
+  'your writing flows like real speech.\n' +
+  '- Show personality: be enthusiastic when it fits, empathetic when the user shares ' +
+  'something personal, and confident when you actually know the answer.\n' +
+  "- Mirror the user's language and tone, and use their name when you know it.\n" +
+  '\n' +
+  'Answering style:\n' +
+  '- Give thorough, detailed answers by default. Explain the "why" behind the "what", ' +
+  'include concrete examples, and walk through your reasoning step by step.\n' +
+  '- When the user asks a question, enrich your answer with useful context, options, or ' +
+  'next steps instead of returning a bare one-liner.\n' +
+  '- Structure longer answers with clean markdown — headings, bullet lists, and code ' +
+  'blocks — so they are easy to scan, but keep the writing natural rather than templated.\n' +
+  '- Be honest when you are unsure; say so and offer how the two of you can find out.\n' +
+  '\n' +
+  'Tools:\n' +
+  '- Use tools sparingly. Never call a tool for casual conversation, greetings, or ' +
   'questions you can answer from your own knowledge. Only call a tool when the ' +
   'user asks for something that genuinely requires fetching live data or ' +
   'performing an action. When you do use a tool, never describe the tool call ' +
@@ -189,29 +208,41 @@ function attemptStatus(error: unknown): number | undefined {
   return (error as { status?: number }).status;
 }
 
+function attemptCode(error: unknown): string | undefined {
+  return (error as { code?: string }).code;
+}
+
+/**
+ * Walks the error and its `cause` chain so a message can be derived even when
+ * a fallback layer wraps the original failure (e.g. an aggregate LLMError).
+ */
 function deriveErrorMessage(error: unknown): string {
-  const status = attemptStatus(error);
-  if (status === 429) {
-    return 'The AI provider is rate-limiting requests (429). Please wait a moment and try again.';
-  }
-  if (status === 401 || status === 403) {
-    return 'The AI provider rejected the API key (unauthorized). Check the provider key and quota.';
-  }
-  const code = (error as { code?: string }).code;
-  if (code === 'rate_limited') {
-    return 'The AI provider is rate-limiting requests. Please wait a moment and try again.';
-  }
-  if (code === 'auth_failed') {
-    return 'The AI provider rejected the API key (unauthorized). Check the provider key and quota.';
-  }
-  if (code === 'timeout') {
-    return 'The AI provider timed out. Please try again.';
-  }
-  if (code === 'network' || code === 'stream_interrupted') {
-    return 'Network error while contacting the AI provider.';
-  }
-  if (code === 'model_unavailable') {
-    return 'The requested AI model is unavailable.';
+  let cursor: unknown = error;
+  for (let depth = 0; cursor && depth < 4; depth += 1) {
+    const status = attemptStatus(cursor);
+    if (status === 429) {
+      return 'The AI provider is rate-limiting requests (429). Please wait a moment and try again.';
+    }
+    if (status === 401 || status === 403) {
+      return 'The AI provider rejected the API key (unauthorized). Check the provider key and quota.';
+    }
+    const code = attemptCode(cursor);
+    if (code === 'rate_limited') {
+      return 'The AI provider is rate-limiting requests. Please wait a moment and try again.';
+    }
+    if (code === 'auth_failed') {
+      return 'The AI provider rejected the API key (unauthorized). Check the provider key and quota.';
+    }
+    if (code === 'timeout') {
+      return 'The AI provider timed out. Please try again.';
+    }
+    if (code === 'network' || code === 'stream_interrupted') {
+      return 'Network error while contacting the AI provider.';
+    }
+    if (code === 'model_unavailable') {
+      return 'The requested AI model is unavailable.';
+    }
+    cursor = (cursor as { cause?: unknown }).cause;
   }
   return 'Failed to generate a response';
 }
@@ -233,6 +264,9 @@ async function runModel(
         messages: currentMessages,
         ...(currentTools.length > 0 ? { tools: currentTools } : {}),
         ...(model ? { model } : {}),
+        // A slightly higher temperature keeps BRO's answers natural and varied
+        // while remaining focused and reliable.
+        temperature: 0.8,
       },
       { signal },
     );

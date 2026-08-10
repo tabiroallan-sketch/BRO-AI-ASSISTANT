@@ -8,7 +8,9 @@ import type {
   ChatCompletionTool,
 } from 'openai/resources/chat/completions';
 import { config } from '../config/index.js';
+import { getSecret } from './secrets.js';
 import type { ToolParameterSchema } from '../tools/types.js';
+import { GEMINI_MODELS } from '../llm/providers/gemini/index.js';
 
 export type AiToolCall = {
   id: string;
@@ -42,7 +44,7 @@ export type AiStreamEvent =
   { type: 'content'; content: string } | { type: 'tool_calls'; toolCalls: AiToolCall[] };
 
 export function aiConfigured(): boolean {
-  return config.openaiApiKey.length > 0;
+  return getSecret('OPENAI_API_KEY').length > 0;
 }
 
 let cachedClient: { client: OpenAI; apiKey: string; baseUrl: string } | null = null;
@@ -51,7 +53,7 @@ function openaiClient(): OpenAI {
   if (!aiConfigured()) {
     throw new Error('OpenAI is not configured');
   }
-  const apiKey = config.openaiApiKey;
+  const apiKey = getSecret('OPENAI_API_KEY');
   const baseUrl = config.openaiBaseUrl ?? '';
   if (cachedClient && cachedClient.apiKey === apiKey && cachedClient.baseUrl === baseUrl) {
     return cachedClient.client;
@@ -176,4 +178,61 @@ export async function completeChat(
         : {}),
     })),
   };
+}
+
+export type TranscribeAudioFormat = 'wav' | 'mp3' | 'aiff' | 'aac' | 'ogg' | 'flac';
+
+/**
+ * Transcribes a short base64-encoded audio clip (16-bit PCM WAV recommended).
+ *
+ * The Gemini free tier enforces its request quota per model (e.g. 20
+ * requests/day for gemini-3.5-flash), so on a rate-limit or empty result the
+ * call transparently retries with the next catalog model before giving up.
+ */
+export async function transcribeAudioChunk(
+  base64Audio: string,
+  format: TranscribeAudioFormat = 'wav',
+): Promise<string> {
+  const candidateModels = [config.openaiModel, ...GEMINI_MODELS.map((model) => model.id)].filter(
+    (model, index, all) => model && all.indexOf(model) === index,
+  );
+
+  let lastError: unknown;
+  for (const model of candidateModels) {
+    try {
+      const response = await openaiClient().chat.completions.create({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'input_audio',
+                input_audio: { data: base64Audio, format },
+              },
+              {
+                type: 'text',
+                text: 'Transcribe the speech in this audio verbatim. Output ONLY the transcript with no commentary.',
+              },
+            ],
+          },
+        ] as unknown as ChatCompletionMessageParam[],
+      });
+      const text = response.choices?.[0]?.message?.content?.trim();
+      if (text) {
+        return text;
+      }
+      // An empty result may mean this model cannot process the audio; try the
+      // next candidate before reporting failure.
+      lastError = new Error('Transcription returned no text');
+    } catch (error) {
+      const status = (error as { status?: unknown }).status;
+      if (status !== 429 && status !== 404) {
+        throw error;
+      }
+      // Quota or unavailable model: move on to the next candidate.
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Transcription failed');
 }

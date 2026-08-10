@@ -54,6 +54,9 @@ function harness(settings: VoiceSettings, overrides: Record<string, unknown> = {
     supported: () => true,
     listDevices: async () => ({ inputs: [], outputs: [] }),
     acquire: async () => {
+      if (overrides.micAcquireError) {
+        throw overrides.micAcquireError;
+      }
       acquired += 1;
       return {} as MediaStream;
     },
@@ -69,12 +72,15 @@ function harness(settings: VoiceSettings, overrides: Record<string, unknown> = {
   };
 
   const detectorFactory = vi.fn(
-    (options: {
-      phrases: string[];
-      sensitivity: number;
-      onDetected: (d: { phrase: string; confidence: number }) => void;
-      onEnd: () => void;
-    }) => {
+    (
+      _stream: MediaStream,
+      options: {
+        phrases: string[];
+        sensitivity: number;
+        onDetected: (d: { phrase: string; confidence: number }) => void;
+        onEnd: () => void;
+      },
+    ) => {
       lastDetector = {
         started: 0,
         stopped: 0,
@@ -142,10 +148,35 @@ describe('WakeWordEngine', () => {
     expect(engine.getState().enabled).toBe(false);
   });
 
-  it('errors when speech recognition is unavailable', () => {
+  it('errors when transcription is unavailable', () => {
     const { engine } = harness(baseSettings(), { supported: false });
     expect(engine.getState().phase).toBe('error');
-    expect(engine.getState().error).toContain('speech recognition');
+    expect(engine.getState().error).toContain('transcription');
+  });
+
+  it('reports a categorized, actionable error when the mic is blocked', async () => {
+    const denied = new Error('Permission denied');
+    denied.name = 'NotAllowedError';
+    const { engine, micAcquires } = harness(baseSettings(), { micAcquireError: denied });
+    engine.applySettings(baseSettings());
+    await flush();
+    expect(engine.getState().phase).toBe('error');
+    expect(engine.getState().micError).toBe('not-allowed');
+    expect(engine.getState().error).toContain('Microphone permission is blocked');
+    expect(micAcquires()).toBe(0);
+  });
+
+  it('clears the mic error category when it arms again', async () => {
+    const denied = new Error('Permission denied');
+    denied.name = 'NotAllowedError';
+    const { engine } = harness(baseSettings(), { micAcquireError: denied });
+    engine.applySettings(baseSettings());
+    await flush();
+    expect(engine.getState().phase).toBe('error');
+    engine.applySettings(baseSettings({ wakeWordEnabled: false }));
+    await flush();
+    expect(engine.getState().phase).toBe('disabled');
+    expect(engine.getState().micError).toBeNull();
   });
 
   it('arms and acquires the microphone when enabled', async () => {

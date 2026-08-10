@@ -6,6 +6,7 @@ import { useFrame } from '@react-three/fiber';
 import { useReducedMotion } from 'framer-motion';
 import { useAiState } from '@/lib/ai-state';
 import { scenePointer } from '@/lib/scene-pointer';
+import { voiceLevel } from '@/lib/voice-level';
 import { NEON_CYAN, NEON_PURPLE } from './colors';
 import { STATE_COLORS, STATE_PARAMS } from './sphere-state';
 
@@ -86,9 +87,14 @@ export function HoloSphere(): React.JSX.Element {
     const target = STATE_PARAMS[ai.state];
     targetColor.current.set(STATE_COLORS[ai.state]);
 
+    // Pulse with the live mic level while listening (or hearing) so the core
+    // visibly responds to the user's voice, not just discrete state changes.
+    const live = voiceLevel.get();
+    const voiceBoost = 1 + live * 0.5;
+
     const cur = current.current;
     cur.speed = THREE.MathUtils.damp(cur.speed, target.speed, 2.0, dt);
-    cur.intensity = THREE.MathUtils.damp(cur.intensity, target.intensity, 3.0, dt);
+    cur.intensity = THREE.MathUtils.damp(cur.intensity, target.intensity * voiceBoost, 3.0, dt);
     cur.color.lerp(targetColor.current, 1 - Math.pow(0.0005, dt));
 
     const motion = reduceMotion ? 0 : 1;
@@ -117,6 +123,8 @@ export function HoloSphere(): React.JSX.Element {
       const tiltZ = scenePointer.x * 0.25;
       group.current.rotation.x = THREE.MathUtils.damp(group.current.rotation.x, tiltX, 2.5, dt);
       group.current.rotation.z = THREE.MathUtils.damp(group.current.rotation.z, tiltZ, 2.5, dt);
+      const scale = 1 + live * 0.06;
+      group.current.scale.setScalar(THREE.MathUtils.damp(group.current.scale.x, scale, 4, dt));
     }
   });
 

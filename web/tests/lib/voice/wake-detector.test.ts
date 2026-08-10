@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { RecognitionConstructor, RecognitionLike } from '@/lib/speech';
+import type { SpeechRecognizer, SpeechRecognizerOptions } from '@/lib/speech';
 import {
   WAKE_FULL_MATCH_BASE,
   WAKE_STABILITY_STEP,
@@ -93,113 +93,119 @@ describe('wakeThreshold', () => {
 });
 
 function fakeRecognizer(): {
-  Ctor: RecognitionConstructor;
-  instance: () => RecognitionLike | null;
-  emit: (text: string) => void;
-  emitFinal: (text: string) => void;
+  recognizer: SpeechRecognizer;
+  factory: (
+    stream: MediaStream,
+    options: SpeechRecognizerOptions,
+    maxDurationMs: number,
+  ) => SpeechRecognizer | null;
+  options: () => SpeechRecognizerOptions | null;
+  start: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
 } {
-  let current: RecognitionLike | null = null;
-  const emit = (text: string, isFinal = false): void => {
-    current?.onresult?.({
-      results: [{ isFinal, 0: { transcript: text } }],
-    });
+  let captured: SpeechRecognizerOptions | null = null;
+  const start = vi.fn();
+  const stop = vi.fn();
+  const recognizer: SpeechRecognizer = { start, stop, isListening: () => false };
+  const factory = (
+    _stream: MediaStream,
+    options: SpeechRecognizerOptions,
+    _maxDurationMs: number,
+  ): SpeechRecognizer | null => {
+    captured = options;
+    return recognizer;
   };
-  const Ctor = class {
-    continuous = false;
-    interimResults = false;
-    lang = '';
-    onresult: RecognitionLike['onresult'] = null;
-    onend: RecognitionLike['onend'] = null;
-    onerror: RecognitionLike['onerror'] = null;
-    start = vi.fn(() => {
-      current = this as unknown as RecognitionLike;
-    });
-    stop = vi.fn(() => {
-      current = null;
-      this.onend?.();
-    });
-  } as unknown as RecognitionConstructor;
-  return {
-    Ctor,
-    instance: () => current,
-    emit: (text) => emit(text),
-    emitFinal: (text) => emit(text, true),
-  };
+  return { recognizer, factory, options: () => captured, start, stop };
 }
 
+const wakeOptions = (overrides: Partial<{ sensitivity: number }> = {}) => ({
+  phrases: ['hey bro'],
+  sensitivity: overrides.sensitivity ?? 0.6,
+  onDetected: vi.fn(),
+  onEnd: vi.fn(),
+});
+
 describe('createWakeDetector', () => {
-  it('returns null without a recognition constructor', () => {
-    const detector = createWakeDetector(
-      { phrases: ['hey bro'], sensitivity: 0.6, onDetected: vi.fn(), onEnd: vi.fn() },
-      null,
-    );
+  it('returns null when transcription is unavailable', () => {
+    const detector = createWakeDetector({} as MediaStream, wakeOptions(), () => null);
     expect(detector).toBeNull();
   });
 
-  it('starts a continuous recognizer with interim results', () => {
-    const { Ctor, instance } = fakeRecognizer();
-    const detector = createWakeDetector(
-      { phrases: ['hey bro'], sensitivity: 0.6, onDetected: vi.fn(), onEnd: vi.fn() },
-      Ctor,
-    )!;
+  it('starts the recognizer when started and is idempotent', () => {
+    const fake = fakeRecognizer();
+    const detector = createWakeDetector({} as MediaStream, wakeOptions(), fake.factory)!;
     detector.start();
+    expect(fake.start).toHaveBeenCalledTimes(1);
     expect(detector.isRunning()).toBe(true);
-    expect(instance()?.continuous).toBe(true);
-    expect(instance()?.interimResults).toBe(true);
+    detector.start();
+    expect(fake.start).toHaveBeenCalledTimes(1);
   });
 
-  it('fires onDetected with the phrase and confidence', () => {
+  it('fires onDetected when a final transcript contains the phrase', () => {
     const onDetected = vi.fn();
     const onEnd = vi.fn();
-    const { Ctor, emit, emitFinal } = fakeRecognizer();
+    const fake = fakeRecognizer();
     const detector = createWakeDetector(
-      { phrases: ['hey bro'], sensitivity: 0.6, onDetected, onEnd },
-      Ctor,
+      {} as MediaStream,
+      { ...wakeOptions(), onDetected, onEnd },
+      fake.factory,
     )!;
     detector.start();
-    emitFinal('hey bro');
-    emit('hey bro');
+    fake.options()?.onFinal?.('hey bro wake up');
     expect(onDetected).toHaveBeenCalledWith({
       phrase: 'hey bro',
       confidence: expect.any(Number),
     });
     expect(onEnd).not.toHaveBeenCalled();
-    expect(detector.isRunning()).toBe(false);
+    expect(detector.isRunning()).toBe(true);
   });
 
-  it('does not fire below the sensitivity threshold', () => {
+  it('does not fire for transcripts without the phrase', () => {
     const onDetected = vi.fn();
-    const { Ctor, emit } = fakeRecognizer();
+    const fake = fakeRecognizer();
     const detector = createWakeDetector(
-      { phrases: ['hey bro'], sensitivity: 1, onDetected, onEnd: vi.fn() },
-      Ctor,
+      {} as MediaStream,
+      { ...wakeOptions(), onDetected },
+      fake.factory,
     )!;
     detector.start();
-    emit('hey b');
+    fake.options()?.onFinal?.('how are you doing');
+    fake.options()?.onInterim?.('hey');
     expect(onDetected).not.toHaveBeenCalled();
   });
 
-  it('ignores word-boundary false positives like "broccoli"', () => {
+  it('respects word boundaries for short phrases', () => {
     const onDetected = vi.fn();
-    const { Ctor, emit } = fakeRecognizer();
+    const fake = fakeRecognizer();
     const detector = createWakeDetector(
+      {} as MediaStream,
       { phrases: ['bro'], sensitivity: 0.2, onDetected, onEnd: vi.fn() },
-      Ctor,
+      fake.factory,
     )!;
     detector.start();
-    emit('broccoli');
+    fake.options()?.onFinal?.('broccoli is green');
     expect(onDetected).not.toHaveBeenCalled();
   });
 
-  it('reports browser-initiated ends through onEnd', () => {
+  it('reports recognizer ends and errors through onEnd', () => {
     const onEnd = vi.fn();
-    const { Ctor, instance } = fakeRecognizer();
+    const fake = fakeRecognizer();
     const detector = createWakeDetector(
-      { phrases: ['hey bro'], sensitivity: 0.6, onDetected: vi.fn(), onEnd },
-      Ctor,
+      {} as MediaStream,
+      { ...wakeOptions(), onEnd },
+      fake.factory,
     )!;
     detector.start();
-    instance()?.onend?.();
+    fake.options()?.onEnd?.();
     expect(onEnd).toHaveBeenCalled();
+  });
+
+  it('stops the recognizer when stopped', () => {
+    const fake = fakeRecognizer();
+    const detector = createWakeDetector({} as MediaStream, wakeOptions(), fake.factory)!;
+    detector.start();
+    detector.stop();
+    expect(fake.stop).toHaveBeenCalledTimes(1);
+    expect(detector.isRunning()).toBe(false);
   });
 });

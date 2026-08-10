@@ -1,6 +1,30 @@
 import { join } from 'node:path';
 import { createManagedProcess, type ManagedProcess, type SpawnFn } from './process-manager.js';
 
+/**
+ * Environment variables the embedded API reads for AI providers (see
+ * src/config/index.ts in the backend). The shell forwards these from its own
+ * environment so keys configured in the parent process (or the repo .env in
+ * dev) reach the API child, which otherwise only loads .env from its own cwd.
+ */
+export const AI_PROVIDER_ENV_VARS = [
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+  'OPENAI_MODEL',
+  'NVIDIA_API_KEY',
+  'NVIDIA_BASE_URL',
+  'LLM_FALLBACK_ENABLED',
+  'LLM_FALLBACK_ORDER',
+  'ELEVENLABS_API_KEY',
+] as const;
+
+/**
+ * Additional env vars the shell forwards to the embedded API child because the
+ * backend reads them from the environment (see src/config/index.ts) and the
+ * child otherwise only loads .env from its own cwd.
+ */
+export const API_PASSTHROUGH_ENV_VARS = [...AI_PROVIDER_ENV_VARS, 'ADMIN_EMAILS'] as const;
+
 export type RuntimeSecrets = {
   jwtSecret: string;
   jwtRefreshSecret: string;
@@ -54,7 +78,7 @@ export function createApiServer(options: ApiServerOptions): ManagedProcess {
     JWT_REFRESH_SECRET: options.secrets.jwtRefreshSecret,
     COOKIE_SECRET: options.secrets.cookieSecret,
     ENCRYPTION_KEY: options.secrets.encryptionKey,
-    CORS_ORIGIN: options.webOrigin,
+    CORS_ORIGIN: `${options.webOrigin},http://localhost:3001`,
     CSRF_PROTECTION_ENABLED: 'true',
     INTEGRATION_REDIRECT_BASE: `http://127.0.0.1:${options.port}/api/v1/integrations`,
     TOOL_FS_ROOT: join(options.dataDir, 'sandbox'),
@@ -63,6 +87,12 @@ export function createApiServer(options: ApiServerOptions): ManagedProcess {
     BROWSER_ENABLED: options.browserEnabled ? 'true' : 'false',
     LOG_LEVEL: process.env.BRO_DESKTOP_LOG_LEVEL ?? 'info',
   };
+  for (const name of API_PASSTHROUGH_ENV_VARS) {
+    const value = process.env[name];
+    if (value) {
+      env[name] = value;
+    }
+  }
 
   return createManagedProcess({
     label: 'api',

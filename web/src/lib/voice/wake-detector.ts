@@ -1,15 +1,17 @@
 /**
- * Wake-word detection (Stage 6): keyword spotting on continuous Web Speech
- * interim results. The pure pieces (`normalizeWakeText`, `findWakeMatch`,
- * `wakeConfidence`, `wakeThreshold`) are unit-tested; the browser recognizer
- * wrapper is built from an injectable constructor so it stays mockable.
+ * Wake-word detection (Stage 6): records the stream and matches the transcribed
+ * text for a phrase. The pure pieces (`normalizeWakeText`, `findWakeMatch`,
+ * `wakeConfidence`, `wakeThreshold`) are unit-tested; the recorder wrapper is
+ * built from the shared transcribe recognizer so it stays mockable.
  *
- * The engine gates the recognizer with voice activity (energy pre-gate): the
- * recognizer only runs while speech-like audio is present, which keeps CPU
+ * The engine gates the detector with voice activity (energy pre-gate): the
+ * detector only records while speech-like audio is present, which keeps CPU
  * down and silence/TV from producing false triggers.
  */
 
-import { getSpeechRecognitionConstructor, type RecognitionConstructor } from '@/lib/speech';
+import type { SpeechRecognizer, SpeechRecognizerOptions } from '@/lib/speech';
+import { createTranscribeRecognizer } from './recognizer';
+import { isTranscriptionSupported } from './transcribe';
 
 export type WakeMatch = {
   /** The phrase that was matched. */
@@ -115,102 +117,83 @@ export type WakeDetectorOptions = {
   onEnd: () => void;
 };
 
-export type WakeDetectorFactory = (options: WakeDetectorOptions) => WakeDetector | null;
-
-/**
- * Creates a keyword-spotting recognizer from an injectable constructor, or
- * null when speech recognition is unavailable in this environment.
- */
-export function createWakeDetector(
+export type WakeDetectorFactory = (
+  stream: MediaStream,
   options: WakeDetectorOptions,
-  recognitionConstructor: RecognitionConstructor | null = getSpeechRecognitionConstructor(),
-): WakeDetector | null {
-  if (!recognitionConstructor) {
+) => WakeDetector | null;
+
+/** Builds the speech recognizer used under the hood; injectable for tests. */
+export type RecognizerFactory = (
+  stream: MediaStream,
+  options: SpeechRecognizerOptions,
+  maxDurationMs: number,
+) => SpeechRecognizer | null;
+
+/** Caps a wake-word clip so long speech is chunked instead of transcribed whole. */
+export const WAKE_CLIP_MAX_MS = 8_000;
+
+/** Matches a finalized transcription against the configured phrases. */
+function evaluateTranscript(text: string, options: WakeDetectorOptions): WakeDetection | null {
+  const match = findWakeMatch(text, options.phrases);
+  if (!match) {
     return null;
   }
-  const recognition = new recognitionConstructor();
+  // A finalized transcript is authoritative: treat it as fully stable.
+  const confidence = wakeConfidence(match, WAKE_STABILITY_WINDOW);
+  if (confidence < wakeThreshold(options.sensitivity)) {
+    return null;
+  }
+  return { phrase: match.phrase, confidence };
+}
+
+/**
+ * Records the stream while running and, on stop, transcribes the clip and
+ * fires `onDetected` when it contains a wake phrase. Returns null when audio
+ * transcription is unavailable in this environment.
+ */
+export function createWakeDetector(
+  stream: MediaStream,
+  options: WakeDetectorOptions,
+  recognizerFactory: RecognizerFactory = createTranscribeRecognizer,
+): WakeDetector | null {
+  const recognizer = recognizerFactory(
+    stream,
+    {
+      onInterim: () => undefined,
+      onFinal: (text) => {
+        const detection = evaluateTranscript(text, options);
+        if (detection) {
+          options.onDetected(detection);
+        }
+      },
+      onEnd: () => {
+        options.onEnd();
+      },
+      onError: () => {
+        options.onEnd();
+      },
+    },
+    WAKE_CLIP_MAX_MS,
+  );
+  if (!recognizer) {
+    return null;
+  }
+
   let running = false;
-  let stoppedByUs = false;
-  let snapshots: string[] = [];
-
-  const snapshotText = (): string => snapshots[snapshots.length - 1] ?? '';
-
-  function evaluate(): void {
-    const latest = snapshotText();
-    if (!latest) {
-      return;
-    }
-    const match = findWakeMatch(latest, options.phrases);
-    if (!match) {
-      return;
-    }
-    const stability = snapshots.filter((entry) => findWakeMatch(entry, options.phrases)).length;
-    const confidence = wakeConfidence(match, stability);
-    if (confidence >= wakeThreshold(options.sensitivity)) {
-      options.onDetected({ phrase: match.phrase, confidence });
-      stopDetector();
-    }
-  }
-
-  function stopDetector(): void {
-    if (!running) {
-      return;
-    }
-    stoppedByUs = true;
-    recognition.stop();
-  }
-
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = 'en-US';
-  recognition.onresult = (event) => {
-    let interim = '';
-    let final = '';
-    for (const result of event.results) {
-      if (result.isFinal) {
-        final += result[0].transcript;
-      } else {
-        interim += result[0].transcript;
-      }
-    }
-    const latest = normalizeWakeText(`${final} ${interim}`);
-    snapshots.push(latest);
-    if (snapshots.length > WAKE_STABILITY_WINDOW) {
-      snapshots.shift();
-    }
-    evaluate();
-  };
-  recognition.onend = () => {
-    const wasRunning = running;
-    running = false;
-    if (wasRunning && !stoppedByUs) {
-      // The browser ended the session (it can stop on its own); let the engine
-      // decide whether to restart via onEnd.
-      options.onEnd();
-    }
-    stoppedByUs = false;
-  };
-  recognition.onerror = (event) => {
-    if (event.error === 'aborted') {
-      return;
-    }
-    running = false;
-    stoppedByUs = false;
-    options.onEnd();
-  };
-
   return {
     start: () => {
       if (running) {
         return;
       }
-      snapshots = [];
-      stoppedByUs = false;
-      recognition.start();
       running = true;
+      recognizer.start();
     },
     stop: () => {
-      stopDetector();
+      if (!running) {
+        return;
+      }
+      running = false;
+      recognizer.stop();
     },
     isRunning: () => running,
   };
@@ -220,5 +203,5 @@ export function createWakeDetector(
  * Whether the wake-word engine can run at all in this environment.
  */
 export function isWakeWordSupported(): boolean {
-  return getSpeechRecognitionConstructor() !== null;
+  return isTranscriptionSupported();
 }

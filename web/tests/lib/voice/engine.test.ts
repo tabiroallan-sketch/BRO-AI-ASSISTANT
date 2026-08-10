@@ -16,7 +16,7 @@ function buildEngine(overrides: Partial<EngineDeps> = {}) {
   };
   const vad = { feed: vi.fn(), isActive: vi.fn(() => true), reset: vi.fn() };
 
-  let recognizerOptions: Parameters<EngineDeps['sttFactory']>[0] | null = null;
+  let recognizerOptions: Parameters<EngineDeps['sttFactory']>[1] | null = null;
   let vadOptions: VadOptions | null = null;
 
   const mic = {
@@ -29,10 +29,12 @@ function buildEngine(overrides: Partial<EngineDeps> = {}) {
         (stream: MediaStream, onLevel: (level: number) => void, intervalMs?: number) => () => void
       >(),
   };
-  const sttFactory = vi.fn((options: Parameters<EngineDeps['sttFactory']>[0]) => {
-    recognizerOptions = options;
-    return recognizer;
-  });
+  const sttFactory = vi.fn(
+    (_stream: MediaStream, options: Parameters<EngineDeps['sttFactory']>[1]) => {
+      recognizerOptions = options;
+      return recognizer;
+    },
+  );
   const vadFactory = vi.fn((options: VadOptions) => {
     vadOptions = options;
     return vad;

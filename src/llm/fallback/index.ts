@@ -75,6 +75,7 @@ export class ProviderFallback {
     throw new LLMError({
       code: 'unknown',
       providerId: firstFailure.providerId,
+      status: firstFailure.error.status,
       message: `All AI providers failed. ${failures
         .map((failure) => `${failure.providerId}: ${failure.error.message}`)
         .join('; ')}`,

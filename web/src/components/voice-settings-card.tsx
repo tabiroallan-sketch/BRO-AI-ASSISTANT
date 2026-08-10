@@ -64,6 +64,8 @@ export function VoiceSettingsCard(): React.JSX.Element {
   const [voices, setVoices] = React.useState<SpeechVoice[]>([]);
   const [saving, setSaving] = React.useState(false);
   const [tested, setTested] = React.useState(false);
+  const [requesting, setRequesting] = React.useState(false);
+  const [requestFailed, setRequestFailed] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -149,6 +151,58 @@ export function VoiceSettingsCard(): React.JSX.Element {
     }
   }
 
+  /** OS mic-privacy deep link, when running inside the desktop shell. */
+  function micSettingsUrl(): string | null {
+    if (!api) {
+      return null;
+    }
+    if (api.platform === 'win32') {
+      return 'ms-settings:privacy-microphone';
+    }
+    if (api.platform === 'darwin') {
+      return 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone';
+    }
+    return null;
+  }
+
+  /**
+   * Re-requests the microphone inside a fresh user gesture. A grant here makes
+   * the browser prompt again (unless it was permanently blocked) and re-arms
+   * the wake engine so the status flips straight back to "armed".
+   */
+  async function requestMicPermission(): Promise<void> {
+    setRequesting(true);
+    setRequestFailed(false);
+    try {
+      const mic = createMicManager();
+      let granted = false;
+      if (mic.supported()) {
+        try {
+          await mic.acquire({ deviceId: settings?.inputDeviceId ?? null });
+          mic.release();
+          granted = true;
+        } catch {
+          granted = false;
+        }
+      }
+      if (granted && settings) {
+        voice.engine.applySettings(settings);
+        voice.wakeEngine.applySettings(settings);
+      } else {
+        setRequestFailed(true);
+      }
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  async function openSystemMicSettings(): Promise<void> {
+    const url = micSettingsUrl();
+    if (api && url) {
+      await api.shell.openExternal(url);
+    }
+  }
+
   const disabled = !settings;
 
   const wake = voice.wake;
@@ -156,7 +210,7 @@ export function VoiceSettingsCard(): React.JSX.Element {
   if (!settings?.wakeWordEnabled) {
     wakeStatus = 'Wake word is off.';
   } else if (!wake.supported) {
-    wakeStatus = wake.error ?? 'Wake word needs a browser with speech recognition.';
+    wakeStatus = wake.error ?? 'Wake word needs voice transcription.';
   } else if (!voice.wakeOwner) {
     wakeStatus = 'Paused — another BRO window is listening.';
   } else if (voice.isListening) {
@@ -378,6 +432,46 @@ export function VoiceSettingsCard(): React.JSX.Element {
                   <Radar className="h-4 w-4 shrink-0 text-neon-cyan" />
                   <span>{wakeStatus}</span>
                 </div>
+
+                {wake.phase === 'error' && wake.supported && wake.micError && (
+                  <div className="space-y-2 rounded-md border border-border bg-muted p-3">
+                    {requesting ? (
+                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Requesting microphone
+                        permission…
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void requestMicPermission()}
+                          >
+                            Request microphone permission
+                          </Button>
+                          {micSettingsUrl() && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void openSystemMicSettings()}
+                            >
+                              Open system mic settings
+                            </Button>
+                          )}
+                        </div>
+                        {requestFailed && (
+                          <p className="text-xs text-muted-foreground">
+                            Still blocked. Allow the microphone for this browser and in your system
+                            privacy settings, then try again.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {(wake.phase === 'armed' || wake.phase === 'hearing') && (
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">

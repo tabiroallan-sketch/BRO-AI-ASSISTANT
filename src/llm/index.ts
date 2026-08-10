@@ -2,6 +2,7 @@ export * from './types/index.js';
 export type { LLMProvider } from './interfaces/provider.js';
 export { BaseProvider, type BaseProviderOptions } from './providers/base.js';
 export { NvidiaProvider, NVIDIA_MODELS, NVIDIA_DEFAULT_MODEL } from './providers/nvidia/index.js';
+export { GeminiProvider, GEMINI_MODELS, GEMINI_DEFAULT_MODEL } from './providers/gemini/index.js';
 export {
   LLMError,
   type LLMErrorCode,

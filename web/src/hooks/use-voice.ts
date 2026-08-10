@@ -11,6 +11,7 @@ import { getWakeWordEngine, type WakeState, type WakeWordEngine } from '@/lib/vo
 import { createWakeOwner } from '@/lib/voice/wake-owner';
 import { getDesktopApi, normalizeVoiceSettings } from '@/lib/desktop';
 import { useAiState } from '@/lib/ai-state';
+import { voiceLevel } from '@/lib/voice-level';
 
 export type UseVoiceResult = {
   engine: VoiceEngine;
@@ -150,6 +151,15 @@ export function useVoice(): UseVoiceResult {
       useAiState.getState().setState('idle');
     }
   }, [state.phase]);
+
+  // Feed the live mic level into the shared voiceLevel module so the WebGL
+  // core scene can pulse with the voice (listening + wake-hearing) without
+  // triggering React renders.
+  React.useEffect(() => {
+    const hearing = wake.phase === 'hearing';
+    const listening = state.phase === 'requesting' || state.phase === 'listening';
+    voiceLevel.set(listening ? state.level : hearing ? wake.level : 0);
+  }, [state.phase, state.level, wake.phase, wake.level]);
 
   const isListening = state.phase === 'requesting' || state.phase === 'listening';
 

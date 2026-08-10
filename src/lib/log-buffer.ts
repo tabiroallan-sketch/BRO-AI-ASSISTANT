@@ -6,6 +6,7 @@ export type LogEntry = {
   msg: string;
   req?: Record<string, unknown> | null;
   res?: Record<string, unknown> | null;
+  err?: Record<string, unknown> | null;
 };
 
 const MAX_LOGS = 300;
@@ -57,6 +58,7 @@ export const logBufferStream = new Writable({
           msg: typeof parsed.msg === 'string' ? parsed.msg : '',
           req: parsed.req as Record<string, unknown> | null | undefined,
           res: parsed.res as Record<string, unknown> | null | undefined,
+          err: parsed.err as Record<string, unknown> | null | undefined,
         });
       } catch {
         // ignore non-JSON chunks

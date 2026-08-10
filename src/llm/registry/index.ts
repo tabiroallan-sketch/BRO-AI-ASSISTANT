@@ -1,6 +1,7 @@
 import type { LLMProvider } from '../interfaces/provider.js';
 import type { ProviderDescriptor } from '../types/index.js';
 import { NvidiaProvider } from '../providers/nvidia/index.js';
+import { GeminiProvider } from '../providers/gemini/index.js';
 
 export const DEFAULT_PROVIDER_ID = 'nvidia';
 
@@ -60,3 +61,4 @@ export function getProviderRegistry(): ProviderRegistry {
 }
 
 providerRegistry.register(new NvidiaProvider());
+providerRegistry.register(new GeminiProvider());

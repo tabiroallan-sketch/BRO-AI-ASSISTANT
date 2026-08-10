@@ -1,4 +1,4 @@
-import { app, nativeTheme } from 'electron';
+import { app, nativeTheme, session } from 'electron';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -11,6 +11,7 @@ import { planModeTransition } from './operating-mode.js';
 import { autostart } from './autostart.js';
 import { ConfigStore } from './config.js';
 import { ConnectivityMonitor } from './connectivity.js';
+import { loadDevAiEnv } from './env.js';
 import { CrashGuard } from './crash.js';
 import { registerIpc, watchNativeTheme } from './ipc.js';
 import { installApplicationMenu } from './menus.js';
@@ -125,6 +126,7 @@ function requestQuit(): void {
 }
 
 async function bootstrap(): Promise<void> {
+  loadDevAiEnv(app.getAppPath());
   const userData = app.getPath('userData');
   const dataDir = join(userData, 'data');
   const logDir = join(userData, 'logs');
@@ -139,6 +141,20 @@ async function bootstrap(): Promise<void> {
   const crash = new CrashGuard({ logFile: join(logDir, 'crash.log') });
 
   await app.whenReady();
+
+  // The renderer needs the microphone (voice input / wake word) and other
+  // benign web permissions. Electron's default grants everything, but making
+  // it explicit keeps media access working across Electron upgrades and
+  // config changes (both a request handler and a sync check handler are
+  // required for complete permission handling). We still deny the few
+  // privacy-sensitive permissions the app never uses.
+  const deniedPermissions = new Set(['geolocation', 'midi', 'midiSysex', 'clipboard-read']);
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(!deniedPermissions.has(permission));
+  });
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    return !deniedPermissions.has(permission);
+  });
 
   const configState = await config.get();
   nativeTheme.themeSource = configState.theme;

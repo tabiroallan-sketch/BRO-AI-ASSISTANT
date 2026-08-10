@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Cpu, KeyRound, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { Cpu, Gem, KeyRound, Loader2, Sparkles, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label';
 
 const PROVIDER_ICONS: Record<string, typeof Cpu> = {
   nvidia: Cpu,
+  gemini: Gem,
 };
 
 function formatTestedAt(value: string | null): string {

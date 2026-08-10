@@ -12,14 +12,11 @@
  */
 
 import { createVad, type Vad, type VadOptions } from './vad';
-import { createMicManager, type MicConstraints, type MicManager } from './mic';
+import { createMicManager, describeMicError, type MicConstraints, type MicManager } from './mic';
 import { currentVoiceSettings, saveVoiceSettings } from './settings';
-import {
-  createSpeechRecognizer,
-  isSpeechRecognitionSupported,
-  type SpeechRecognizer,
-  type SpeechRecognizerOptions,
-} from '@/lib/speech';
+import { createTranscribeRecognizer } from './recognizer';
+import { isTranscriptionSupported } from './transcribe';
+import type { SpeechRecognizer, SpeechRecognizerOptions } from '@/lib/speech';
 import type { ListeningMode, VoiceSettings } from '@/lib/desktop';
 
 export type EnginePhase = 'idle' | 'requesting' | 'listening' | 'processing';
@@ -44,7 +41,7 @@ export type EngineState = {
 export type EngineDeps = {
   mic: MicManager;
   sttSupported: () => boolean;
-  sttFactory: (options: SpeechRecognizerOptions) => SpeechRecognizer | null;
+  sttFactory: (stream: MediaStream, options: SpeechRecognizerOptions) => SpeechRecognizer | null;
   vadFactory: (options: VadOptions) => Vad;
   settings: () => VoiceSettings;
   /** Level sample interval (ms). */
@@ -76,6 +73,10 @@ export class VoiceEngine {
   private stopLevel: (() => void) | null = null;
   private captureSource: TranscriptSource | null = null;
   private finalText = '';
+  /** Set when a capture ends before the transcript arrives; delivered on onFinal. */
+  private pendingEmit: TranscriptSource | null = null;
+  /** Bumped on every new capture so stale recognizer callbacks are ignored. */
+  private captureToken = 0;
 
   constructor(private readonly deps: EngineDeps) {
     this.state = createEngineState(deps);
@@ -174,6 +175,7 @@ export class VoiceEngine {
     }
     this.captureSource = source;
     this.finalText = '';
+    this.pendingEmit = null;
     this.set({
       phase: 'requesting',
       level: 0,
@@ -220,30 +222,51 @@ export class VoiceEngine {
         this.deps.sampleIntervalMs,
       );
 
-      const recognizer = this.deps.sttFactory({
-        onInterim: (text) => this.set({ interim: text }),
+      const token = ++this.captureToken;
+      const recognizer = this.deps.sttFactory(stream, {
+        onInterim: (text) => {
+          if (token !== this.captureToken) {
+            return;
+          }
+          this.set({ interim: text });
+        },
         onFinal: (text) => {
+          if (token !== this.captureToken) {
+            return;
+          }
           this.finalText = text;
           this.set({ interim: '' });
-        },
-        onEnd: () => {
-          if (this.isListening()) {
-            this.endCapture(true);
+          if (this.pendingEmit) {
+            const emitSource = this.pendingEmit;
+            this.pendingEmit = null;
+            this.emitTranscript(emitSource);
           }
         },
-        onError: (message) => this.fail(message),
+        onEnd: () => {
+          if (token !== this.captureToken || !this.isListening()) {
+            return;
+          }
+          this.endCapture(true);
+        },
+        onError: (message) => {
+          if (token !== this.captureToken) {
+            return;
+          }
+          this.fail(message);
+        },
       });
       if (!recognizer) {
         this.cleanup();
         this.captureSource = null;
-        this.set({ phase: 'idle', error: 'Speech recognition is not available in this app.' });
+        this.pendingEmit = null;
+        this.set({ phase: 'idle', error: 'Speech transcription is not available in this app.' });
         return;
       }
       this.recognizer = recognizer;
       recognizer.start();
       this.set({ phase: 'listening' });
     } catch (error) {
-      this.fail(error instanceof Error ? error.message : 'Could not access the microphone.');
+      this.fail(describeMicError(error));
     }
   }
 
@@ -279,16 +302,22 @@ export class VoiceEngine {
     this.recognizer?.stop();
     this.cleanup();
     this.captureSource = null;
-    if (finalize && source) {
-      this.emitTranscript(source);
-    }
     this.set({ phase: 'idle', level: 0, interim: '' });
+    if (finalize && source) {
+      if (this.finalText) {
+        this.emitTranscript(source);
+      } else {
+        // Transcript is still in flight (record -> transcribe); deliver on onFinal.
+        this.pendingEmit = source;
+      }
+    }
   }
 
   private fail(message: string): void {
     this.recognizer?.stop();
     this.cleanup();
     this.captureSource = null;
+    this.pendingEmit = null;
     this.set({ phase: 'idle', level: 0, interim: '', error: message });
   }
 }
@@ -300,8 +329,8 @@ export function getVoiceEngine(): VoiceEngine {
   if (!instance) {
     instance = new VoiceEngine({
       mic: createMicManager(),
-      sttSupported: () => isSpeechRecognitionSupported(),
-      sttFactory: createSpeechRecognizer,
+      sttSupported: () => isTranscriptionSupported(),
+      sttFactory: createTranscribeRecognizer,
       vadFactory: createVad,
       settings: () => currentVoiceSettings(),
     });

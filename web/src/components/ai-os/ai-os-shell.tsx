@@ -11,6 +11,7 @@ import AiScene from '@/components/ai-os/scene/ai-scene';
 import { useAiState } from '@/lib/ai-state';
 import { useStatusFeed } from '@/lib/status-feed';
 import { useAudioReactivity } from '@/lib/use-audio-reactivity';
+import { useVoiceLevelFeed } from '@/hooks/use-voice-level-feed';
 
 /**
  * Layout chrome of the AI operating system.
@@ -26,6 +27,7 @@ export function AiOsShell({
   children: React.ReactNode;
 }): React.JSX.Element {
   const { micMode } = useAudioReactivity();
+  useVoiceLevelFeed();
 
   React.useEffect(() => {
     const unsubscribeAi = useAiState.subscribe((state, prevState) => {

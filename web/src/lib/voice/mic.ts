@@ -41,13 +41,26 @@ export type LevelMeterLike = {
 };
 
 export type LevelMeterContext = {
+  state?: string;
   createMediaStreamSource: (stream: MediaStream) => {
     connect(node: unknown): void;
     disconnect(): void;
   };
   createAnalyser: () => LevelMeterLike;
+  resume?: () => Promise<void>;
   close: () => Promise<void>;
 };
+
+function getAudioContextConstructor(): (new () => LevelMeterContext) | undefined {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+  const w = window as unknown as {
+    AudioContext?: new () => LevelMeterContext;
+    webkitAudioContext?: new () => LevelMeterContext;
+  };
+  return w.AudioContext ?? w.webkitAudioContext;
+}
 
 const DEFAULT_LEVEL_INTERVAL_MS = 60;
 
@@ -72,6 +85,46 @@ export function analyzeLevel(samples: Uint8Array<ArrayBuffer>): number {
     sum += delta * delta;
   }
   return Math.min(1, Math.sqrt(sum / samples.length) / 128);
+}
+
+export type MicErrorKind = 'not-allowed' | 'not-found' | 'not-readable' | 'other';
+
+/** Categorizes a getUserMedia failure so the UI can offer the right fix. */
+export function micErrorKind(error: unknown): MicErrorKind {
+  const name =
+    typeof DOMException !== 'undefined' && error instanceof DOMException
+      ? error.name
+      : (error as { name?: string } | null)?.name;
+  switch (name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return 'not-allowed';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'not-found';
+    case 'NotReadableError':
+    case 'TrackStartError':
+    case 'OverconstrainedError':
+      return 'not-readable';
+    default:
+      return 'other';
+  }
+}
+
+/** Human-readable, actionable message for a microphone access failure. */
+export function describeMicError(error: unknown): string {
+  switch (micErrorKind(error)) {
+    case 'not-allowed':
+      return 'Microphone permission is blocked. Grant it (via the button below, or in your browser/site settings), then try again.';
+    case 'not-found':
+      return 'No microphone was found. Connect one or pick it in Settings → Voice.';
+    case 'not-readable':
+      return 'The microphone is in use by another app. Close it and try again.';
+    default:
+      return error instanceof Error && error.message
+        ? error.message
+        : 'Could not access the microphone.';
+  }
 }
 
 export function isMediaDevicesAvailable(): boolean {
@@ -141,7 +194,18 @@ export function createMicManager(
       onLevel: (level: number) => void,
       intervalMs = DEFAULT_LEVEL_INTERVAL_MS,
     ): () => void {
-      const context = new AudioContext();
+      const Ctor = getAudioContextConstructor();
+      if (!Ctor) {
+        return () => {};
+      }
+      const context = new Ctor();
+      // A context created outside a user gesture starts suspended (Chrome), in
+      // which case the analyser reads constant silence and the orb level and the
+      // VAD stay at 0. Resume it so metering (and thus the wake-word gate) runs
+      // with live audio.
+      if (context.state === 'suspended') {
+        void context.resume?.();
+      }
       const source = context.createMediaStreamSource(activeStream);
       const analyser = context.createAnalyser();
       source.connect(analyser);

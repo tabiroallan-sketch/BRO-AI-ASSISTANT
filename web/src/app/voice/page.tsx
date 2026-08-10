@@ -36,6 +36,9 @@ export default function VoicePage(): React.JSX.Element {
   const [ttsEnabled, setTtsEnabled] = React.useState(false);
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const busyRef = React.useRef(false);
+  /** True while the hands-free loop is live: resume listening after each reply. */
+  const resumeLoopRef = React.useRef(false);
+  const resumeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -46,6 +49,9 @@ export default function VoicePage(): React.JSX.Element {
     });
     return () => {
       cancelled = true;
+      if (resumeTimerRef.current) {
+        clearTimeout(resumeTimerRef.current);
+      }
     };
   }, []);
 
@@ -54,19 +60,42 @@ export default function VoicePage(): React.JSX.Element {
   }, [messages, streamingContent, streaming]);
 
   const readAloud = React.useCallback(
-    (content: string) => {
+    (content: string): void => {
+      const finish = (): void => {
+        if (resumeLoopRef.current && voice.state.mode !== 'off') {
+          resumeLoopRef.current = false;
+          useAiState.getState().setState('idle');
+          // Brief pause so the TTS tail isn't transcribed as a new utterance,
+          // then resume listening to keep the conversation going hands-free.
+          resumeTimerRef.current = setTimeout(() => {
+            resumeTimerRef.current = null;
+            if (!voice.isListening && !busyRef.current) {
+              void voice.startManual();
+            }
+          }, 450);
+          return;
+        }
+        useAiState.getState().setState('idle');
+      };
+
       if (!ttsEnabled) {
+        finish();
         return;
       }
+      useAiState.getState().setState('speaking');
       void initVoiceSettings().then((settings) => {
-        speak(content, {
+        const ok = speak(content, {
           voice: settings.ttsVoice,
           rate: settings.ttsRate,
           pitch: settings.ttsPitch,
+          onEnd: finish,
         });
+        if (!ok) {
+          finish();
+        }
       });
     },
-    [ttsEnabled],
+    [ttsEnabled, voice],
   );
 
   const handleSend = React.useCallback(
@@ -99,7 +128,6 @@ export default function VoicePage(): React.JSX.Element {
             setStreamingContent('');
             setMessages((current) => [...current, event.message]);
             setStreaming(false);
-            useAiState.getState().setState('idle');
             readAloud(event.message.content);
           } else if (event.type === 'error') {
             setStreamingContent('');
@@ -116,7 +144,10 @@ export default function VoicePage(): React.JSX.Element {
       } finally {
         busyRef.current = false;
         setStreaming(false);
-        useAiState.getState().setState('idle');
+        // Only reset thinking -> idle; readAloud owns speaking/error terminal states.
+        if (useAiState.getState().state === 'thinking') {
+          useAiState.getState().setState('idle');
+        }
       }
     },
     [activeId, readAloud],
@@ -200,7 +231,15 @@ export default function VoicePage(): React.JSX.Element {
                   'glow-danger shadow-[0_0_18px_color-mix(in_oklab,var(--destructive)_40%,transparent)]',
               )}
               disabled={!voiceReady || voice.state.mode === 'off'}
-              onClick={() => (listening ? voice.stop() : voice.startManual())}
+              onClick={() => {
+                if (listening) {
+                  resumeLoopRef.current = false;
+                  voice.stop();
+                } else {
+                  resumeLoopRef.current = true;
+                  void voice.startManual();
+                }
+              }}
               aria-label={listening ? 'Stop listening' : 'Start listening'}
               title={voice.state.error ?? undefined}
             >
@@ -242,6 +281,10 @@ export default function VoicePage(): React.JSX.Element {
           <ChatInput
             disabled={streaming}
             onSend={(message) => void handleSend(message)}
+            autoSend
+            onVoiceTranscript={() => {
+              resumeLoopRef.current = true;
+            }}
             autoFocus={!api}
           />
         </div>

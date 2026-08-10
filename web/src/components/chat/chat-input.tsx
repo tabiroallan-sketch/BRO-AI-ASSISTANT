@@ -11,22 +11,30 @@ export function ChatInput({
   disabled,
   onSend,
   autoFocus,
+  autoSend = false,
+  onVoiceTranscript,
 }: {
   disabled: boolean;
   onSend: (message: string) => void;
   autoFocus?: boolean;
+  /** Auto-send finalized transcripts (hands-free) instead of filling the draft. */
+  autoSend?: boolean;
+  /** Called when a finalized transcript is sent via the auto-send path. */
+  onVoiceTranscript?: (text: string) => void;
 }): React.JSX.Element {
   const [value, setValue] = React.useState('');
   const voice = useVoice();
   const { state } = voice;
 
   // Manual transcripts append to the draft; push-to-talk results send directly.
+  // In autoSend mode every finalized transcript sends (hands-free).
   React.useEffect(() => {
     const consumed = voice.engine.consumeTranscript();
     if (!consumed) {
       return;
     }
-    if (consumed.source === 'ptt') {
+    if (consumed.source === 'ptt' || autoSend) {
+      onVoiceTranscript?.(consumed.text);
       onSend(consumed.text);
       return;
     }
@@ -34,7 +42,7 @@ export function ChatInput({
       const base = current.trim();
       return base ? `${base} ${consumed.text}` : consumed.text;
     });
-  }, [voice, state.transcriptId, onSend]);
+  }, [voice, state.transcriptId, onSend, autoSend, onVoiceTranscript]);
 
   function submit(): void {
     const trimmed = value.trim();

@@ -3,7 +3,9 @@ import {
   analyzeLevel,
   createLevelMeterLoop,
   createMicManager,
+  describeMicError,
   isMediaDevicesAvailable,
+  micErrorKind,
   splitDevices,
   type AudioDeviceInfo,
   type LevelMeterLike,
@@ -63,6 +65,46 @@ describe('isMediaDevicesAvailable', () => {
   it('is true when getUserMedia exists', () => {
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } });
     expect(isMediaDevicesAvailable()).toBe(true);
+  });
+});
+
+describe('micErrorKind / describeMicError', () => {
+  function namedError(name: string, message: string): Error {
+    const error = new Error(message);
+    error.name = name;
+    return error;
+  }
+
+  it('categorizes a permission denial', () => {
+    const error = namedError('NotAllowedError', 'Permission denied');
+    expect(micErrorKind(error)).toBe('not-allowed');
+    expect(describeMicError(error)).toContain('Microphone permission is blocked');
+  });
+
+  it('categorizes a missing microphone', () => {
+    const error = namedError('NotFoundError', 'No device');
+    expect(micErrorKind(error)).toBe('not-found');
+    expect(describeMicError(error)).toContain('No microphone was found');
+  });
+
+  it('categorizes an in-use microphone', () => {
+    const error = namedError('NotReadableError', 'In use');
+    expect(micErrorKind(error)).toBe('not-readable');
+    expect(describeMicError(error)).toContain('in use by another app');
+  });
+
+  it('passes through unknown errors with their message', () => {
+    expect(micErrorKind(new Error('boom'))).toBe('other');
+    expect(describeMicError(new Error('boom'))).toBe('boom');
+    expect(describeMicError(null)).toBe('Could not access the microphone.');
+  });
+
+  it('recognizes a real DOMException permission denial', () => {
+    if (typeof DOMException === 'undefined') {
+      return;
+    }
+    const error = new DOMException('Permission denied', 'NotAllowedError');
+    expect(micErrorKind(error)).toBe('not-allowed');
   });
 });
 
@@ -165,5 +207,45 @@ describe('createMicManager', () => {
     await manager.acquire();
     manager.release();
     expect(track.stop).toHaveBeenCalledOnce();
+  });
+
+  it('resumes a suspended audio context so metering sees live audio', () => {
+    vi.useFakeTimers();
+    const resume = vi.fn().mockResolvedValue(undefined);
+    const close = vi.fn().mockResolvedValue(undefined);
+    const analyser = { getByteTimeDomainData: () => undefined };
+    const Ctor = vi.fn(() => ({
+      state: 'suspended',
+      resume,
+      close,
+      createMediaStreamSource: () => ({ connect: () => undefined, disconnect: () => undefined }),
+      createAnalyser: () => analyser,
+    }));
+    vi.stubGlobal('window', { AudioContext: Ctor });
+
+    const manager = createMicManager(null);
+    const stop = manager.levelMeter({} as unknown as MediaStream, vi.fn(), 60);
+    expect(Ctor).toHaveBeenCalledOnce();
+    expect(resume).toHaveBeenCalledOnce();
+    stop();
+    vi.advanceTimersByTime(120);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('does not resume an already running audio context', () => {
+    const resume = vi.fn().mockResolvedValue(undefined);
+    const Ctor = vi.fn(() => ({
+      state: 'running',
+      resume,
+      close: vi.fn().mockResolvedValue(undefined),
+      createMediaStreamSource: () => ({ connect: () => undefined, disconnect: () => undefined }),
+      createAnalyser: () => ({ getByteTimeDomainData: () => undefined }),
+    }));
+    vi.stubGlobal('window', { AudioContext: Ctor });
+
+    const manager = createMicManager(null);
+    const stop = manager.levelMeter({} as unknown as MediaStream, vi.fn(), 60);
+    expect(resume).not.toHaveBeenCalled();
+    stop();
   });
 });

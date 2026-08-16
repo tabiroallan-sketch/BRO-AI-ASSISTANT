@@ -48,6 +48,21 @@ import {
 import { notifyTool } from './notify.js';
 import { pdfReaderTool } from './pdf-reader.js';
 import { registerTool } from './registry.js';
+import {
+  salesAnalyzeMarginTool,
+  salesAnalyzeProspectTool,
+  salesBuildPersonaTool,
+  salesDesignOfferTool,
+  salesDiscoverOpportunitiesTool,
+  salesEstimatePriceTool,
+  salesGeneratePitchTool,
+  salesNegotiationStrategyTool,
+  salesNextBestActionTool,
+  salesPipelineSummaryTool,
+  salesPrepareObjectionsTool,
+  salesResearchCompanyTool,
+  salesScoreOpportunityTool,
+} from '../sales/tools.js';
 import { systemRunCommandTool, systemRunScriptTool } from './system/command-tools.js';
 import {
   systemCreateFolderTool,
@@ -164,3 +179,16 @@ registerTool(n8nGetExecutionTool);
 registerTool(n8nListExecutionsTool);
 registerTool(n8nStopExecutionTool);
 registerTool(whatsappSendMessageTool);
+registerTool(salesResearchCompanyTool);
+registerTool(salesAnalyzeProspectTool);
+registerTool(salesScoreOpportunityTool);
+registerTool(salesGeneratePitchTool);
+registerTool(salesNextBestActionTool);
+registerTool(salesPipelineSummaryTool);
+registerTool(salesEstimatePriceTool);
+registerTool(salesDiscoverOpportunitiesTool);
+registerTool(salesBuildPersonaTool);
+registerTool(salesDesignOfferTool);
+registerTool(salesPrepareObjectionsTool);
+registerTool(salesNegotiationStrategyTool);
+registerTool(salesAnalyzeMarginTool);

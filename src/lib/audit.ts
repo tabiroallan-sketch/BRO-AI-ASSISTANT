@@ -26,7 +26,29 @@ export type AuditAction =
   | 'automation.task.cancel'
   | 'automation.task.retry'
   | 'automation.task.complete'
-  | 'automation.task.failed';
+  | 'automation.task.failed'
+  | 'sales.service.create'
+  | 'sales.service.update'
+  | 'sales.service.delete'
+  | 'sales.opportunity.create'
+  | 'sales.opportunity.update'
+  | 'sales.opportunity.delete'
+  | 'sales.opportunity.score'
+  | 'sales.opportunity.save'
+  | 'sales.lead.create'
+  | 'sales.lead.update'
+  | 'sales.lead.delete'
+  | 'sales.research.create'
+  | 'sales.research.delete'
+  | 'sales.draft.create'
+  | 'sales.draft.update'
+  | 'sales.draft.approve'
+  | 'sales.draft.send'
+  | 'sales.draft.send_failed'
+  | 'sales.draft.delete'
+  | 'sales.offer.create'
+  | 'sales.offer.update'
+  | 'sales.offer.delete';
 
 export type AuditEvent = {
   id: string;

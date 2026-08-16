@@ -11,6 +11,9 @@ import {
   BellRing,
   Box,
   Brain,
+  Briefcase,
+  Compass,
+  FileText,
   KeyRound,
   LayoutDashboard,
   Link2,
@@ -18,7 +21,9 @@ import {
   Monitor,
   ScrollText,
   ShieldCheck,
+  Sparkles,
   Store,
+  Target,
   Wrench,
   Workflow,
   type LucideIcon,
@@ -49,50 +54,64 @@ const adminItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: '/dashboard/admin', label: 'Admin', icon: ShieldCheck },
 ];
 
+const salesItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
+  { href: '/dashboard/sales', label: 'Sales', icon: Briefcase },
+  { href: '/dashboard/sales/opportunities', label: 'Opportunities', icon: Target },
+  { href: '/dashboard/sales/discovery', label: 'Discovery', icon: Compass },
+  { href: '/dashboard/sales/offers', label: 'Offers', icon: FileText },
+  { href: '/dashboard/sales/intelligence', label: 'Intelligence', icon: Sparkles },
+];
+
 export function DashboardSidebar(): React.JSX.Element {
   const pathname = usePathname();
   const { user } = useAuth();
 
   const visibleItems = user?.role === 'ADMIN' ? [...items, ...adminItems] : items;
 
+  function renderItem(item: { href: string; label: string; icon: LucideIcon }): React.JSX.Element {
+    const active = pathname === item.href;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={cn(
+          'group relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition-all duration-300',
+          active
+            ? 'bg-neon-cyan/10 text-neon-cyan'
+            : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+        )}
+      >
+        {active && (
+          <motion.span
+            layoutId="sidebar-active-pill"
+            className="absolute inset-0 rounded-xl bg-neon-cyan/10 ring-1 ring-neon-cyan/30 shadow-[0_0_18px_-6px_var(--neon-cyan)]"
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+          />
+        )}
+        <span
+          className={cn(
+            'absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-neon-cyan shadow-[0_0_8px_var(--neon-cyan)] transition-opacity duration-300',
+            active ? 'opacity-100' : 'opacity-0',
+          )}
+        />
+        <item.icon
+          className={cn(
+            'relative h-4 w-4 shrink-0 transition-colors',
+            active ? 'text-neon-cyan' : 'text-muted-foreground group-hover:text-foreground',
+          )}
+        />
+        <span className="relative">{item.label}</span>
+      </Link>
+    );
+  }
+
   return (
     <nav className="glass flex w-full shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl p-2 md:flex-col md:overflow-visible">
-      {visibleItems.map((item) => {
-        const active = pathname === item.href;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              'group relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition-all duration-300',
-              active
-                ? 'bg-neon-cyan/10 text-neon-cyan'
-                : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-            )}
-          >
-            {active && (
-              <motion.span
-                layoutId="sidebar-active-pill"
-                className="absolute inset-0 rounded-xl bg-neon-cyan/10 ring-1 ring-neon-cyan/30 shadow-[0_0_18px_-6px_var(--neon-cyan)]"
-                transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-              />
-            )}
-            <span
-              className={cn(
-                'absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-neon-cyan shadow-[0_0_8px_var(--neon-cyan)] transition-opacity duration-300',
-                active ? 'opacity-100' : 'opacity-0',
-              )}
-            />
-            <item.icon
-              className={cn(
-                'relative h-4 w-4 shrink-0 transition-colors',
-                active ? 'text-neon-cyan' : 'text-muted-foreground group-hover:text-foreground',
-              )}
-            />
-            <span className="relative">{item.label}</span>
-          </Link>
-        );
-      })}
+      {visibleItems.map(renderItem)}
+      <span className="hidden shrink-0 px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 md:block">
+        Sales
+      </span>
+      {salesItems.map(renderItem)}
       <ModeSwitcher className="mx-auto md:mt-auto md:flex-col md:rounded-2xl" />
     </nav>
   );

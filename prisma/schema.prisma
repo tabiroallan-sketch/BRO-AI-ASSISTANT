@@ -29,6 +29,12 @@ model User {
   notifications Notification[]
   integrations  Integration[]
   auditLogs     AuditLog[]
+  services      Service[]
+  opportunities Opportunity[]
+  leads         Lead[]
+  research      CompanyResearch[]
+  drafts        SalesDraft[]
+  offers        Offer[]
 
   @@map("users")
 }
@@ -252,7 +258,231 @@ model Notification {
   @@map("notifications")
 }
 
+model Service {
+  id                String    @id @default(uuid())
+  userId            String
+  name              String
+  description       String?
+  pricing           String?
+  minimumPrice      Decimal?  @db.Decimal(12, 2)
+  targetMargin      Int       @default(30)
+  requiredSkills    String[]  @default([])
+  deliveryEstimate  String?
+  upsells           String[]  @default([])
+  recurringServices String[]  @default([])
+  active            Boolean   @default(true)
+  sortOrder         Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("services")
+}
+
+model Opportunity {
+  id                String            @id @default(uuid())
+  userId            String
+  title             String
+  description       String?
+  company           String?
+  companyWebsite    String?
+  source            String?
+  sourceUrl         String?
+  location          String?
+  remote            Boolean           @default(false)
+  compensation      String?
+  currency          String            @default("USD")
+  employmentType    String?
+  requiredSkills    String[]          @default([])
+  technologies      String[]          @default([])
+  estimatedBudget   Decimal?          @db.Decimal(12, 2)
+  industry          String?
+  companySize       String?
+  clientName        String?
+  clientRole        String?
+  postedAt          DateTime?
+  deadline          DateTime?
+  recurringPotential Boolean          @default(false)
+  sourceReliability String?
+  rawContent        String?
+  urgency           String?
+  type              OpportunityType   @default(POTENTIAL_CLIENT)
+  score             Int               @default(0)
+  status            OpportunityStatus @default(NEW)
+  notes             String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leads Lead[]
+  drafts SalesDraft[]
+  offers Offer[]
+
+  @@index([userId])
+  @@unique([userId, source, sourceUrl])
+  @@map("opportunities")
+}
+
+model Offer {
+  id               String            @id @default(uuid())
+  userId           String
+  opportunityId    String?
+  leadId           String?
+  name             String
+  description      String?
+  components       Json?             @default("[]")
+  suggestedPrice   Decimal?          @db.Decimal(12, 2)
+  minimumPrice     Decimal?          @db.Decimal(12, 2)
+  targetMargin     Int               @default(30)
+  currency         String            @default("USD")
+  deliveryEstimate String?
+  validDays        Int               @default(30)
+  status           OfferStatus       @default(DRAFT)
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([opportunityId])
+  @@index([leadId])
+  @@map("offers")
+}
+
+model Lead {
+  id             String     @id @default(uuid())
+  userId         String
+  name           String
+  company        String?
+  position       String?
+  email          String?
+  phone          String?
+  linkedinUrl    String?
+  website        String?
+  source         String?
+  opportunityId  String?
+  score          Int        @default(0)
+  status         LeadStatus @default(NEW)
+  estimatedValue Decimal?   @db.Decimal(12, 2)
+  probability    Int        @default(0)
+  lastContactAt  DateTime?
+  nextFollowUpAt DateTime?
+  notes          String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  drafts      SalesDraft[]
+  offers      Offer[]
+
+  @@index([userId])
+  @@index([opportunityId])
+  @@map("leads")
+}
+
+model CompanyResearch {
+  id          String   @id @default(uuid())
+  userId      String
+  companyName String?
+  website     String?
+  industry    String?
+  findings    Json     @default("{}")
+  source      String?
+  refreshedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("company_research")
+}
+
+model SalesDraft {
+  id             String         @id @default(uuid())
+  userId         String
+  leadId         String?
+  opportunityId  String?
+  kind           SalesDraftKind @default(COLD_EMAIL)
+  channel        String         @default("email")
+  recipientName  String?
+  recipientEmail String?
+  subject        String?
+  content        String
+  status         DraftStatus    @default(DRAFT)
+  approvedAt     DateTime?
+  sentAt         DateTime?
+  error          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([leadId])
+  @@map("sales_drafts")
+}
+
+enum OfferStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+}
+
 enum Role {
   USER
   ADMIN
+}
+
+enum OpportunityType {
+  JOB
+  POTENTIAL_CLIENT
+  OUTSOURCING
+  PARTNERSHIP
+  RECURRING
+}
+
+enum OpportunityStatus {
+  NEW
+  EVALUATING
+  PROPOSED
+  WON
+  LOST
+}
+
+enum LeadStatus {
+  NEW
+  QUALIFIED
+  CONTACTED
+  RESPONDED
+  MEETING
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum SalesDraftKind {
+  COLD_EMAIL
+  LINKEDIN
+  JOB_APPLICATION
+  FOLLOW_UP
+  PROPOSAL
+}
+
+enum DraftStatus {
+  DRAFT
+  APPROVED
+  SENT
+  REJECTED
 }

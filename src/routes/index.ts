@@ -15,6 +15,7 @@ import { memoryRoutes } from './memories.js';
 import { notificationRoutes } from './notifications.js';
 import { pluginRoutes } from './plugins.js';
 import { proactiveRoutes } from './proactive.js';
+import { salesRoutes } from './sales.js';
 import { systemRoutes } from './system.js';
 import { toolRoutes } from './tools.js';
 
@@ -40,6 +41,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       await v1.register(logRoutes);
       await v1.register(pluginRoutes);
       await v1.register(adminRoutes);
+      await v1.register(salesRoutes);
     },
     { prefix: '/api/v1' },
   );

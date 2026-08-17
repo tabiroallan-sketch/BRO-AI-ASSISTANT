@@ -1,3 +1,6 @@
+-- CreateEnum
+CREATE TYPE "public.OfferStatus" AS ENUM ('DRAFT','SENT','ACCEPTED','DECLINED');
+
 -- CreateTable: offers
 CREATE TABLE "offers" (
     "id" TEXT NOT NULL,
@@ -13,7 +16,7 @@ CREATE TABLE "offers" (
     "currency" TEXT NOT NULL DEFAULT 'USD',
     "deliveryEstimate" TEXT,
     "validDays" INTEGER NOT NULL DEFAULT 30,
-    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "status" "public.OfferStatus" NOT NULL DEFAULT 'DRAFT',
     "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,

@@ -30,6 +30,7 @@ import {
 } from '../sales/sources/index.js';
 import type { OpportunityCandidate } from '../sales/sources/types.js';
 import {
+  DRAFT_STATUSES,
   LEAD_STATUSES,
   OPPORTUNITY_STATUSES,
   OPPORTUNITY_TYPES,
@@ -980,6 +981,12 @@ export async function salesRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(503, 'Database not configured');
     }
     const { status } = request.query as { status?: string };
+    if (status && !LEAD_STATUSES.includes(status as never)) {
+      throw new HttpError(
+        400,
+        `Invalid status filter. Must be one of: ${LEAD_STATUSES.join(', ')}`,
+      );
+    }
     const leads = await prisma.lead.findMany({
       where: {
         userId,
@@ -1243,6 +1250,12 @@ export async function salesRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(503, 'Database not configured');
     }
     const { status } = request.query as { status?: string };
+    if (status && !DRAFT_STATUSES.includes(status as never)) {
+      throw new HttpError(
+        400,
+        `Invalid status filter. Must be one of: ${DRAFT_STATUSES.join(', ')}`,
+      );
+    }
     const drafts = await prisma.salesDraft.findMany({
       where: {
         userId,
@@ -1381,6 +1394,12 @@ export async function salesRoutes(app: FastifyInstance): Promise<void> {
     if (!existing) {
       throw new HttpError(404, 'Draft not found');
     }
+    if (existing.status !== 'APPROVED') {
+      throw new HttpError(400, 'Draft must be approved before sending.');
+    }
+    if (!existing.recipientEmail) {
+      throw new HttpError(400, 'No recipient email is set on this draft.');
+    }
     try {
       const messageId = await sendEmailDraft(existing as never, userId);
       const draft = await prisma.salesDraft.update({
@@ -1391,7 +1410,11 @@ export async function salesRoutes(app: FastifyInstance): Promise<void> {
       return reply.send({ draft: draftResponse(draft), messageId });
     } catch (error) {
       if (error instanceof OutreachError) {
-        if (error.code === 'NOT_APPROVED') {
+        if (
+          error.code === 'NOT_APPROVED' ||
+          error.code === 'NEEDS_EMAIL' ||
+          error.code === 'NOT_FOUND'
+        ) {
           throw new HttpError(400, error.message);
         }
         await prisma.salesDraft.update({

@@ -1,4 +1,6 @@
 import { companyCareerAdapter } from './company-career.js';
+import { indeedRssAdapter } from './indeed-rss.js';
+import { serpApiJobsAdapter } from './serpapi-jobs.js';
 import { webSearchAdapter } from './search.js';
 import type { OpportunityCandidate, OpportunitySourceAdapter } from './types.js';
 import { userSubmittedAdapter } from './user-submitted.js';
@@ -21,6 +23,8 @@ export function registerDefaultSourceAdapters(): void {
   registerSourceAdapter(userSubmittedAdapter);
   registerSourceAdapter(webSearchAdapter);
   registerSourceAdapter(companyCareerAdapter);
+  registerSourceAdapter(serpApiJobsAdapter);
+  registerSourceAdapter(indeedRssAdapter);
 }
 
 registerDefaultSourceAdapters();
@@ -173,9 +177,16 @@ export async function discoverOpportunities(options: DiscoverOptions): Promise<D
         }
       }
       if (options.companyWebsite && adapter.supportsCompanyWebsite) {
-        const result = await adapter.fetchCompanyWebsite(options.companyWebsite);
-        candidates.push(...result.candidates);
-        errors.push(...result.errors.map((error) => ({ source: id, message: error.message })));
+        try {
+          const result = await adapter.fetchCompanyWebsite(options.companyWebsite);
+          candidates.push(...result.candidates);
+          errors.push(...result.errors.map((error) => ({ source: id, message: error.message })));
+        } catch (error) {
+          errors.push({
+            source: id,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
       if (options.query && adapter.supportsSearch) {
         const result = await adapter.search(options.query);

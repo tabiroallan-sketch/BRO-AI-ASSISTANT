@@ -46,6 +46,7 @@ export const config = {
   llmFallbackEnabled: process.env.LLM_FALLBACK_ENABLED !== 'false',
   llmFallbackOrder: csv(process.env.LLM_FALLBACK_ORDER),
   elevenLabsApiKey: getSecret('ELEVENLABS_API_KEY'),
+  serpApiKey: getSecret('SERPAPI_KEY'),
   googleClientId: getSecret('GOOGLE_CLIENT_ID'),
   googleClientSecret: getSecret('GOOGLE_CLIENT_SECRET'),
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? '',

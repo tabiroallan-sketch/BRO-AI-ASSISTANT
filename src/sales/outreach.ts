@@ -76,9 +76,10 @@ export async function sendEmailDraft(draft: DraftLike, userId: string): Promise<
   assertCanSend(draft, userId);
   const token = await requirePermission(userId, 'google-gmail', 'gmail.send');
 
+  const safeSubject = (draft.subject ?? '(no subject)').replace(/[\r\n]/g, ' ');
   const headers = [
     `To: ${draft.recipientEmail}`,
-    `Subject: ${draft.subject ?? '(no subject)'}`,
+    `Subject: ${safeSubject}`,
     'Content-Type: text/plain; charset=UTF-8',
     'MIME-Version: 1.0',
     '',

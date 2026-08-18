@@ -122,6 +122,8 @@ export type OpportunityCandidate = {
   urgency?: string;
   type: string;
   typeReason: string;
+  postedAt?: string;
+  employmentType?: string;
 };
 
 export type Persona = {
@@ -379,4 +381,156 @@ export async function analyzeMargin(input: {
     body: input,
   });
   return result.analysis;
+}
+
+export type DraftStatus = 'DRAFT' | 'APPROVED' | 'SENT' | 'REJECTED';
+
+export type Draft = {
+  id: string;
+  userId: string;
+  kind: string;
+  channel: string;
+  leadId: string | null;
+  opportunityId: string | null;
+  recipientName: string | null;
+  recipientEmail: string | null;
+  subject: string | null;
+  content: string;
+  status: DraftStatus;
+  error: string | null;
+  approvedAt: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PitchResult = {
+  subject: string;
+  body: string;
+};
+
+export type NextBestAction = {
+  action: string;
+  why: string;
+  priority: 'high' | 'medium' | 'low';
+  timing: string;
+  channel: string;
+};
+
+export async function listLeads(query?: { status?: string }): Promise<Lead[]> {
+  const params = new URLSearchParams();
+  if (query?.status) {
+    params.set('status', query.status);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const result = await request<{ leads: Lead[] }>(`/sales/leads${suffix}`, {
+    token: authToken(),
+  });
+  return result.leads;
+}
+
+export async function createLead(input: Partial<Lead> & { name: string }): Promise<Lead> {
+  const result = await request<{ lead: Lead }>('/sales/leads', {
+    method: 'POST',
+    token: authToken(),
+    body: input,
+  });
+  return result.lead;
+}
+
+export async function updateLead(id: string, input: Partial<Lead>): Promise<Lead> {
+  const result = await request<{ lead: Lead }>(`/sales/leads/${id}`, {
+    method: 'PATCH',
+    token: authToken(),
+    body: input,
+  });
+  return result.lead;
+}
+
+export async function deleteLead(id: string): Promise<void> {
+  await request<void>(`/sales/leads/${id}`, {
+    method: 'DELETE',
+    token: authToken(),
+  });
+}
+
+export async function getNextBestAction(leadId: string, context?: string): Promise<NextBestAction> {
+  const result = await request<{ action: NextBestAction }>(`/sales/leads/${leadId}/next-action`, {
+    method: 'POST',
+    token: authToken(),
+    body: { context },
+  });
+  return result.action;
+}
+
+export async function listDrafts(status?: string): Promise<Draft[]> {
+  const params = new URLSearchParams();
+  if (status) {
+    params.set('status', status);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const result = await request<{ drafts: Draft[] }>(`/sales/drafts${suffix}`, {
+    token: authToken(),
+  });
+  return result.drafts;
+}
+
+export async function createDraft(input: Partial<Draft> & { content: string }): Promise<Draft> {
+  const result = await request<{ draft: Draft }>('/sales/drafts', {
+    method: 'POST',
+    token: authToken(),
+    body: input,
+  });
+  return result.draft;
+}
+
+export async function updateDraft(id: string, input: Partial<Draft>): Promise<Draft> {
+  const result = await request<{ draft: Draft }>(`/sales/drafts/${id}`, {
+    method: 'PATCH',
+    token: authToken(),
+    body: input,
+  });
+  return result.draft;
+}
+
+export async function deleteDraft(id: string): Promise<void> {
+  await request<void>(`/sales/drafts/${id}`, {
+    method: 'DELETE',
+    token: authToken(),
+  });
+}
+
+export async function approveDraft(id: string): Promise<Draft> {
+  const result = await request<{ draft: Draft }>(`/sales/drafts/${id}/approve`, {
+    method: 'POST',
+    token: authToken(),
+  });
+  return result.draft;
+}
+
+export async function sendDraft(id: string): Promise<{ draft: Draft; messageId: string }> {
+  return request<{ draft: Draft; messageId: string }>(`/sales/drafts/${id}/send`, {
+    method: 'POST',
+    token: authToken(),
+  });
+}
+
+export async function generatePitch(input: {
+  kind: string;
+  company: string;
+  recipientName?: string;
+  recipientTitle?: string;
+  opportunityDescription?: string;
+  serviceName?: string;
+  suggestedPrice?: string;
+  context?: string;
+  tone?: string;
+  researchId?: string;
+}): Promise<PitchResult> {
+  const result = await request<{ pitch: PitchResult }>('/sales/pitch', {
+    method: 'POST',
+    token: authToken(),
+    body: input,
+  });
+  return result.pitch;
 }

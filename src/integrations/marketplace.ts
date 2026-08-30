@@ -78,6 +78,7 @@ const GOOGLE_SUITE_IDS = [
   'google-sheets',
   'google-tasks',
   'google-contacts',
+  'google-slides',
 ];
 
 const googleSuiteDefs = googleProviders.filter((provider) =>
@@ -108,7 +109,7 @@ export const catalog: MarketplaceCatalogItem[] = [
   item({
     id: 'google',
     name: 'Google',
-    description: 'Calendar, Gmail, Docs, Sheets, Tasks, and Contacts.',
+    description: 'Calendar, Gmail, Docs, Sheets, Slides, Tasks, and Contacts.',
     icon: 'google',
     category: 'Productivity',
     status: 'installed',

@@ -15,6 +15,8 @@ type TaskItem = {
   status?: string;
   due?: string | null;
   notes?: string;
+  completed?: string | null;
+  updated?: string;
 };
 
 async function tasksRequest(token: string, path: string, init: FetchInit = {}): Promise<Response> {
@@ -131,5 +133,133 @@ export const tasksCreateTool: Tool = {
     }
     const created = (await response.json()) as TaskItem;
     return `Task created (id: ${created.id ?? 'unknown'}): ${title}`;
+  },
+};
+
+export const tasksUpdateTool: Tool = {
+  name: 'tasks_update',
+  providerId: 'google-tasks',
+  description: 'Update an existing task in Google Tasks (title, notes, or due date).',
+  parameters: {
+    type: 'object',
+    properties: {
+      taskId: { type: 'string', description: 'The task ID to update.' },
+      listId: {
+        type: 'string',
+        description: 'Task list ID. Defaults to the primary list.',
+      },
+      title: { type: 'string', description: 'New title (optional).' },
+      notes: { type: 'string', description: 'New notes (optional).' },
+      due: {
+        type: 'string',
+        description: 'New due date in RFC 3339 format (optional).',
+      },
+    },
+    required: ['taskId'],
+  },
+  async execute(args, context) {
+    const taskId = typeof args.taskId === 'string' ? args.taskId.trim() : '';
+    if (!taskId) {
+      throw new Error('Missing "taskId" argument');
+    }
+    const listId =
+      typeof args.listId === 'string' && args.listId.trim() ? args.listId.trim() : '@default';
+    const token = await requirePermission(context.userId, 'google-tasks', 'tasks.write');
+
+    const payload: Record<string, string> = {};
+    const title = typeof args.title === 'string' ? args.title.trim() : '';
+    const notes = typeof args.notes === 'string' ? args.notes.trim() : '';
+    const due = typeof args.due === 'string' ? args.due.trim() : '';
+    if (title) payload.title = title;
+    if (notes) payload.notes = notes;
+    if (due) payload.due = due;
+    if (Object.keys(payload).length === 0) {
+      throw new Error('Provide at least one field to update');
+    }
+    const response = await tasksRequest(
+      token,
+      `/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+    );
+    if (!response.ok) {
+      throw new Error(`Google Tasks request failed with status ${response.status}`);
+    }
+    const updated = (await response.json()) as TaskItem;
+    return `Task updated: "${updated.title ?? taskId}" (id: ${updated.id ?? taskId})`;
+  },
+};
+
+export const tasksCompleteTool: Tool = {
+  name: 'tasks_complete',
+  providerId: 'google-tasks',
+  description: 'Mark a Google Task as completed.',
+  parameters: {
+    type: 'object',
+    properties: {
+      taskId: { type: 'string', description: 'The task ID to complete.' },
+      listId: {
+        type: 'string',
+        description: 'Task list ID. Defaults to the primary list.',
+      },
+    },
+    required: ['taskId'],
+  },
+  async execute(args, context) {
+    const taskId = typeof args.taskId === 'string' ? args.taskId.trim() : '';
+    if (!taskId) {
+      throw new Error('Missing "taskId" argument');
+    }
+    const listId =
+      typeof args.listId === 'string' && args.listId.trim() ? args.listId.trim() : '@default';
+    const token = await requirePermission(context.userId, 'google-tasks', 'tasks.write');
+    const response = await tasksRequest(
+      token,
+      `/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'completed' }),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Google Tasks request failed with status ${response.status}`);
+    }
+    const updated = (await response.json()) as TaskItem;
+    return `Task completed: "${updated.title ?? taskId}"`;
+  },
+};
+
+export const tasksDeleteTool: Tool = {
+  name: 'tasks_delete',
+  providerId: 'google-tasks',
+  description: 'Delete a task from Google Tasks.',
+  requireConfirmation: true,
+  parameters: {
+    type: 'object',
+    properties: {
+      taskId: { type: 'string', description: 'The task ID to delete.' },
+      listId: {
+        type: 'string',
+        description: 'Task list ID. Defaults to the primary list.',
+      },
+    },
+    required: ['taskId'],
+  },
+  async execute(args, context) {
+    const taskId = typeof args.taskId === 'string' ? args.taskId.trim() : '';
+    if (!taskId) {
+      throw new Error('Missing "taskId" argument');
+    }
+    const listId =
+      typeof args.listId === 'string' && args.listId.trim() ? args.listId.trim() : '@default';
+    const token = await requirePermission(context.userId, 'google-tasks', 'tasks.write');
+    const response = await tasksRequest(
+      token,
+      `/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`,
+      { method: 'DELETE' },
+    );
+    if (!response.ok) {
+      throw new Error(`Google Tasks request failed with status ${response.status}`);
+    }
+    return `Task ${taskId} deleted.`;
   },
 };

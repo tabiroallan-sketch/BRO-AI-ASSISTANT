@@ -4,6 +4,9 @@ import { RequireAuth } from '@/components/require-auth';
 import { ShortcutsCard } from '@/components/shortcuts-card';
 import { VoiceSettingsCard } from '@/components/voice-settings-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { Settings } from 'lucide-react';
 
 export default function SettingsPage(): React.JSX.Element {
   return (
@@ -24,6 +27,14 @@ export default function SettingsPage(): React.JSX.Element {
 
         <div className="mb-10">
           <IntegrationHub />
+          <div className="mt-4">
+            <Link href="/settings/integrations">
+              <Button variant="outline" size="sm">
+                <Settings className="mr-2 h-4 w-4" />
+                Configure Integration Credentials (Admin)
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div className="mb-8">

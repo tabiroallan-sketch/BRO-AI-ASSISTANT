@@ -1,5 +1,6 @@
 import { config } from '../../../config/index.js';
 import { fetchWithTimeout } from '../../../lib/http.js';
+import { isProviderConfigured } from '../../credential-store.js';
 import type { HealthProbe, OAuthProviderDef, ProviderCapability } from '../../types.js';
 
 const GOOGLE_SCOPE_PREFIX = 'https://www.googleapis.com/auth';
@@ -7,7 +8,7 @@ const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 function googleCredentialsConfigured(): boolean {
-  return Boolean(config.googleClientId && config.googleClientSecret);
+  return isProviderConfigured('google', config.googleClientId, config.googleClientSecret);
 }
 
 async function googleAccountName(accessToken: string): Promise<string | null> {
@@ -137,9 +138,13 @@ export const googleProviders: OAuthProviderDef[] = [
   makeGoogleProvider(
     'google-gmail',
     'Gmail',
-    'Search and send email.',
-    [`${GOOGLE_SCOPE_PREFIX}/gmail.readonly`, `${GOOGLE_SCOPE_PREFIX}/gmail.send`],
-    ['gmail:read', 'gmail:send'],
+    'Search, read, send, and manage email.',
+    [
+      `${GOOGLE_SCOPE_PREFIX}/gmail.readonly`,
+      `${GOOGLE_SCOPE_PREFIX}/gmail.send`,
+      `${GOOGLE_SCOPE_PREFIX}/gmail.modify`,
+    ],
+    ['gmail:read', 'gmail:send', 'gmail:modify'],
     [
       {
         id: 'gmail.read',
@@ -155,14 +160,25 @@ export const googleProviders: OAuthProviderDef[] = [
         scope: `${GOOGLE_SCOPE_PREFIX}/gmail.send`,
         capability: 'gmail:send',
       },
+      {
+        id: 'gmail.modify',
+        label: 'Modify Gmail',
+        description: 'Mark emails read/unread, star, archive, and manage labels.',
+        scope: `${GOOGLE_SCOPE_PREFIX}/gmail.modify`,
+        capability: 'gmail:modify',
+      },
     ],
   ),
   makeGoogleProvider(
     'google-drive',
     'Google Drive',
-    'List, read, and upload files in your Drive.',
-    [`${GOOGLE_SCOPE_PREFIX}/drive.readonly`, `${GOOGLE_SCOPE_PREFIX}/drive.file`],
-    ['drive:read', 'drive:write'],
+    'List, read, upload, move, copy, and delete files in your Drive.',
+    [
+      `${GOOGLE_SCOPE_PREFIX}/drive.readonly`,
+      `${GOOGLE_SCOPE_PREFIX}/drive.file`,
+      `${GOOGLE_SCOPE_PREFIX}/drive`,
+    ],
+    ['drive:read', 'drive:write', 'drive:manage'],
     [
       {
         id: 'drive.read',
@@ -178,20 +194,27 @@ export const googleProviders: OAuthProviderDef[] = [
         scope: `${GOOGLE_SCOPE_PREFIX}/drive.file`,
         capability: 'drive:write',
       },
+      {
+        id: 'drive.manage',
+        label: 'Manage Files',
+        description: 'Delete, move, copy, and manage files in your Google Drive.',
+        scope: `${GOOGLE_SCOPE_PREFIX}/drive`,
+        capability: 'drive:manage',
+      },
     ],
   ),
   makeGoogleProvider(
     'google-docs',
     'Google Docs',
-    'Find and read the text of your Google Documents.',
-    [`${GOOGLE_SCOPE_PREFIX}/documents.readonly`, `${GOOGLE_SCOPE_PREFIX}/drive.readonly`],
-    ['docs:read'],
+    'Find, read, create, and edit Google Documents.',
+    [`${GOOGLE_SCOPE_PREFIX}/documents`, `${GOOGLE_SCOPE_PREFIX}/drive.readonly`],
+    ['docs:read', 'docs:write'],
     [
       {
         id: 'docs.read',
         label: 'Read Documents',
         description: 'Read the text content of your Google Documents.',
-        scope: `${GOOGLE_SCOPE_PREFIX}/documents.readonly`,
+        scope: `${GOOGLE_SCOPE_PREFIX}/documents`,
         capability: 'docs:read',
       },
       {
@@ -201,20 +224,27 @@ export const googleProviders: OAuthProviderDef[] = [
         scope: `${GOOGLE_SCOPE_PREFIX}/drive.readonly`,
         capability: 'docs:read',
       },
+      {
+        id: 'docs.write',
+        label: 'Edit Documents',
+        description: 'Create and edit Google Documents.',
+        scope: `${GOOGLE_SCOPE_PREFIX}/documents`,
+        capability: 'docs:write',
+      },
     ],
   ),
   makeGoogleProvider(
     'google-sheets',
     'Google Sheets',
-    'Find your spreadsheets and read cell values.',
-    [`${GOOGLE_SCOPE_PREFIX}/spreadsheets.readonly`, `${GOOGLE_SCOPE_PREFIX}/drive.readonly`],
-    ['sheets:read'],
+    'Find, read, create, and edit spreadsheets.',
+    [`${GOOGLE_SCOPE_PREFIX}/spreadsheets`, `${GOOGLE_SCOPE_PREFIX}/drive.readonly`],
+    ['sheets:read', 'sheets:write'],
     [
       {
         id: 'sheets.read',
         label: 'Read Sheets',
         description: 'Read cell values from your Google Sheets.',
-        scope: `${GOOGLE_SCOPE_PREFIX}/spreadsheets.readonly`,
+        scope: `${GOOGLE_SCOPE_PREFIX}/spreadsheets`,
         capability: 'sheets:read',
       },
       {
@@ -223,6 +253,13 @@ export const googleProviders: OAuthProviderDef[] = [
         description: 'Locate your Google Sheets by name in Drive.',
         scope: `${GOOGLE_SCOPE_PREFIX}/drive.readonly`,
         capability: 'sheets:read',
+      },
+      {
+        id: 'sheets.write',
+        label: 'Write Sheets',
+        description: 'Write, append, and create spreadsheets.',
+        scope: `${GOOGLE_SCOPE_PREFIX}/spreadsheets`,
+        capability: 'sheets:write',
       },
     ],
   ),
@@ -262,6 +299,29 @@ export const googleProviders: OAuthProviderDef[] = [
         description: 'Search and read your Google Contacts.',
         scope: `${GOOGLE_SCOPE_PREFIX}/contacts.readonly`,
         capability: 'contacts:read',
+      },
+    ],
+  ),
+  makeGoogleProvider(
+    'google-slides',
+    'Google Slides',
+    'Find, read, create, and edit Google Slides presentations.',
+    [`${GOOGLE_SCOPE_PREFIX}/presentations`, `${GOOGLE_SCOPE_PREFIX}/drive.readonly`],
+    ['slides:read', 'slides:write'],
+    [
+      {
+        id: 'slides.read',
+        label: 'Read Presentations',
+        description: 'Read and find your Google Slides presentations.',
+        scope: `${GOOGLE_SCOPE_PREFIX}/presentations`,
+        capability: 'slides:read',
+      },
+      {
+        id: 'slides.write',
+        label: 'Edit Presentations',
+        description: 'Create and edit Google Slides presentations.',
+        scope: `${GOOGLE_SCOPE_PREFIX}/presentations`,
+        capability: 'slides:write',
       },
     ],
   ),

@@ -110,4 +110,95 @@ export const config = {
   automationQueueConcurrency: parseInt(process.env.AUTOMATION_QUEUE_CONCURRENCY ?? '1', 10),
   proactiveMonitorEnabled: process.env.PROACTIVE_MONITOR_ENABLED !== 'false',
   proactiveMonitorIntervalMs: parseInt(process.env.PROACTIVE_MONITOR_INTERVAL_MS ?? '300000', 10),
-} as const;
+};
+
+/**
+ * Reload OAuth/API credentials from the admin credential store.
+ * Call after saving credentials so providers pick up new values.
+ */
+export async function reloadCredentials(): Promise<void> {
+  const { getCredential } = await import('../integrations/credential-store.js');
+
+  const mappings: Array<[string, (cred: Record<string, string>) => void]> = [
+    [
+      'google',
+      (c) => {
+        config.googleClientId = c.clientId ?? '';
+        config.googleClientSecret = c.clientSecret ?? '';
+      },
+    ],
+    [
+      'github',
+      (c) => {
+        config.githubClientId = c.clientId ?? '';
+        config.githubClientSecret = c.clientSecret ?? '';
+      },
+    ],
+    [
+      'slack',
+      (c) => {
+        config.slackClientId = c.clientId ?? '';
+        config.slackClientSecret = c.clientSecret ?? '';
+      },
+    ],
+    [
+      'notion',
+      (c) => {
+        config.notionClientId = c.clientId ?? '';
+        config.notionClientSecret = c.clientSecret ?? '';
+      },
+    ],
+    [
+      'dropbox',
+      (c) => {
+        config.dropboxClientId = c.clientId ?? '';
+        config.dropboxClientSecret = c.clientSecret ?? '';
+      },
+    ],
+    [
+      'zoom',
+      (c) => {
+        config.zoomClientId = c.clientId ?? '';
+        config.zoomClientSecret = c.clientSecret ?? '';
+      },
+    ],
+    [
+      'clickup',
+      (c) => {
+        config.clickupClientId = c.clientId ?? '';
+        config.clickupClientSecret = c.clientSecret ?? '';
+      },
+    ],
+    [
+      'openai',
+      (c) => {
+        config.openaiApiKey = c.apiKey ?? '';
+      },
+    ],
+    [
+      'nvidia',
+      (c) => {
+        config.nvidiaApiKey = c.apiKey ?? '';
+      },
+    ],
+    [
+      'serpapi',
+      (c) => {
+        config.serpApiKey = c.apiKey ?? '';
+      },
+    ],
+    [
+      'elevenlabs',
+      (c) => {
+        config.elevenLabsApiKey = c.apiKey ?? '';
+      },
+    ],
+  ];
+
+  for (const [providerId, apply] of mappings) {
+    const cred = await getCredential(providerId);
+    if (cred) {
+      apply(cred as unknown as Record<string, string>);
+    }
+  }
+}

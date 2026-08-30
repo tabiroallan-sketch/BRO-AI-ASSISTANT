@@ -421,3 +421,50 @@ export async function updateMarketplaceItem(
     { method: 'POST', token: authToken() },
   );
 }
+
+// ── Admin credential management ───────────────────────────────────────────
+
+export type AdminCredentialStatus = {
+  hasClientId: boolean;
+  hasClientSecret: boolean;
+  hasApiKey: boolean;
+  hasWebhookUrl: boolean;
+  hasAccessToken: boolean;
+  updatedAt: string;
+};
+
+export async function listAdminCredentials(): Promise<Record<string, AdminCredentialStatus>> {
+  const result = await request<{ credentials: Record<string, AdminCredentialStatus> }>(
+    '/integrations/admin/credentials',
+    { token: authToken() },
+  );
+  return result.credentials;
+}
+
+export async function getAdminCredentialStatus(
+  provider: string,
+): Promise<AdminCredentialStatus | null> {
+  const result = await request<{ credential: AdminCredentialStatus | null }>(
+    `/integrations/admin/credentials/${provider}`,
+    { token: authToken() },
+  );
+  return result.credential;
+}
+
+export async function saveAdminCredential(
+  provider: string,
+  data: Record<string, string>,
+): Promise<void> {
+  await request<void>(`/integrations/admin/credentials/${provider}`, {
+    method: 'PUT',
+    token: authToken(),
+    body: data,
+  });
+}
+
+export async function deleteAdminCredential(provider: string): Promise<void> {
+  await request<void>(`/integrations/admin/credentials/${provider}`, {
+    method: 'DELETE',
+    token: authToken(),
+  });
+}

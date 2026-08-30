@@ -1,7 +1,14 @@
 import type { FastifyInstance } from 'fastify';
-import { HttpError, requireAuth } from '../lib/auth.js';
+import { HttpError, requireAuth, requireRole } from '../lib/auth.js';
 import { recordAudit } from '../lib/audit.js';
-import { config } from '../config/index.js';
+import { config, reloadCredentials } from '../config/index.js';
+import {
+  getAllCredentials,
+  saveCredential,
+  deleteCredential,
+  getCredential,
+  invalidateCache,
+} from '../integrations/credential-store.js';
 import { emitIntegrationEvent } from '../integrations/events.js';
 import {
   createAuthorizationUrl,
@@ -856,6 +863,120 @@ export async function protectedIntegrationRoutes(app: FastifyInstance): Promise<
       throw new HttpError(404, 'Unknown integration provider');
     }
     await deleteIntegration(userId, provider);
+    return reply.status(204).send();
+  });
+
+  // ── Admin credential management ─────────────────────────────────────────
+
+  app.get('/integrations/admin/credentials', async (request) => {
+    const userId = request.user?.id;
+    if (!userId) throw new HttpError(401, 'Unauthorized');
+    await requireRole('ADMIN')(request);
+
+    const all = await getAllCredentials();
+    // Strip secrets from response — show only metadata
+    const safe: Record<string, Record<string, unknown>> = {};
+    for (const [providerId, cred] of Object.entries(all)) {
+      safe[providerId] = {
+        hasClientId: Boolean(cred.clientId),
+        hasClientSecret: Boolean(cred.clientSecret),
+        hasApiKey: Boolean(cred.apiKey),
+        hasWebhookUrl: Boolean(cred.webhookUrl),
+        hasAccessToken: Boolean(cred.accessToken),
+        updatedAt: cred.updatedAt,
+      };
+    }
+    return { credentials: safe };
+  });
+
+  app.get('/integrations/admin/credentials/:provider', async (request) => {
+    const userId = request.user?.id;
+    if (!userId) throw new HttpError(401, 'Unauthorized');
+    await requireRole('ADMIN')(request);
+
+    const { provider } = request.params as { provider: string };
+    const cred = await getCredential(provider);
+    if (!cred) return { credential: null };
+    // Strip secrets — return only metadata + which fields exist
+    return {
+      credential: {
+        hasClientId: Boolean(cred.clientId),
+        hasClientSecret: Boolean(cred.clientSecret),
+        hasApiKey: Boolean(cred.apiKey),
+        hasWebhookUrl: Boolean(cred.webhookUrl),
+        hasAccessToken: Boolean(cred.accessToken),
+        updatedAt: cred.updatedAt,
+      },
+    };
+  });
+
+  app.put('/integrations/admin/credentials/:provider', async (request, reply) => {
+    const userId = request.user?.id;
+    if (!userId) throw new HttpError(401, 'Unauthorized');
+    await requireRole('ADMIN')(request);
+
+    const { provider } = request.params as { provider: string };
+    const body = (request.body ?? {}) as Record<string, string>;
+
+    const data: Record<string, string | undefined> = {};
+    if (typeof body.clientId === 'string') data.clientId = body.clientId.trim();
+    if (typeof body.clientSecret === 'string') data.clientSecret = body.clientSecret.trim();
+    if (typeof body.apiKey === 'string') data.apiKey = body.apiKey.trim();
+    if (typeof body.webhookUrl === 'string') data.webhookUrl = body.webhookUrl.trim();
+    if (typeof body.accessToken === 'string') data.accessToken = body.accessToken.trim();
+
+    // Require at least one field
+    const hasAny =
+      data.clientId || data.clientSecret || data.apiKey || data.webhookUrl || data.accessToken;
+    if (!hasAny) {
+      throw new HttpError(400, 'Provide at least one credential field');
+    }
+
+    await saveCredential(provider, {
+      clientId: data.clientId,
+      clientSecret: data.clientSecret,
+      apiKey: data.apiKey,
+      webhookUrl: data.webhookUrl,
+      accessToken: data.accessToken,
+    });
+
+    // Reload credentials into config so providers pick them up
+    invalidateCache();
+    await reloadCredentials();
+
+    recordAudit({
+      actorId: request.user?.id,
+      actorEmail: request.user?.email,
+      action: 'integration.connect',
+      target: provider,
+      detail: JSON.stringify({ action: 'admin_credential_save' }),
+      ip: request.ip,
+    });
+
+    return reply.status(200).send({ ok: true, provider });
+  });
+
+  app.delete('/integrations/admin/credentials/:provider', async (request, reply) => {
+    const userId = request.user?.id;
+    if (!userId) throw new HttpError(401, 'Unauthorized');
+    await requireRole('ADMIN')(request);
+
+    const { provider } = request.params as { provider: string };
+    const deleted = await deleteCredential(provider);
+    if (!deleted) throw new HttpError(404, 'No credentials found for this provider');
+
+    invalidateCache();
+    await reloadCredentials();
+
+    recordAudit({
+      actorId: request.user?.id,
+      actorEmail: request.user?.email,
+      action: 'integration.disconnect',
+      target: provider,
+      detail: JSON.stringify({ action: 'admin_credential_delete' }),
+      ip: request.ip,
+    });
+
     return reply.status(204).send();
   });
 }

@@ -6,8 +6,20 @@ type CalendarEvent = {
   id?: string;
   summary?: string;
   description?: string;
+  location?: string;
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
+  recurrence?: string[];
+  attendees?: { email?: string; responseStatus?: string }[];
+  status?: string;
+};
+
+type CalendarEntry = {
+  id?: string;
+  summary?: string;
+  description?: string;
+  primary?: boolean;
+  timeZone?: string;
 };
 
 type FetchInit = {
@@ -101,6 +113,10 @@ export const calendarCreateEventTool: Tool = {
         type: 'string',
         description: 'End date-time in ISO 8601 format, e.g. "2026-08-05T10:00:00".',
       },
+      location: {
+        type: 'string',
+        description: 'Optional event location.',
+      },
     },
     required: ['summary', 'start', 'end'],
   },
@@ -116,12 +132,15 @@ export const calendarCreateEventTool: Tool = {
       typeof args.description === 'string' && args.description.trim()
         ? args.description.trim()
         : undefined;
-    const body = {
+    const location =
+      typeof args.location === 'string' && args.location.trim() ? args.location.trim() : undefined;
+    const body: Record<string, unknown> = {
       summary,
-      ...(description ? { description } : {}),
       start: { dateTime: start },
       end: { dateTime: end },
     };
+    if (description) body.description = description;
+    if (location) body.location = location;
     const response = await googleCalendarRequest(token, '/calendars/primary/events', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -131,5 +150,120 @@ export const calendarCreateEventTool: Tool = {
     }
     const created = (await response.json()) as CalendarEvent;
     return `Event created: "${created.summary}" at ${created.start?.dateTime ?? ''} (id: ${created.id ?? 'unknown'})`;
+  },
+};
+
+export const calendarUpdateEventTool: Tool = {
+  name: 'calendar_update_event',
+  providerId: 'google-calendar',
+  description: 'Update an existing event on the user\u2019s Google Calendar.',
+  parameters: {
+    type: 'object',
+    properties: {
+      eventId: {
+        type: 'string',
+        description: 'The event ID to update (from calendar_list_events).',
+      },
+      summary: { type: 'string', description: 'New event title (optional).' },
+      description: { type: 'string', description: 'New event description (optional).' },
+      start: {
+        type: 'string',
+        description: 'New start date-time in ISO 8601 format (optional).',
+      },
+      end: {
+        type: 'string',
+        description: 'New end date-time in ISO 8601 format (optional).',
+      },
+      location: { type: 'string', description: 'New location (optional).' },
+    },
+    required: ['eventId'],
+  },
+  async execute(args, context) {
+    const eventId = typeof args.eventId === 'string' ? args.eventId.trim() : '';
+    if (!eventId) {
+      throw new Error('Missing "eventId" argument');
+    }
+    const token = await requirePermission(context.userId, 'google-calendar', 'calendar.write');
+    const payload: Record<string, unknown> = {};
+    const summary = typeof args.summary === 'string' ? args.summary.trim() : '';
+    const description = typeof args.description === 'string' ? args.description.trim() : '';
+    const start = typeof args.start === 'string' ? args.start.trim() : '';
+    const end = typeof args.end === 'string' ? args.end.trim() : '';
+    const location = typeof args.location === 'string' ? args.location.trim() : '';
+    if (summary) payload.summary = summary;
+    if (description) payload.description = description;
+    if (start) payload.start = { dateTime: start };
+    if (end) payload.end = { dateTime: end };
+    if (location) payload.location = location;
+    if (Object.keys(payload).length === 0) {
+      throw new Error('Provide at least one field to update');
+    }
+    const response = await googleCalendarRequest(
+      token,
+      `/calendars/primary/events/${encodeURIComponent(eventId)}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+    );
+    if (!response.ok) {
+      throw new Error(`Google Calendar request failed with status ${response.status}`);
+    }
+    const updated = (await response.json()) as CalendarEvent;
+    return `Event updated: "${updated.summary ?? eventId}" (id: ${updated.id ?? eventId})`;
+  },
+};
+
+export const calendarDeleteEventTool: Tool = {
+  name: 'calendar_delete_event',
+  providerId: 'google-calendar',
+  description: 'Delete an event from the user\u2019s Google Calendar.',
+  requireConfirmation: true,
+  parameters: {
+    type: 'object',
+    properties: {
+      eventId: { type: 'string', description: 'The event ID to delete.' },
+    },
+    required: ['eventId'],
+  },
+  async execute(args, context) {
+    const eventId = typeof args.eventId === 'string' ? args.eventId.trim() : '';
+    if (!eventId) {
+      throw new Error('Missing "eventId" argument');
+    }
+    const token = await requirePermission(context.userId, 'google-calendar', 'calendar.write');
+    const response = await googleCalendarRequest(
+      token,
+      `/calendars/primary/events/${encodeURIComponent(eventId)}`,
+      { method: 'DELETE' },
+    );
+    if (!response.ok) {
+      throw new Error(`Google Calendar request failed with status ${response.status}`);
+    }
+    return `Event ${eventId} deleted.`;
+  },
+};
+
+export const calendarListCalendarsTool: Tool = {
+  name: 'calendar_list_calendars',
+  providerId: 'google-calendar',
+  description: 'List all the user\u2019s Google Calendars with their IDs and names.',
+  parameters: {
+    type: 'object',
+    properties: {},
+  },
+  async execute(_args, context) {
+    const token = await requirePermission(context.userId, 'google-calendar', 'calendar.read');
+    const response = await googleCalendarRequest(token, '/users/me/calendarList');
+    if (!response.ok) {
+      throw new Error(`Google Calendar request failed with status ${response.status}`);
+    }
+    const body = (await response.json()) as { items?: CalendarEntry[] };
+    const calendars = body.items ?? [];
+    if (calendars.length === 0) {
+      return 'No calendars found.';
+    }
+    const lines = calendars.map(
+      (cal, index) =>
+        `${index + 1}. ${cal.summary ?? '(unnamed)'}${cal.primary ? ' (primary)' : ''} (id: ${cal.id ?? 'unknown'}, tz: ${cal.timeZone ?? 'unknown'})`,
+    );
+    return lines.join('\n');
   },
 };

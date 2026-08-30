@@ -10,16 +10,47 @@ import {
   browserScreenshotTool,
 } from './browser.js';
 import { calculateTool } from './calculate.js';
-import { calendarCreateEventTool, calendarListEventsTool } from './calendar.js';
+import {
+  calendarCreateEventTool,
+  calendarDeleteEventTool,
+  calendarListCalendarsTool,
+  calendarListEventsTool,
+  calendarUpdateEventTool,
+} from './calendar.js';
 import { clipboardTool } from './clipboard.js';
 import { contactsSearchTool } from './contacts.js';
 import { currentTimeTool } from './current-time.js';
 import { discordSendMessageTool } from './discord.js';
-import { docsReadTool, docsSearchTool } from './docs.js';
-import { driveListFilesTool, driveReadFileTool, driveUploadFileTool } from './drive.js';
+import {
+  docsAppendTool,
+  docsCreateTool,
+  docsInsertTextTool,
+  docsReadTool,
+  docsReplaceTool,
+  docsSearchTool,
+} from './docs.js';
+import {
+  driveCopyFileTool,
+  driveCreateFolderTool,
+  driveDeleteFileTool,
+  driveGetMetadataTool,
+  driveListFilesTool,
+  driveMoveFileTool,
+  driveReadFileTool,
+  driveUploadFileTool,
+} from './drive.js';
 import { echoTool } from './echo.js';
 import { filesystemTool } from './filesystem.js';
-import { gmailReadTool, gmailSearchTool, gmailSendTool } from './gmail.js';
+import {
+  gmailForwardTool,
+  gmailListLabelsTool,
+  gmailModifyTool,
+  gmailReadThreadTool,
+  gmailReadTool,
+  gmailReplyTool,
+  gmailSearchTool,
+  gmailSendTool,
+} from './gmail.js';
 import {
   githubCreateIssueTool,
   githubListCommitsTool,
@@ -95,8 +126,28 @@ import {
   slackSendMessageTool,
   slackSetStatusTool,
 } from './slack.js';
-import { sheetsListTool, sheetsReadTool } from './sheets.js';
-import { tasksCreateTool, tasksListTool } from './tasks.js';
+import {
+  sheetsAppendTool,
+  sheetsClearTool,
+  sheetsCreateTool,
+  sheetsListTool,
+  sheetsReadTool,
+  sheetsWriteTool,
+} from './sheets.js';
+import {
+  slidesAddSlideTool,
+  slidesCreateTool,
+  slidesListTool,
+  slidesReadTool,
+  slidesUpdateTextTool,
+} from './slides.js';
+import {
+  tasksCompleteTool,
+  tasksCreateTool,
+  tasksDeleteTool,
+  tasksListTool,
+  tasksUpdateTool,
+} from './tasks.js';
 import { weatherTool } from './weather.js';
 import { webSearchTool } from './web-search.js';
 import { whatsappSendMessageTool } from './whatsapp.js';
@@ -138,18 +189,47 @@ registerTool(systemFocusWindowTool);
 registerTool(systemMinimizeWindowTool);
 registerTool(calendarListEventsTool);
 registerTool(calendarCreateEventTool);
+registerTool(calendarUpdateEventTool);
+registerTool(calendarDeleteEventTool);
+registerTool(calendarListCalendarsTool);
 registerTool(gmailSearchTool);
 registerTool(gmailReadTool);
 registerTool(gmailSendTool);
+registerTool(gmailReplyTool);
+registerTool(gmailForwardTool);
+registerTool(gmailListLabelsTool);
+registerTool(gmailReadThreadTool);
+registerTool(gmailModifyTool);
 registerTool(driveListFilesTool);
 registerTool(driveReadFileTool);
 registerTool(driveUploadFileTool);
+registerTool(driveCreateFolderTool);
+registerTool(driveDeleteFileTool);
+registerTool(driveMoveFileTool);
+registerTool(driveCopyFileTool);
+registerTool(driveGetMetadataTool);
 registerTool(docsSearchTool);
 registerTool(docsReadTool);
+registerTool(docsCreateTool);
+registerTool(docsAppendTool);
+registerTool(docsReplaceTool);
+registerTool(docsInsertTextTool);
 registerTool(sheetsListTool);
 registerTool(sheetsReadTool);
+registerTool(sheetsWriteTool);
+registerTool(sheetsAppendTool);
+registerTool(sheetsCreateTool);
+registerTool(sheetsClearTool);
+registerTool(slidesListTool);
+registerTool(slidesReadTool);
+registerTool(slidesCreateTool);
+registerTool(slidesAddSlideTool);
+registerTool(slidesUpdateTextTool);
 registerTool(tasksListTool);
 registerTool(tasksCreateTool);
+registerTool(tasksUpdateTool);
+registerTool(tasksCompleteTool);
+registerTool(tasksDeleteTool);
 registerTool(contactsSearchTool);
 registerTool(githubListReposTool);
 registerTool(githubCreateIssueTool);

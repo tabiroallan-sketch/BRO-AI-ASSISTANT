@@ -513,7 +513,7 @@ describe('integrations', () => {
       accountName: string | null;
       type: string;
     }[];
-    expect(providers).toHaveLength(12);
+    expect(providers).toHaveLength(13);
     const github = providers.find((p) => p.id === 'github');
     expect(github?.connected).toBe(true);
     expect(github?.accountName).toBe('octocat');
@@ -1324,7 +1324,7 @@ describe('integrations', () => {
     });
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
-    expect(body.providers).toHaveLength(12);
+    expect(body.providers).toHaveLength(13);
 
     const github = body.providers.find((p: { id: string }) => p.id === 'github');
     expect(github.connected).toBe(true);
@@ -1375,7 +1375,7 @@ describe('integrations', () => {
     });
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
-    expect(body.providers).toHaveLength(12);
+    expect(body.providers).toHaveLength(13);
     const github = body.providers.find((p: { id: string }) => p.id === 'github');
     expect(github.connected).toBe(true);
     expect(github.health.ok).toBe(true);
@@ -1384,7 +1384,7 @@ describe('integrations', () => {
     expect(body.summary.connected).toBe(1);
     expect(body.summary.healthy).toBe(1);
     expect(body.summary.unhealthy).toBe(0);
-    expect(body.summary.disconnected).toBe(11);
+    expect(body.summary.disconnected).toBe(12);
     expect(body.monitor.enabled).toBe(true);
     expect(body.monitor.intervalMs).toBeGreaterThan(0);
     expect(body.sweep).toBeDefined();

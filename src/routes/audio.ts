@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { HttpError, requireAuth } from '../lib/auth.js';
 import { aiConfigured, transcribeAudioChunk, type TranscribeAudioFormat } from '../lib/ai.js';
+import { elevenLabsConfigured, synthesizeSpeech } from '../lib/tts.js';
 
 const transcribeSchema = z.object({
   audio: z.string().min(1).max(14_000_000),
@@ -26,8 +27,34 @@ function transcribeErrorMessage(error: unknown): string {
   return 'Transcription failed';
 }
 
+const speakSchema = z.object({
+  text: z.string().min(1).max(1100),
+});
+
 export async function audioRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);
+
+  app.get('/audio/speak', async (request, reply) => {
+    if (!elevenLabsConfigured()) {
+      throw new HttpError(503, 'ElevenLabs is not configured');
+    }
+    const parsed = speakSchema.safeParse(request.query);
+    if (!parsed.success) {
+      throw new HttpError(400, 'Missing or empty text');
+    }
+    try {
+      const audio = await synthesizeSpeech(parsed.data.text);
+      if (!audio) {
+        throw new HttpError(503, 'ElevenLabs is not configured');
+      }
+      reply.header('content-type', 'audio/mpeg');
+      reply.header('cache-control', 'public, max-age=3600');
+      return reply.send(audio);
+    } catch (error) {
+      app.log.error({ err: error }, 'speech synthesis failed');
+      throw new HttpError(502, 'Speech synthesis failed');
+    }
+  });
 
   app.post('/audio/transcribe', { bodyLimit: 16 * 1024 * 1024 }, async (request, reply) => {
     if (!aiConfigured()) {

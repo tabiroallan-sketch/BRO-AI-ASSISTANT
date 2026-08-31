@@ -16,7 +16,7 @@ import type { ChatMessage } from '@/lib/chat';
 import { useVoice } from '@/hooks/use-voice';
 import { getDesktopApi } from '@/lib/desktop';
 import { initVoiceSettings } from '@/lib/voice/settings';
-import { speak } from '@/lib/speech';
+import { speakService } from '@/lib/voice/speak-service';
 import { cn } from '@/lib/utils';
 
 /**
@@ -84,10 +84,11 @@ export default function VoicePage(): React.JSX.Element {
       }
       useAiState.getState().setState('speaking');
       void initVoiceSettings().then((settings) => {
-        const ok = speak(content, {
+        const ok = speakService.speak(content, {
           voice: settings.ttsVoice,
           rate: settings.ttsRate,
           pitch: settings.ttsPitch,
+          preferProvider: true,
           onEnd: finish,
         });
         if (!ok) {

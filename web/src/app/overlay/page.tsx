@@ -17,6 +17,7 @@ import { streamChat, listConversations, getConversation } from '@/lib/chat';
 import type { ChatMessage, Conversation, ToolActivity } from '@/lib/chat';
 import { getDesktopApi } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
+import { useAutoSpeak } from '@/hooks/use-auto-speak';
 
 /**
  * The floating assistant (Stage 4). Rendered inside a transparent, frameless,
@@ -26,6 +27,7 @@ import { cn } from '@/lib/utils';
 export default function OverlayPage(): React.JSX.Element {
   const api = getDesktopApi();
   const { status } = useAuth();
+  const { speakReply } = useAutoSpeak();
   const reduceMotion = useReducedMotion();
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -190,6 +192,7 @@ export default function OverlayPage(): React.JSX.Element {
             setMessages((current) => [...current, event.message]);
             setStreaming(false);
             useAiState.getState().setState('idle');
+            speakReply(event.message.content);
           } else if (event.type === 'error') {
             setStreamingContent('');
             setToolActivity((current) => current.filter((activity) => activity.confirmationId));
@@ -210,7 +213,7 @@ export default function OverlayPage(): React.JSX.Element {
         useAiState.getState().setState('idle');
       }
     },
-    [activeId],
+    [activeId, speakReply],
   );
 
   function openInBro(): void {

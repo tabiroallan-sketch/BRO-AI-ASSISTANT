@@ -19,6 +19,7 @@ import {
 } from '@/lib/chat';
 import { useAuth } from '@/lib/auth';
 import { ToolBubble } from '@/components/chat/tool-bubble';
+import { useAutoSpeak } from '@/hooks/use-auto-speak';
 
 function TypingIndicator(): React.JSX.Element {
   return (
@@ -44,6 +45,7 @@ function TypingIndicator(): React.JSX.Element {
 export default function ChatPage(): React.JSX.Element {
   const router = useRouter();
   const { logout } = useAuth();
+  const { speakReply } = useAutoSpeak();
   const reduceMotion = useReducedMotion();
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -178,6 +180,7 @@ export default function ChatPage(): React.JSX.Element {
             setMessages((current) => [...current, event.message]);
             setStreaming(false);
             void loadConversations();
+            speakReply(event.message.content);
           } else if (event.type === 'error') {
             setStreamingContent('');
             setToolActivity((current) => current.filter((activity) => activity.confirmationId));
@@ -201,7 +204,7 @@ export default function ChatPage(): React.JSX.Element {
         setStreaming(false);
       }
     },
-    [activeId, logout, router, loadConversations],
+    [activeId, logout, router, loadConversations, speakReply],
   );
 
   const handleRename = React.useCallback(

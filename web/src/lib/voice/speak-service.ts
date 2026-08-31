@@ -98,7 +98,10 @@ class SpeakService {
     this.cancelled = true;
     this.playing = false;
     nativeStop();
-    this.audio?.pause();
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.removeAttribute('src');
+    }
     if (this.pendingCancel) {
       try {
         this.pendingCancel();
@@ -138,7 +141,6 @@ class SpeakService {
     })
       .then((response) => {
         if (!response.ok) {
-          // Provider failed; fall back to the native engine if available.
           return this.fallbackNative(content, options, finish);
         }
         return response.blob().then((blob) => {
@@ -146,9 +148,19 @@ class SpeakService {
             finish();
             return;
           }
-          this.audio!.src = URL.createObjectURL(blob);
-          this.audio!.play().catch(() => {
+          const url = URL.createObjectURL(blob);
+          const ended = (): void => {
+            this.audio!.removeEventListener('ended', ended);
+            this.audio!.removeEventListener('error', ended);
+            URL.revokeObjectURL(url);
+            this.audio!.src = '';
             finish();
+          };
+          this.audio!.addEventListener('ended', ended);
+          this.audio!.addEventListener('error', ended);
+          this.audio!.src = url;
+          this.audio!.play().catch(() => {
+            ended();
           });
         });
       })

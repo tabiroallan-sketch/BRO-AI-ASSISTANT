@@ -4,7 +4,6 @@ import * as React from 'react';
 import { speakService } from '@/lib/voice/speak-service';
 import { initVoiceSettings } from '@/lib/voice/settings';
 import type { VoiceSettings } from '@/lib/desktop';
-import { useVoice } from '@/hooks/use-voice';
 
 export type UseAutoSpeakResult = {
   /** Read an assistant reply aloud if TTS is enabled. Returns whether speech started. */
@@ -26,7 +25,6 @@ export type UseAutoSpeakResult = {
  * browser and Electron) and falls back to the browser's speechSynthesis.
  */
 export function useAutoSpeak(): UseAutoSpeakResult {
-  const voice = useVoice();
   const [settings, setSettings] = React.useState<VoiceSettings | null>(null);
   const [isSpeaking, setIsSpeaking] = React.useState(false);
   const settingsRef = React.useRef<VoiceSettings | null>(null);
@@ -59,24 +57,20 @@ export function useAutoSpeak(): UseAutoSpeakResult {
     setIsSpeaking(false);
   }, []);
 
-  const speakReply = React.useCallback(
-    (content: string): boolean => {
-      const enabled = settingsRef.current?.ttsEnabled;
-      if (enabled === false || voice.state.mode === 'off') {
-        return false;
-      }
-      const ok = speakService.speak(content, {
-        voice: settingsRef.current?.ttsVoice ?? null,
-        rate: settingsRef.current?.ttsRate ?? 1,
-        pitch: settingsRef.current?.ttsPitch ?? 1,
-        preferProvider: true,
-        onEnd: () => setIsSpeaking(false),
-      });
-      setIsSpeaking(ok);
-      return ok;
-    },
-    [voice.state.mode],
-  );
+  const speakReply = React.useCallback((content: string): boolean => {
+    if (settingsRef.current?.ttsEnabled === false) {
+      return false;
+    }
+    const ok = speakService.speak(content, {
+      voice: settingsRef.current?.ttsVoice ?? null,
+      rate: settingsRef.current?.ttsRate ?? 1,
+      pitch: settingsRef.current?.ttsPitch ?? 1,
+      preferProvider: true,
+      onEnd: () => setIsSpeaking(false),
+    });
+    setIsSpeaking(ok);
+    return ok;
+  }, []);
 
   const speakReplyForced = React.useCallback((content: string): boolean => {
     const ok = speakService.speak(content, {

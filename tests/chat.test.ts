@@ -34,7 +34,7 @@ type MockConversation = {
   id: string;
   userId: string;
   title: string | null;
-  metadata: string | null;
+  metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -964,6 +964,7 @@ describe('chat', () => {
     args?: Record<string, unknown>;
     ok?: boolean;
     output?: string;
+    permissionDenied?: boolean;
     message?: {
       id: string;
       role: string;

@@ -28,7 +28,7 @@ export function createAutomationStore(options: { maxTasksPerUser?: number } = {}
   }
 
   return {
-    createTask(input) {
+    createTask(input): AutomationTask {
       const now = new Date().toISOString();
       const task: AutomationTask = {
         id: randomUUID(),
@@ -49,10 +49,10 @@ export function createAutomationStore(options: { maxTasksPerUser?: number } = {}
       evict(task.userId);
       return task;
     },
-    getTask(id) {
+    getTask(id): AutomationTask | undefined {
       return tasks.get(id);
     },
-    listTasksForUser(userId, query: TaskListQuery = {}) {
+    listTasksForUser(userId, query: TaskListQuery = {}): AutomationTask[] {
       const limit = Math.min(Math.max(Math.floor(query.limit ?? 50), 1), 200);
       return (perUser.get(userId) ?? [])
         .map((id) => tasks.get(id))
@@ -61,7 +61,7 @@ export function createAutomationStore(options: { maxTasksPerUser?: number } = {}
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, limit);
     },
-    updateTask(id, patch) {
+    updateTask(id, patch): AutomationTask | undefined {
       const task = tasks.get(id);
       if (!task) {
         return undefined;
@@ -75,7 +75,7 @@ export function createAutomationStore(options: { maxTasksPerUser?: number } = {}
       tasks.set(id, updated);
       return updated;
     },
-    clear() {
+    clear(): void {
       tasks.clear();
       perUser.clear();
     },

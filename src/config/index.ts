@@ -47,6 +47,13 @@ export const config = {
   llmFallbackOrder: csv(process.env.LLM_FALLBACK_ORDER),
   elevenLabsApiKey: getSecret('ELEVENLABS_API_KEY'),
   serpApiKey: getSecret('SERPAPI_KEY'),
+  googleMapsApiKey: getSecret('GOOGLE_MAPS_API_KEY'),
+  redditClientId: getSecret('REDDIT_CLIENT_ID'),
+  redditClientSecret: getSecret('REDDIT_CLIENT_SECRET'),
+  redditUserAgent: process.env.REDDIT_USER_AGENT ?? 'BRO/1.0 (lead finder)',
+  linkedinClientId: getSecret('LINKEDIN_CLIENT_ID'),
+  linkedinClientSecret: getSecret('LINKEDIN_CLIENT_SECRET'),
+  webSearchApiKey: getSecret('WEB_SEARCH_API_KEY'),
   googleClientId: getSecret('GOOGLE_CLIENT_ID'),
   googleClientSecret: getSecret('GOOGLE_CLIENT_SECRET'),
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? '',
@@ -122,74 +129,74 @@ export async function reloadCredentials(): Promise<void> {
   const mappings: Array<[string, (cred: Record<string, string>) => void]> = [
     [
       'google',
-      (c) => {
+      (c): void => {
         config.googleClientId = c.clientId ?? '';
         config.googleClientSecret = c.clientSecret ?? '';
       },
     ],
     [
       'github',
-      (c) => {
+      (c): void => {
         config.githubClientId = c.clientId ?? '';
         config.githubClientSecret = c.clientSecret ?? '';
       },
     ],
     [
       'slack',
-      (c) => {
+      (c): void => {
         config.slackClientId = c.clientId ?? '';
         config.slackClientSecret = c.clientSecret ?? '';
       },
     ],
     [
       'notion',
-      (c) => {
+      (c): void => {
         config.notionClientId = c.clientId ?? '';
         config.notionClientSecret = c.clientSecret ?? '';
       },
     ],
     [
       'dropbox',
-      (c) => {
+      (c): void => {
         config.dropboxClientId = c.clientId ?? '';
         config.dropboxClientSecret = c.clientSecret ?? '';
       },
     ],
     [
       'zoom',
-      (c) => {
+      (c): void => {
         config.zoomClientId = c.clientId ?? '';
         config.zoomClientSecret = c.clientSecret ?? '';
       },
     ],
     [
       'clickup',
-      (c) => {
+      (c): void => {
         config.clickupClientId = c.clientId ?? '';
         config.clickupClientSecret = c.clientSecret ?? '';
       },
     ],
     [
       'openai',
-      (c) => {
+      (c): void => {
         config.openaiApiKey = c.apiKey ?? '';
       },
     ],
     [
       'nvidia',
-      (c) => {
+      (c): void => {
         config.nvidiaApiKey = c.apiKey ?? '';
       },
     ],
     [
       'serpapi',
-      (c) => {
+      (c): void => {
         config.serpApiKey = c.apiKey ?? '';
       },
     ],
     [
       'elevenlabs',
-      (c) => {
+      (c): void => {
         config.elevenLabsApiKey = c.apiKey ?? '';
       },
     ],

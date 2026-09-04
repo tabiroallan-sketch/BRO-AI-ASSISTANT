@@ -179,7 +179,7 @@ vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }));
 describe('Google OAuth when configured', () => {
   let app: FastifyInstance;
 
-  const fetchMock = vi.fn(async (url: string | URL | Request) => {
+  const fetchMock = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
     const href = String(url);
     if (href.includes('oauth2.googleapis.com/token')) {
       return new Response(
@@ -347,8 +347,8 @@ describe('Google OAuth when configured', () => {
       String(call[0]).includes('oauth2.googleapis.com/token'),
     );
     expect(tokenCalls.length).toBeGreaterThan(0);
-    const init = tokenCalls[0]?.[1] as { body?: string };
-    const body = new URLSearchParams(init?.body ?? '');
+    const init = tokenCalls[0]?.[1];
+    const body = new URLSearchParams(String(init?.body ?? ''));
     expect(body.get('code_verifier')).toBeTruthy();
     expect(body.get('code_verifier')?.length).toBeGreaterThanOrEqual(32);
   });

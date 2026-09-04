@@ -33,14 +33,14 @@ export function createTaskQueue(options: { concurrency?: number } = {}): TaskQue
   }
 
   return {
-    enqueue(runnable) {
+    enqueue(runnable): string {
       const id = randomUUID();
       entries.set(id, runnable);
       order.push(id);
       pump();
       return id;
     },
-    cancel(id) {
+    cancel(id): boolean {
       if (!entries.has(id)) {
         return false;
       }
@@ -51,16 +51,16 @@ export function createTaskQueue(options: { concurrency?: number } = {}): TaskQue
       }
       return true;
     },
-    get size() {
+    get size(): number {
       return entries.size;
     },
-    get pending() {
+    get pending(): number {
       return order.length;
     },
-    get running() {
+    get running(): number {
       return active;
     },
-    clear() {
+    clear(): void {
       entries.clear();
       order.length = 0;
     },

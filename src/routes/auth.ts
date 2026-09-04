@@ -44,6 +44,15 @@ const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
 
+const updateProfileSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(100).nullable().optional(),
+    avatarUrl: z.string().trim().url().max(2048).nullable().optional(),
+  })
+  .refine((data) => data.displayName !== undefined || data.avatarUrl !== undefined, {
+    message: 'At least one of displayName or avatarUrl must be provided',
+  });
+
 const AUTH_RATE_LIMIT = { max: 20, windowMs: 60_000 } as const;
 const AUTH_REFRESH_RATE_LIMIT = { max: 60, windowMs: 60_000 } as const;
 const AUTH_OAUTH_RATE_LIMIT = { max: 20, windowMs: 60_000 } as const;
@@ -424,5 +433,54 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       throw new HttpError(401, 'Unauthorized');
     }
     return { user: publicUser(request.user) };
+  });
+
+  app.patch('/auth/me', { preHandler: requireAuth }, async (request, reply) => {
+    if (!request.user) {
+      throw new HttpError(401, 'Unauthorized');
+    }
+    if (!prisma) {
+      throw new HttpError(503, 'Database not configured');
+    }
+
+    const parsed = updateProfileSchema.safeParse(request.body);
+    if (!parsed.success) {
+      throw new HttpError(400, 'Invalid request body');
+    }
+    const { displayName, avatarUrl } = parsed.data;
+
+    if (request.user.displayName !== displayName || request.user.avatarUrl !== avatarUrl) {
+      const updated = await prisma.user.update({
+        where: { id: request.user.id },
+        data: {
+          ...(displayName !== undefined ? { displayName } : {}),
+          ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+        },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          avatarUrl: true,
+          role: true,
+          isActive: true,
+        },
+      });
+
+      invalidateCachedUser(updated.id);
+
+      recordAudit({
+        actorId: updated.id,
+        actorEmail: updated.email,
+        action: 'auth.profile.update',
+        detail: `Updated profile${displayName !== undefined ? ' (displayName)' : ''}${
+          avatarUrl !== undefined ? ' (avatarUrl)' : ''
+        }`,
+        ...auditContext(request),
+      });
+
+      return reply.send({ user: publicUser(updated) });
+    }
+
+    return reply.send({ user: publicUser(request.user) });
   });
 }

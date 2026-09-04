@@ -37,6 +37,7 @@ import { whatsappSendMessageTool } from '../src/tools/whatsapp.js';
 import type { ToolContext } from '../src/tools/types.js';
 
 type MockFetchInit = {
+  method?: string;
   headers?: Record<string, string>;
   body?: string;
 };
@@ -630,7 +631,7 @@ describe('integration tools', () => {
 
   it('slack_get_status shows the authenticated user status', async () => {
     seedIntegration(USER_ID, 'slack', 'slack_token');
-    const fetchMock = vi.fn(async (input: string) => {
+    const fetchMock = vi.fn(async (input: string, _init?: MockFetchInit) => {
       const url = String(input);
       if (url.includes('auth.test')) {
         return new Response(JSON.stringify({ ok: true, user_id: 'U1' }), { status: 200 });
@@ -949,7 +950,7 @@ describe('integration tools', () => {
 
   it('drive_read_file reads and returns a native Google file as text', async () => {
     seedIntegration(USER_ID, 'google-drive', 'drive_token');
-    const fetchMock = vi.fn(async (input: string) => {
+    const fetchMock = vi.fn(async (input: string, _init?: MockFetchInit) => {
       const url = String(input);
       if (url.includes('/export')) {
         return new Response('Meeting notes here', { status: 200 });

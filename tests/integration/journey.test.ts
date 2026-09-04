@@ -59,8 +59,6 @@ vi.mock('../../src/lib/prisma.js', async () => {
   return { prisma: getMockDb().mockPrisma };
 });
 
-type MockDbModule = typeof import('../helpers/mock-db.js');
-
 function parseSse(payload: string): Array<Record<string, unknown>> {
   return payload
     .split('\n')
@@ -70,7 +68,7 @@ function parseSse(payload: string): Array<Record<string, unknown>> {
 
 describe('full user journey', () => {
   let app: FastifyInstance;
-  let db: MockDbModule['MockDb'];
+  let db: import('../helpers/mock-db.js').MockDb;
 
   beforeAll(async () => {
     const [{ buildApp }, mockDb] = await Promise.all([

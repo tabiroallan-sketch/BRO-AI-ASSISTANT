@@ -5,6 +5,9 @@ import {
   IPC,
   type OperatingMode,
   type ShortcutAction,
+  type OverlayBounds,
+  type DesktopConfig,
+  type ServerReport,
   normalizeOperatingMode,
 } from '../shared/desktop-api.js';
 import { planModeTransition } from './operating-mode.js';
@@ -177,7 +180,7 @@ async function bootstrap(): Promise<void> {
       dataDir,
       postgresDir: join(userData, 'postgres'),
       secrets,
-      getConfig: () => config.get(),
+      getConfig: (): Promise<DesktopConfig> => config.get(),
       nodeCommand: process.execPath,
       runAsNode: true,
       onLog,
@@ -201,8 +204,8 @@ async function bootstrap(): Promise<void> {
     iconPath: assetPath('icon.png'),
     stateStore: new WindowStateStore({ filePath: join(userData, 'window-state.json') }),
     apiBaseUrl,
-    closeToTray: () => configState.closeToTray,
-    isQuitting: () => quitting,
+    closeToTray: (): boolean => configState.closeToTray,
+    isQuitting: (): boolean => quitting,
     onQuitRequested: requestQuit,
   });
   mainWindow.create(webUrl);
@@ -222,11 +225,11 @@ async function bootstrap(): Promise<void> {
     webUrl,
     preloadPath: join(__dirname, '..', 'preload', 'index.js'),
     apiBaseUrl,
-    getBounds: () => configState.overlayBounds,
-    saveBounds: (bounds) => {
+    getBounds: (): OverlayBounds | null => configState.overlayBounds,
+    saveBounds: (bounds): void => {
       void config.set({ overlayBounds: bounds });
     },
-    onVisibility: (visible) => {
+    onVisibility: (visible): void => {
       overlay?.send(IPC.overlayVisibility, visible);
     },
   });
@@ -255,7 +258,7 @@ async function bootstrap(): Promise<void> {
   };
 
   shortcuts = new ShortcutRegistry({
-    onTriggered: (id) => {
+    onTriggered: (id): void => {
       if (id === 'open-dashboard') {
         mainWindow?.focus();
         mainWindow?.send(IPC.windowNavigate, '/dashboard');
@@ -291,8 +294,8 @@ async function bootstrap(): Promise<void> {
   }
 
   updates = new UpdateManager({
-    isEnabled: () => !DEV && app.isPackaged,
-    onStatus: (status) => mainWindow?.send(IPC.updatesChanged, status),
+    isEnabled: (): boolean => !DEV && app.isPackaged,
+    onStatus: (status): void => mainWindow?.send(IPC.updatesChanged, status),
   });
   updates.init();
   if (configState.autoCheckUpdates) {
@@ -303,7 +306,7 @@ async function bootstrap(): Promise<void> {
 
   const apiOrigin = apiBaseUrl.replace(/\/api\/v1\/?$/, '');
   connectivity = new ConnectivityMonitor({
-    probe: async () => {
+    probe: async (): Promise<boolean> => {
       try {
         const response = await fetch(`${apiOrigin}/health`, { signal: AbortSignal.timeout(3000) });
         return response.ok;
@@ -311,7 +314,7 @@ async function bootstrap(): Promise<void> {
         return false;
       }
     },
-    onStatus: (online) => mainWindow?.send(IPC.networkChanged, online),
+    onStatus: (online): void => mainWindow?.send(IPC.networkChanged, online),
   });
   connectivity.start();
 
@@ -319,12 +322,13 @@ async function bootstrap(): Promise<void> {
     // Background service (Stage 2): keeps the embedded services alive while the
     // window is hidden and throttles itself so idle CPU stays low.
     heartbeat = new Heartbeat({
-      isBackground: () => Boolean(mainWindow && !mainWindow.isVisible()),
-      shouldPause: () => quitting,
-      getReports: () => manager?.getReports() ?? [],
-      isServiceAlive: (id) => manager?.isServiceAlive(id) ?? Promise.resolve(false),
-      restartService: (id) => manager?.restartService(id) ?? Promise.resolve(),
-      onTick: (report) => {
+      isBackground: (): boolean => Boolean(mainWindow && !mainWindow.isVisible()),
+      shouldPause: (): boolean => quitting,
+      getReports: (): ServerReport[] => manager?.getReports() ?? [],
+      isServiceAlive: (id): Promise<boolean> =>
+        manager?.isServiceAlive(id) ?? Promise.resolve(false),
+      restartService: (id): Promise<void> => manager?.restartService(id) ?? Promise.resolve(),
+      onTick: (report): void => {
         onLog(
           `heartbeat: ${report.services.length} services running, restarted=${report.restarted.length > 0 ? report.restarted.join(',') : 'none'}, heap=${Math.round(report.memory.heapUsed / 1024 / 1024)}MB`,
         );
@@ -344,8 +348,8 @@ async function bootstrap(): Promise<void> {
     shortcuts,
     updates,
     servers: manager ?? {
-      getReports: () => [],
-      restart: async () => undefined,
+      getReports: (): ServerReport[] => [],
+      restart: async (): Promise<void> => undefined,
     },
     notifier,
     appInfo: {
@@ -386,26 +390,26 @@ async function bootstrap(): Promise<void> {
 
   tray = new AppTray({
     iconPath: assetPath('tray.png') ?? assetPath('icon.png'),
-    listening: () => listening,
-    wakeWord: () => wakeWordOn,
-    mode: () => activeMode,
+    listening: (): boolean => listening,
+    wakeWord: (): boolean => wakeWordOn,
+    mode: (): OperatingMode => activeMode,
     onSetMode: setMode,
-    onOpenDashboard: () => {
+    onOpenDashboard: (): void => {
       mainWindow?.focus();
       mainWindow?.send(IPC.windowNavigate, '/dashboard');
     },
-    onOpenOverlay: () => {
+    onOpenOverlay: (): void => {
       overlay?.show();
     },
-    onStartListening: () => {
+    onStartListening: (): void => {
       setListening(true);
       broadcast(IPC.listeningStart);
     },
-    onStopListening: () => {
+    onStopListening: (): void => {
       setListening(false);
       broadcast(IPC.listeningStop);
     },
-    onToggleWakeWord: () => {
+    onToggleWakeWord: (): void => {
       // The renderer persists the change through the config bridge; the tray
       // label is re-synced from config.onDidChange below and flipped locally
       // so it feels instant even if the renderer is not connected.
@@ -443,7 +447,7 @@ async function bootstrap(): Promise<void> {
       return;
     }
     event.preventDefault();
-    void (async () => {
+    void (async (): Promise<void> => {
       try {
         stopNativeTheme?.();
         shortcuts?.unregisterAll();

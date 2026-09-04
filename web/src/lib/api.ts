@@ -170,6 +170,18 @@ export function fetchMe(token: string): Promise<{ user: PublicUser }> {
   return request<{ user: PublicUser }>('/auth/me', { token });
 }
 
+export type UpdateProfileInput = {
+  displayName?: string | null;
+  avatarUrl?: string | null;
+};
+
+export function updateProfile(input: UpdateProfileInput): Promise<{ user: PublicUser }> {
+  return request<{ user: PublicUser }>('/auth/me', {
+    method: 'PATCH',
+    body: input,
+  });
+}
+
 export function fetchProviders(): Promise<{ providers: ProviderInfo[] }> {
   return request<{ providers: ProviderInfo[] }>('/auth/providers');
 }

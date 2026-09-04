@@ -30,6 +30,7 @@ function fakeProvider(id: string, failWith?: unknown): LLMProvider {
     },
     getUsage: () => null,
     cancel: () => undefined,
+    isConfigured: () => true,
     dispose: () => undefined,
   };
 }

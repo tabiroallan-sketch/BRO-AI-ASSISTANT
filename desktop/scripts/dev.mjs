@@ -71,7 +71,13 @@ async function main() {
   await waitForHealthy('http://127.0.0.1:3000/health', 'api');
   await waitForHealthy('http://127.0.0.1:3001/login', 'web');
 
-  const electronBin = join(desktopDir, 'node_modules', 'electron', 'dist', isWindows ? 'electron.exe' : 'electron');
+  const electronBin = join(
+    desktopDir,
+    'node_modules',
+    'electron',
+    'dist',
+    isWindows ? 'electron.exe' : 'electron',
+  );
   const electron = spawn(electronBin, [desktopDir], {
     cwd: desktopDir,
     stdio: 'inherit',

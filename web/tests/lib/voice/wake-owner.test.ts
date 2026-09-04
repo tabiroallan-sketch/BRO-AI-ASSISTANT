@@ -7,6 +7,7 @@ class FakeChannel {
   closed = false;
 
   constructor(_name: string) {
+    void _name;
     FakeChannel.instances.push(this);
   }
 

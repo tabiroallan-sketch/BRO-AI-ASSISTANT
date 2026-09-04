@@ -103,7 +103,7 @@ const TOOL_RECIPES: Array<{
  */
 export function createHeuristicPlanner(options: { getTools(): Tool[] }): TaskPlanner {
   return {
-    async plan(input) {
+    async plan(input): Promise<PlannedStep[]> {
       const goal = input.goal.trim().toLowerCase();
       const available = new Set(options.getTools().map((tool) => tool.name));
       const steps: PlannedStep[] = [];
@@ -181,7 +181,7 @@ export function createLLMPlanner(options: {
   getTools(): Tool[];
 }): TaskPlanner {
   return {
-    async plan(input) {
+    async plan(input): Promise<PlannedStep[]> {
       const tools = options.getTools();
       const toolList = tools
         .map(
@@ -218,7 +218,7 @@ export function createFallbackPlanner(options: {
   const llm = createLLMPlanner(options);
   const heuristic = createHeuristicPlanner(options);
   return {
-    async plan(input) {
+    async plan(input): Promise<PlannedStep[]> {
       try {
         const steps = await llm.plan(input);
         if (steps.length > 0) {

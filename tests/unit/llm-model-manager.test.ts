@@ -30,6 +30,7 @@ function fakeProvider(id: string, defaultModel: string, catalog: string[]): LLMP
     completeChat: async () => ({ content: 'hi', toolCalls: [] }),
     getUsage: () => null,
     cancel: () => undefined,
+    isConfigured: () => true,
     dispose: () => undefined,
   };
 }

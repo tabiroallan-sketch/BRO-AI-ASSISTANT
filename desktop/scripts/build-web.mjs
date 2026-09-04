@@ -15,7 +15,12 @@ const webDir = join(desktopDir, '..', 'web');
 const webRuntime = join(desktopDir, 'resources', 'runtime', 'web');
 
 function run(command, args, cwd, env) {
-  const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32', env });
+  const result = spawnSync(command, args, {
+    cwd,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    env,
+  });
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }

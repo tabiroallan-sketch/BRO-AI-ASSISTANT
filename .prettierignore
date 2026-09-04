@@ -2,6 +2,7 @@ node_modules
 dist
 coverage
 src/generated
+desktop/resources/runtime
 *.md
 package-lock.json
 .next

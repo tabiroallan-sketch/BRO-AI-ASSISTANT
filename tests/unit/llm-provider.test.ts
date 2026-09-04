@@ -377,7 +377,7 @@ describe('BaseProvider', () => {
       {
         maxRetries: 1,
         hooks: {
-          onEvent: (event: { type: string }): void => {
+          onEvent: (event: ProviderLifecycleEvent): void => {
             events.push(event);
           },
         },
@@ -401,7 +401,7 @@ describe('BaseProvider', () => {
       {
         maxRetries: 1,
         hooks: {
-          onEvent: (event: { type: string }): void => {
+          onEvent: (event: ProviderLifecycleEvent): void => {
             events.push(event);
           },
         },

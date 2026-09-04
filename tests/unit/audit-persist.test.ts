@@ -21,9 +21,9 @@ const state = vi.hoisted(() => {
   const auditLog = {
     async create(args: { data: Row }): Promise<Row> {
       const row: Row = {
+        ...args.data,
         id: `aud-${rows.length + 1}`,
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
-        ...args.data,
       };
       rows.push(row);
       return row;
@@ -72,10 +72,10 @@ describe('audit persistence', () => {
     audit.recordAudit({ action: 'plugins.reload', actorEmail: 'admin@x.y' });
 
     expect(state.rows).toHaveLength(2);
-    expect(state.rows[0].action).toBe('auth.login');
-    expect(state.rows[0].actorId).toBe('user-1');
-    expect(state.rows[0].actorEmail).toBe('a@b.c');
-    expect(state.rows[1].action).toBe('plugins.reload');
+    expect(state.rows[0]!.action).toBe('auth.login');
+    expect(state.rows[0]!.actorId).toBe('user-1');
+    expect(state.rows[0]!.actorEmail).toBe('a@b.c');
+    expect(state.rows[1]!.action).toBe('plugins.reload');
     expect(audit.getAuditLogs()).toHaveLength(2);
   });
 
@@ -88,10 +88,10 @@ describe('audit persistence', () => {
 
     const events = await audit.readAuditLogs();
     expect(events).toHaveLength(1);
-    expect(events[0].action).toBe('admin.user.update');
-    expect(events[0].actorEmail).toBe('admin@x.y');
-    expect(events[0].at).toBe('2026-01-01T00:00:00.000Z');
-    expect(events[0].detail).toBe('{"role":"ADMIN"}');
+    expect(events[0]!.action).toBe('admin.user.update');
+    expect(events[0]!.actorEmail).toBe('admin@x.y');
+    expect(events[0]!.at).toBe('2026-01-01T00:00:00.000Z');
+    expect(events[0]!.detail).toBe('{"role":"ADMIN"}');
   });
 
   it('respects the requested limit when reading from the table', async () => {
@@ -110,6 +110,6 @@ describe('audit persistence', () => {
     const events = await audit.readAuditLogs();
     expect(state.rows).toHaveLength(0);
     expect(events).toHaveLength(1);
-    expect(events[0].action).toBe('auth.logout');
+    expect(events[0]!.action).toBe('auth.logout');
   });
 });

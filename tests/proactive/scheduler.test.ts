@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { createDedupeStore } from '../../src/proactive/dedupe.js';
 import { createScheduler, type SchedulerDependencies } from '../../src/proactive/scheduler.js';
 
-function buildDeps(overrides: Partial<SchedulerDependencies> = {}): SchedulerDependencies {
+function buildDeps(overrides: Partial<SchedulerDependencies> = {}): {
+  deps: SchedulerDependencies;
+  created: Array<Record<string, unknown>>;
+  clock: { now: Date };
+} {
   const clock = { now: new Date('2026-08-07T10:00:00Z') };
   const created: Array<Record<string, unknown>> = [];
   const deps: SchedulerDependencies = {

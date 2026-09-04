@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { automationEngine } from '../automation/index.js';
+import { automationEngine, type TaskSnapshot } from '../automation/index.js';
 import { config } from '../config/index.js';
 import { HttpError, requireAuth, requireRole } from '../lib/auth.js';
 import { isOriginAllowed } from '../lib/cors.js';
@@ -76,7 +76,7 @@ function taskParam(params: unknown): string {
   return String((params as { id?: unknown }).id ?? '');
 }
 
-function ownedTask(userId: string, id: string) {
+function ownedTask(userId: string, id: string): TaskSnapshot | undefined {
   const task = automationEngine.getTask(id);
   if (!task || task.userId !== userId) {
     return undefined;

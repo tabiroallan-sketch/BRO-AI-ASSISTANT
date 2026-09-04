@@ -10,7 +10,7 @@ export function createEventBus(): EventBus {
         listeners.delete(listener);
       };
     },
-    emit(event) {
+    emit(event): void {
       for (const listener of listeners) {
         try {
           listener(event);
@@ -19,7 +19,7 @@ export function createEventBus(): EventBus {
         }
       }
     },
-    clear() {
+    clear(): void {
       listeners.clear();
     },
   };

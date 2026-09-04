@@ -228,7 +228,7 @@ export function startHealthMonitor(intervalMs: number): MonitorHandle {
   }
   handle = {
     running: true,
-    stop: () => {
+    stop: (): void => {
       clearInterval(timer);
       handle = null;
     },

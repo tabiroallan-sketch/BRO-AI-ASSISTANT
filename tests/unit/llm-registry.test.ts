@@ -25,6 +25,7 @@ function fakeProvider(id: string): LLMProvider {
     completeChat: async () => ({ content: 'hi', toolCalls: [] }),
     getUsage: () => null,
     cancel: () => undefined,
+    isConfigured: () => true,
     dispose: () => undefined,
   };
 }

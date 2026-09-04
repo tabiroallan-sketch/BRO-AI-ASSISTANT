@@ -64,7 +64,8 @@ describe('expression evaluator', () => {
   });
 
   it('exposes a calculate tool that returns string results', () => {
-    expect(calculateTool.execute({ expression: '2 + 2' })).toBe('4');
-    expect(() => calculateTool.execute({ expression: '1 / 0' })).toThrow('Division by zero');
+    const ctx = { userId: 'u1' };
+    expect(calculateTool.execute({ expression: '2 + 2' }, ctx)).toBe('4');
+    expect(() => calculateTool.execute({ expression: '1 / 0' }, ctx)).toThrow('Division by zero');
   });
 });

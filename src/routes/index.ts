@@ -8,6 +8,7 @@ import { chatRoutes } from './chat.js';
 import { conversationRoutes } from './conversations.js';
 import { healthRoute } from './health.js';
 import { protectedIntegrationRoutes, publicIntegrationRoutes } from './integrations.js';
+import { leadFinderRoutes } from './lead-finder.js';
 import { logRoutes } from './logs.js';
 import { llmRoutes } from './llm.js';
 import { protectedMarketplaceRoutes } from './marketplace.js';
@@ -42,6 +43,7 @@ export async function appRoutes(app: FastifyInstance): Promise<void> {
       await v1.register(pluginRoutes);
       await v1.register(adminRoutes);
       await v1.register(salesRoutes);
+      await v1.register(leadFinderRoutes);
     },
     { prefix: '/api/v1' },
   );

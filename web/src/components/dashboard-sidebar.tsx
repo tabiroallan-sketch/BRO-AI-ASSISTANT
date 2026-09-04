@@ -59,7 +59,8 @@ const adminItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
 const salesItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: '/dashboard/sales', label: 'Sales', icon: Briefcase },
   { href: '/dashboard/sales/opportunities', label: 'Opportunities', icon: Target },
-  { href: '/dashboard/sales/discovery', label: 'Discovery', icon: Compass },
+  { href: '/dashboard/sales/leads', label: 'Lead Finder', icon: Compass },
+  { href: '/dashboard/sales/discovery', label: 'Discovery', icon: Search },
   { href: '/dashboard/sales/job-search', label: 'Job Search', icon: Search },
   { href: '/dashboard/sales/outreach', label: 'Outreach', icon: Mail },
   { href: '/dashboard/sales/offers', label: 'Offers', icon: FileText },

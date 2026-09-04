@@ -112,8 +112,11 @@ describe('regression: redis-backed rate limiter TTL correctness (Milestone 19 fi
   it('falls back to in-memory tracking when redis throws', async () => {
     calls.length = 0;
     const { redis: liveRedis } = await import('../../src/lib/redis.js');
-    const originalIncr = liveRedis.incr;
-    (liveRedis as { incr: () => Promise<number> }).incr = async () => {
+    const redisClient = liveRedis as unknown as {
+      incr: (key: string) => Promise<number>;
+    };
+    const originalIncr = redisClient.incr;
+    redisClient.incr = () => {
       throw new Error('connection refused');
     };
 
@@ -127,7 +130,7 @@ describe('regression: redis-backed rate limiter TTL correctness (Milestone 19 fi
       expect(headers['RateLimit-Remaining']).toBe('1');
       expect(headers['RateLimit-Reset']).toBeDefined();
     } finally {
-      (liveRedis as { incr: () => Promise<number> }).incr = originalIncr;
+      redisClient.incr = originalIncr;
     }
   });
 });

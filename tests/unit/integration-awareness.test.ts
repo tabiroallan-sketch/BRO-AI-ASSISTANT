@@ -26,7 +26,9 @@ describe('integration awareness', () => {
     awareness = await import('../../src/llm/integration-awareness.js');
   });
 
-  function tools(...entries: Array<[string, string]>): Array<{ name: string; providerId: string }> {
+  function tools(
+    ...entries: Array<[string, string | undefined]>
+  ): Array<{ name: string; providerId?: string }> {
     return entries.map(([name, providerId]) => ({ name, providerId }));
   }
 

@@ -26,7 +26,7 @@ describe('serpapi-jobs adapter', () => {
     const result = await serpApiJobsAdapter.search('react developer');
     expect(result.candidates).toEqual([]);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].message).toContain('SERPAPI_KEY');
+    expect(result.errors[0]!.message).toContain('SERPAPI_KEY');
   });
 
   it('parses SerpAPI Google Jobs response into candidates', async () => {
@@ -66,16 +66,16 @@ describe('serpapi-jobs adapter', () => {
     const result = await serpApiJobsAdapter.search('developer');
     expect(result.errors).toEqual([]);
     expect(result.candidates).toHaveLength(2);
-    expect(result.candidates[0].title).toBe('Senior React Developer');
-    expect(result.candidates[0].company).toBe('Acme Corp');
-    expect(result.candidates[0].source).toBe('serpapi-jobs');
-    expect(result.candidates[0].sourceReliability).toBe('MEDIUM');
-    expect(result.candidates[0].remote).toBe(true);
-    expect(result.candidates[0].compensation).toBe('$120,000 - $160,000/year');
-    expect(result.candidates[0].requiredSkills).toEqual(
+    expect(result.candidates[0]!.title).toBe('Senior React Developer');
+    expect(result.candidates[0]!.company).toBe('Acme Corp');
+    expect(result.candidates[0]!.source).toBe('serpapi-jobs');
+    expect(result.candidates[0]!.sourceReliability).toBe('MEDIUM');
+    expect(result.candidates[0]!.remote).toBe(true);
+    expect(result.candidates[0]!.compensation).toBe('$120,000 - $160,000/year');
+    expect(result.candidates[0]!.requiredSkills).toEqual(
       expect.arrayContaining(['react', 'typescript', 'node.js']),
     );
-    expect(result.candidates[1].title).toBe('Junior Python Developer');
+    expect(result.candidates[1]!.title).toBe('Junior Python Developer');
     vi.doUnmock('../../src/lib/http.js');
     vi.doUnmock('../../src/config/index.js');
   });
@@ -92,7 +92,7 @@ describe('serpapi-jobs adapter', () => {
     const { serpApiJobsAdapter } = await import('../../src/sales/sources/serpapi-jobs.js');
     const result = await serpApiJobsAdapter.search('test');
     expect(result.candidates).toEqual([]);
-    expect(result.errors[0].message).toContain('Invalid API key');
+    expect(result.errors[0]!.message).toContain('Invalid API key');
     vi.doUnmock('../../src/lib/http.js');
     vi.doUnmock('../../src/config/index.js');
   });
@@ -146,19 +146,19 @@ describe('indeed-rss adapter', () => {
       text: async () => rss,
     }));
     vi.doMock('../../src/config/index.js', () => ({ config: {} }));
-    global.fetch = mockFetch as typeof fetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
     const { indeedRssAdapter } = await import('../../src/sales/sources/indeed-rss.js');
     const result = await indeedRssAdapter.search('react developer');
     expect(result.errors).toEqual([]);
     expect(result.candidates).toHaveLength(2);
-    expect(result.candidates[0].title).toBe('React Developer');
-    expect(result.candidates[0].company).toBe('Acme Corp');
-    expect(result.candidates[0].location).toBe('San Francisco, CA');
-    expect(result.candidates[0].source).toBe('indeed-rss');
-    expect(result.candidates[0].sourceReliability).toBe('MEDIUM');
-    expect(result.candidates[0].sourceUrl).toContain('indeed.com/viewjob');
-    expect(result.candidates[0].description).toContain('React developer');
-    expect(result.candidates[1].title).toBe('Python Engineer');
+    expect(result.candidates[0]!.title).toBe('React Developer');
+    expect(result.candidates[0]!.company).toBe('Acme Corp');
+    expect(result.candidates[0]!.location).toBe('San Francisco, CA');
+    expect(result.candidates[0]!.source).toBe('indeed-rss');
+    expect(result.candidates[0]!.sourceReliability).toBe('MEDIUM');
+    expect(result.candidates[0]!.sourceUrl).toContain('indeed.com/viewjob');
+    expect(result.candidates[0]!.description).toContain('React developer');
+    expect(result.candidates[1]!.title).toBe('Python Engineer');
     vi.doUnmock('../../src/config/index.js');
   });
 
@@ -168,22 +168,22 @@ describe('indeed-rss adapter', () => {
       status: 403,
       text: async () => 'Forbidden',
     }));
-    global.fetch = mockFetch as typeof fetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
     const { indeedRssAdapter } = await import('../../src/sales/sources/indeed-rss.js');
     const result = await indeedRssAdapter.search('test');
     expect(result.candidates).toEqual([]);
-    expect(result.errors[0].message).toContain('403');
+    expect(result.errors[0]!.message).toContain('403');
   });
 
   it('handles network errors gracefully', async () => {
     const mockFetch = vi.fn(async () => {
       throw new Error('Network timeout');
     });
-    global.fetch = mockFetch as typeof fetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
     const { indeedRssAdapter } = await import('../../src/sales/sources/indeed-rss.js');
     const result = await indeedRssAdapter.search('test');
     expect(result.candidates).toEqual([]);
-    expect(result.errors[0].message).toContain('Network timeout');
+    expect(result.errors[0]!.message).toContain('Network timeout');
   });
 
   it('handles empty RSS feeds', async () => {
@@ -192,7 +192,7 @@ describe('indeed-rss adapter', () => {
       ok: true,
       text: async () => rss,
     }));
-    global.fetch = mockFetch as typeof fetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
     const { indeedRssAdapter } = await import('../../src/sales/sources/indeed-rss.js');
     const result = await indeedRssAdapter.search('nonexistent');
     expect(result.candidates).toEqual([]);

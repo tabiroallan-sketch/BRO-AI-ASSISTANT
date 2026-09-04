@@ -35,6 +35,8 @@ model User {
   research      CompanyResearch[]
   drafts        SalesDraft[]
   offers        Offer[]
+  discoveredLeads DiscoveredLead[]
+  leadSearches  LeadSearch[]
 
   @@map("users")
 }
@@ -485,4 +487,85 @@ enum DraftStatus {
   APPROVED
   SENT
   REJECTED
+}
+
+model DiscoveredLead {
+  id              String   @id @default(uuid())
+  userId          String
+  searchId        String?
+
+  companyName     String
+  companyDescription String?
+  industry        String?
+
+  website         String?
+  email           String?
+  phone           String?
+
+  address         String?
+  city            String?
+  state           String?
+  country         String?
+
+  employeeCount   Int?
+  rating          Float?
+  reviewCount     Int?
+
+  linkedinUrl     String?
+  googleMapsUrl   String?
+  redditUrl       String?
+  indeedUrl       String?
+
+  source          String
+  sourceId        String?
+  sourceData      Json?    @default("{}")
+
+  hiringSignals   Json?    @default("[]")
+  intentSignals   Json?    @default("[]")
+  painPoints      Json?    @default("[]")
+  automationOpportunities Json? @default("[]")
+
+  leadScore       Int      @default(0)
+  leadScoreReason Json?    @default("[]")
+
+  enrichmentData  Json?    @default("{}")
+  confidence      Float?
+
+  status          LeadStatus @default(NEW)
+  notes           String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  search LeadSearch?   @relation(fields: [searchId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([userId, source])
+  @@index([userId, leadScore])
+  @@index([userId, industry])
+  @@index([searchId])
+  @@unique([userId, companyName, source])
+  @@map("discovered_leads")
+}
+
+model LeadSearch {
+  id              String   @id @default(uuid())
+  userId          String
+  query           String
+  sources         String[]
+  filters         Json?    @default("{}")
+  resultCount     Int      @default(0)
+  savedCount      Int      @default(0)
+  duration        Int?
+  errors          Json?    @default("[]")
+
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leads DiscoveredLead[]
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@map("lead_searches")
 }

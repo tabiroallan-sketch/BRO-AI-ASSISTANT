@@ -8,6 +8,7 @@ process.env.JWT_SECRET = 'test-access-secret';
 process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
 process.env.JWT_EXPIRES_IN = '15m';
 process.env.JWT_REFRESH_EXPIRES_IN = '7d';
+process.env.RATE_LIMIT_ENABLED = 'false';
 
 type MockUser = {
   id: string;
@@ -65,6 +66,23 @@ const { mockPrisma, resetDb } = vi.hoisted(() => {
       };
       users.set(user.id, user);
       return user;
+    },
+    async update(args: {
+      where: { id: string };
+      data: { displayName?: string | null; avatarUrl?: string | null };
+    }): Promise<MockUser> {
+      const user = users.get(args.where.id);
+      if (!user) {
+        throw new Error('User not found');
+      }
+      const updated: MockUser = {
+        ...user,
+        ...(args.data.displayName !== undefined ? { displayName: args.data.displayName } : {}),
+        ...(args.data.avatarUrl !== undefined ? { avatarUrl: args.data.avatarUrl } : {}),
+        updatedAt: new Date(),
+      };
+      users.set(user.id, updated);
+      return updated;
     },
   };
 
@@ -254,6 +272,90 @@ describe('authentication', () => {
     });
 
     expect(response.statusCode).toBe(401);
+  });
+
+  describe('profile update', () => {
+    let accessToken: string;
+
+    async function authedUser(email: string): Promise<{ accessToken: string; email: string }> {
+      await register({ email, password: 'supersecret123' });
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email, password: 'supersecret123' },
+      });
+      const body = JSON.parse(login.body);
+      return { accessToken: body.accessToken as string, email };
+    }
+
+    beforeEach(async () => {
+      const { accessToken: token } = await authedUser('profile@example.com');
+      accessToken = token;
+    });
+
+    it('updates the display name and avatar via PATCH /api/v1/auth/me', async () => {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: {
+          displayName: 'Updated Name',
+          avatarUrl: 'https://example.com/avatar.png',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.user.displayName).toBe('Updated Name');
+      expect(body.user.avatarUrl).toBe('https://example.com/avatar.png');
+      expect(body.user.email).toBe('profile@example.com');
+    });
+
+    it('clears display name and avatar via PATCH /api/v1/auth/me', async () => {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: { displayName: null, avatarUrl: null },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.user.displayName).toBeNull();
+      expect(body.user.avatarUrl).toBeNull();
+    });
+
+    it('returns 401 when patching profile without a token', async () => {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/auth/me',
+        payload: { displayName: 'Nope' },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('rejects an empty profile update with 400', async () => {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid avatar URL with 400', async () => {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: { avatarUrl: 'not-a-url' },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
   });
 
   it('rotates the refresh token', async () => {

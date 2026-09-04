@@ -159,29 +159,29 @@ describe('heuristic planner', () => {
   it('plans a launch goal', async () => {
     const steps = await planner.plan({ goal: 'launch Chrome' });
     expect(steps).toHaveLength(1);
-    expect(steps[0].toolName).toBe('system_launch_app');
-    expect(steps[0].args).toEqual({ name: 'chrome' });
+    expect(steps[0]!.toolName).toBe('system_launch_app');
+    expect(steps[0]!.args).toEqual({ name: 'chrome' });
   });
 
   it('plans a file search goal', async () => {
     const steps = await planner.plan({ goal: 'find the tax report file' });
-    expect(steps[0].toolName).toBe('system_search_files');
+    expect(steps[0]!.toolName).toBe('system_search_files');
   });
 
   it('plans a command goal', async () => {
     const steps = await planner.plan({ goal: 'run npm test' });
-    expect(steps[0].toolName).toBe('system_run_command');
-    expect(steps[0].args.command).toContain('npm test');
+    expect(steps[0]!.toolName).toBe('system_run_command');
+    expect(steps[0]!.args.command).toContain('npm test');
   });
 
   it('plans a weather goal', async () => {
     const steps = await planner.plan({ goal: 'what is the weather?' });
-    expect(steps[0].toolName).toBe('weather');
+    expect(steps[0]!.toolName).toBe('weather');
   });
 
   it('plans a time goal', async () => {
     const steps = await planner.plan({ goal: 'what time is it?' });
-    expect(steps[0].toolName).toBe('current_time');
+    expect(steps[0]!.toolName).toBe('current_time');
   });
 
   it('returns an empty plan when nothing matches', async () => {
@@ -247,7 +247,7 @@ describe('LLM planner', () => {
     });
     const steps = await planner.plan({ goal: 'weather' });
     expect(steps).toHaveLength(1);
-    expect(steps[0].toolName).toBe('weather');
+    expect(steps[0]!.toolName).toBe('weather');
   });
 });
 
@@ -270,7 +270,7 @@ describe('fallback planner', () => {
       }),
     });
     const steps = await planner.plan({ goal: 'launch Chrome' });
-    expect(steps[0].args).toEqual({ name: 'Code' });
+    expect(steps[0]!.args).toEqual({ name: 'Code' });
   });
 
   it('falls back to the heuristic planner when the LLM throws', async () => {
@@ -281,8 +281,8 @@ describe('fallback planner', () => {
       },
     });
     const steps = await planner.plan({ goal: 'launch Chrome' });
-    expect(steps[0].toolName).toBe('system_launch_app');
-    expect(steps[0].args).toEqual({ name: 'chrome' });
+    expect(steps[0]!.toolName).toBe('system_launch_app');
+    expect(steps[0]!.args).toEqual({ name: 'chrome' });
   });
 
   it('falls back when the LLM returns no usable steps', async () => {
@@ -291,7 +291,7 @@ describe('fallback planner', () => {
       runCompletion: async () => ({ content: '{"steps":[]}' }),
     });
     const steps = await planner.plan({ goal: 'launch Chrome' });
-    expect(steps[0].toolName).toBe('system_launch_app');
+    expect(steps[0]!.toolName).toBe('system_launch_app');
   });
 });
 
@@ -591,7 +591,7 @@ describe('engine', () => {
     await harness.flush();
     const current = harness.engine.getTask(task.id);
     expect(current?.status).toBe('completed');
-    expect(current?.steps[0].result).toBe('recovered');
+    expect(current?.steps[0]!.result).toBe('recovered');
     expect(harness.executorCalls).toHaveLength(3);
   });
 
@@ -650,12 +650,12 @@ describe('engine', () => {
 
     const paused = harness.engine.getTask(task.id);
     expect(paused?.status).toBe('awaiting_confirmation');
-    expect(paused?.steps[1].status).toBe('awaiting_confirmation');
+    expect(paused?.steps[1]!.status).toBe('awaiting_confirmation');
     expect(harness.executorCalls).toEqual(['safe', 'danger']);
     expect(harness.pending).toHaveLength(1);
-    expect(harness.pending[0].taskId).toBe(task.id);
-    expect(harness.pending[0].stepId).toBe(paused?.steps[1].id);
-    expect(harness.pending[0].args).toEqual({ path: '/tmp/x' });
+    expect(harness.pending[0]!.taskId).toBe(task.id);
+    expect(harness.pending[0]!.stepId).toBe(paused?.steps[1]!.id);
+    expect(harness.pending[0]!.args).toEqual({ path: '/tmp/x' });
   });
 
   it('resumes and completes the remaining steps when the user approves', async () => {
@@ -671,7 +671,7 @@ describe('engine', () => {
     await harness.flush();
 
     const paused = harness.engine.getTask(task.id);
-    const stepId = paused?.steps[1].id as string;
+    const stepId = paused?.steps[1]!.id as string;
     harness.engine.continueAfterDecision({
       taskId: task.id,
       stepId,
@@ -682,9 +682,9 @@ describe('engine', () => {
 
     const final = harness.engine.getTask(task.id);
     expect(final?.status).toBe('completed');
-    expect(final?.steps[1].status).toBe('completed');
-    expect(final?.steps[1].result).toBe('user said yes');
-    expect(final?.steps[2].status).toBe('completed');
+    expect(final?.steps[1]!.status).toBe('completed');
+    expect(final?.steps[1]!.result).toBe('user said yes');
+    expect(final?.steps[2]!.status).toBe('completed');
     expect(harness.executorCalls).toEqual(['safe', 'danger', 'after']);
     expect(harness.audits).toContain('automation.task.complete');
   });
@@ -703,14 +703,14 @@ describe('engine', () => {
     const paused = harness.engine.getTask(task.id);
     harness.engine.continueAfterDecision({
       taskId: task.id,
-      stepId: paused?.steps[1].id as string,
+      stepId: paused?.steps[1]!.id as string,
       decision: 'reject',
     });
     await harness.flush();
 
     const final = harness.engine.getTask(task.id);
     expect(final?.status).toBe('failed');
-    expect(final?.steps[1].status).toBe('rejected');
+    expect(final?.steps[1]!.status).toBe('rejected');
     expect(final?.error).toContain('rejected');
     expect(harness.executorCalls).toEqual(['safe', 'danger']);
   });
@@ -829,7 +829,7 @@ describe('engine', () => {
 
     const current = harness.engine.getTask(task.id);
     expect(current?.status).toBe('failed');
-    expect(current?.steps[0].attempts).toBeGreaterThanOrEqual(1);
+    expect(current?.steps[0]!.attempts).toBeGreaterThanOrEqual(1);
     expect(harness.executorCalls).toEqual(['flaky', 'flaky']);
     expect(harness.audits).toContain('automation.task.retry');
   });
@@ -861,7 +861,7 @@ describe('engine', () => {
     await harness.flush();
 
     expect(harness.engine.listTasks('u1')).toHaveLength(1);
-    expect(harness.engine.listTasks('u1')[0].title).toBe('mine');
+    expect(harness.engine.listTasks('u1')[0]!.title).toBe('mine');
     expect(harness.engine.listTasks('u2')).toHaveLength(1);
   });
 

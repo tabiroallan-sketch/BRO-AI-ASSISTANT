@@ -28,7 +28,9 @@ export function buildApp(): FastifyInstance {
     },
     trustProxy: config.trustProxy,
     bodyLimit: config.bodyLimit,
-    maxParamLength: 1000,
+    routerOptions: {
+      maxParamLength: 1000,
+    },
   });
 
   app.register(helmet, {

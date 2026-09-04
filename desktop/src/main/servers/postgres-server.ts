@@ -41,7 +41,7 @@ export class PostgresServer implements PostgresLike {
       user: 'postgres',
       password: 'postgres',
       databaseName: 'bro',
-      onLog: () => undefined,
+      onLog: (): void => undefined,
       ...options,
     };
     this.pg = new EmbeddedPostgres({
@@ -51,8 +51,8 @@ export class PostgresServer implements PostgresLike {
       password: this.options.password,
       authMethod: 'password',
       persistent: true,
-      onLog: (message) => this.options.onLog(`postgres: ${message}`),
-      onError: (error) => this.options.onLog(`postgres: ${String(error)}`),
+      onLog: (message): void => this.options.onLog(`postgres: ${message}`),
+      onError: (error): void => this.options.onLog(`postgres: ${String(error)}`),
     });
   }
 

@@ -9,6 +9,7 @@ export type AuditAction =
   | 'auth.logout'
   | 'auth.refresh'
   | 'auth.oauth'
+  | 'auth.profile.update'
   | 'admin.user.update'
   | 'admin.secrets.read'
   | 'admin.permissions.grant_all'
@@ -48,7 +49,11 @@ export type AuditAction =
   | 'sales.draft.delete'
   | 'sales.offer.create'
   | 'sales.offer.update'
-  | 'sales.offer.delete';
+  | 'sales.offer.delete'
+  | 'leads.search'
+  | 'leads.lead.saved'
+  | 'leads.lead.enriched'
+  | 'leads.lead.outreach_generated';
 
 export type AuditEvent = {
   id: string;

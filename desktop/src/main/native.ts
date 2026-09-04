@@ -16,9 +16,9 @@ export type NativeBridge = {
  */
 export function createNativeBridge(): NativeBridge {
   return {
-    readClipboardText: () => clipboard.readText(),
+    readClipboardText: (): string => clipboard.readText(),
     writeClipboardText: (text) => clipboard.writeText(text),
-    pickFile: async (parent) => {
+    pickFile: async (parent): Promise<PickFileResult> => {
       const options: Electron.OpenDialogOptions = {
         properties: ['openFile'],
         title: 'Select a file for BRO',
@@ -37,7 +37,7 @@ export function createNativeBridge(): NativeBridge {
         return { canceled: false, path, content: '' };
       }
     },
-    openExternal: async (url) => {
+    openExternal: async (url): Promise<void> => {
       await shell.openExternal(url);
     },
     openPath: (target) => shell.openPath(target),

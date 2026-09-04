@@ -1,9 +1,9 @@
 import { AiProvidersCard } from '@/components/ai-providers-card';
 import { IntegrationHub } from '@/components/integration-hub';
+import { ProfileCard } from '@/components/profile-card';
 import { RequireAuth } from '@/components/require-auth';
 import { ShortcutsCard } from '@/components/shortcuts-card';
 import { VoiceSettingsCard } from '@/components/voice-settings-card';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Settings } from 'lucide-react';
@@ -19,6 +19,10 @@ export default function SettingsPage(): React.JSX.Element {
 
         <div className="mb-8">
           <ShortcutsCard />
+        </div>
+
+        <div className="mb-8">
+          <ProfileCard />
         </div>
 
         <div className="mb-8">
@@ -40,20 +44,6 @@ export default function SettingsPage(): React.JSX.Element {
         <div className="mb-8">
           <AiProvidersCard />
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Profile</CardTitle>
-            <CardDescription>
-              Profile editing and preferences will be available in a future milestone.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Your account is authenticated and connected to the BRO backend.
-            </p>
-          </CardContent>
-        </Card>
       </div>
     </RequireAuth>
   );

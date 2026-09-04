@@ -1,5 +1,5 @@
 import type { Tool } from '../tools/types.js';
-import type { PlannedStep, ToolExecutor } from './types.js';
+import type { PlannedStep, StepExecutionResult, ToolExecutor } from './types.js';
 
 /**
  * Executes a single planned step against the real tool registry. Confirmation
@@ -12,7 +12,10 @@ export function createToolExecutor(options: {
   describeAction(toolName: string, args: Record<string, unknown>): string;
 }): ToolExecutor {
   return {
-    async runStepOnce(step: PlannedStep, context: { userId: string }) {
+    async runStepOnce(
+      step: PlannedStep,
+      context: { userId: string },
+    ): Promise<StepExecutionResult> {
       const tool = options.getTool(step.toolName);
       if (!tool) {
         return {

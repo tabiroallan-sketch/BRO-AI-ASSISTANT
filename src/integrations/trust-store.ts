@@ -44,7 +44,7 @@ type Db = NonNullable<typeof prisma>;
  * Sentinel used to clear a nullable JSON column. Vitest mocks that omit the
  * `Prisma` export throw when the binding is touched, so the read is guarded.
  */
-const PRISMA_DB_NULL: Prisma.NullTypes.DbNull = (() => {
+const PRISMA_DB_NULL: Prisma.NullTypes.DbNull = ((): Prisma.NullTypes.DbNull => {
   try {
     return (Prisma?.DbNull ?? null) as unknown as Prisma.NullTypes.DbNull;
   } catch {

@@ -110,7 +110,6 @@ function fakeRecognizer(): {
   const factory = (
     _stream: MediaStream,
     options: SpeechRecognizerOptions,
-    _maxDurationMs: number,
   ): SpeechRecognizer | null => {
     captured = options;
     return recognizer;

@@ -51,19 +51,19 @@ export class AppTray {
 
   /** Rebuilds the context menu so it reflects the current listening state. */
   setListening(listening: boolean): void {
-    this.options.listening = () => listening;
+    this.options.listening = (): boolean => listening;
     this.rebuild();
   }
 
   /** Rebuilds the context menu so it reflects the current wake-word state. */
   setWakeWord(wakeWord: boolean): void {
-    this.options.wakeWord = () => wakeWord;
+    this.options.wakeWord = (): boolean => wakeWord;
     this.rebuild();
   }
 
   /** Rebuilds the context menu so it reflects the current operating mode. */
   setMode(mode: OperatingMode): void {
-    this.options.mode = () => mode;
+    this.options.mode = (): OperatingMode => mode;
     this.rebuild();
   }
 

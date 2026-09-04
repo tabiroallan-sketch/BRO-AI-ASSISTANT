@@ -59,7 +59,7 @@ export function createFileOps(
   }
 
   return {
-    async searchFiles(query, options = {}) {
+    async searchFiles(query, options = {}): Promise<FileEntry[]> {
       const needle = String(query).trim().toLowerCase();
       if (!needle) {
         return [];
@@ -101,7 +101,7 @@ export function createFileOps(
       return matches;
     },
 
-    async renamePath(source, destination) {
+    async renamePath(source, destination): Promise<string> {
       const from = toAbsolute(source);
       const to = toAbsolute(destination);
       if (from === to) {
@@ -116,7 +116,7 @@ export function createFileOps(
       return `Moved "${from}" to "${to}".`;
     },
 
-    async deletePath(path) {
+    async deletePath(path): Promise<string> {
       const target = toAbsolute(path);
       const info = await fs.stat(target).catch(() => null);
       if (!info) {
@@ -146,7 +146,7 @@ export function createFileOps(
       return `Moved "${target}" to the Recycle Bin.`;
     },
 
-    async createFolder(path) {
+    async createFolder(path): Promise<string> {
       const target = toAbsolute(path);
       await fs.mkdir(target, { recursive: true });
       return `Created folder "${target}".`;

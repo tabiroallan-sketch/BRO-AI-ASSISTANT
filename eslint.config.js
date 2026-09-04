@@ -45,6 +45,12 @@ export default [
     },
   },
   {
+    files: ['**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+    },
+  },
+  {
     ignores: [
       'node_modules',
       'dist',

@@ -16,7 +16,7 @@ export type NotifierOptions = {
 export function createNotifier(options: NotifierOptions = {}): Notifier {
   const showFn =
     options.showFn ??
-    ((title: string, body: string) => {
+    ((title: string, body: string): void => {
       if (Notification.isSupported()) {
         new Notification({ title, body }).show();
       }

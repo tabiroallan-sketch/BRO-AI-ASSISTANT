@@ -230,9 +230,9 @@ export function createAutomationEngine(deps: AutomationEngineDeps): AutomationEn
       let result = await deps.executor.runStepOnce(step, { userId: task.userId });
       let attempts = 1;
       while (!result.needsConfirmation && !result.ok && attempts <= maxRetries) {
-        const delay = (deps.retryDelayMs ?? ((attempt) => attempt * DEFAULT_RETRY_DELAY_MS))(
-          attempts,
-        );
+        const delay = (
+          deps.retryDelayMs ?? ((attempt): number => attempt * DEFAULT_RETRY_DELAY_MS)
+        )(attempts);
         await deps.sleep(delay);
         if (aborted.aborted) {
           markCancelled(id, 'Task cancelled');

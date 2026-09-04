@@ -114,6 +114,12 @@ export const KNOWN_SECRETS: SecretDescriptor[] = [
   { name: 'ZOOM_CLIENT_SECRET', description: 'Zoom OAuth client secret' },
   { name: 'CLICKUP_CLIENT_ID', description: 'ClickUp OAuth client id' },
   { name: 'CLICKUP_CLIENT_SECRET', description: 'ClickUp OAuth client secret' },
+  { name: 'GOOGLE_MAPS_API_KEY', description: 'Google Maps / Places API key' },
+  { name: 'REDDIT_CLIENT_ID', description: 'Reddit API client id' },
+  { name: 'REDDIT_CLIENT_SECRET', description: 'Reddit API client secret' },
+  { name: 'LINKEDIN_CLIENT_ID', description: 'LinkedIn OAuth client id' },
+  { name: 'LINKEDIN_CLIENT_SECRET', description: 'LinkedIn OAuth client secret' },
+  { name: 'WEB_SEARCH_API_KEY', description: 'Web search API key' },
 ];
 
 export type SecretStatus = {

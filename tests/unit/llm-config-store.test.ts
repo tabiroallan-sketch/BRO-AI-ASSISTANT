@@ -14,17 +14,20 @@ function fakeDb(seed?: AiConfigRow): AiConfigDb {
     aiConfig: {
       findUnique: async (): Promise<AiConfigRow | null> => row,
       upsert: async ({ where, create, update }): Promise<AiConfigRow> => {
-        row = row
+        const next: AiConfigRow = row
           ? { ...row, ...update, id: where.id }
           : {
               id: where.id,
-              ...create,
-              lastStatus: null,
-              lastMessage: null,
-              lastLatencyMs: null,
-              lastTestedAt: null,
+              providerId: create.providerId ?? null,
+              model: create.model ?? null,
+              apiKey: create.apiKey ?? null,
+              lastStatus: create.lastStatus ?? null,
+              lastMessage: create.lastMessage ?? null,
+              lastLatencyMs: create.lastLatencyMs ?? null,
+              lastTestedAt: create.lastTestedAt ?? null,
             };
-        return row;
+        row = next;
+        return next;
       },
       update: async ({ where, data }): Promise<AiConfigRow> => {
         if (!row) {

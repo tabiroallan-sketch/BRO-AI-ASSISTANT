@@ -151,6 +151,9 @@ import {
 import { weatherTool } from './weather.js';
 import { webSearchTool } from './web-search.js';
 import { whatsappSendMessageTool } from './whatsapp.js';
+import { registerLeadFinderTools } from '../lead-finder/tools.js';
+
+registerLeadFinderTools();
 
 registerTool(browserOpenTool);
 registerTool(browserNavigateTool);

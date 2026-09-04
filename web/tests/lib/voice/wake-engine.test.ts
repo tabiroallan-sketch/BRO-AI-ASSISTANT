@@ -300,14 +300,14 @@ describe('WakeWordEngine', () => {
   });
 
   it('ignores a trigger while not armed', async () => {
-    const { engine, detector, onWake } = harness(baseSettings());
+    const { detector, onWake } = harness(baseSettings());
     detector.trigger('bro', 0.9);
     await flush();
     expect(onWake).not.toHaveBeenCalled();
   });
 
   it('updates phrases and sensitivity for the next arm', async () => {
-    const { engine, pump, detector } = harness(baseSettings());
+    const { engine, pump } = harness(baseSettings());
     engine.applySettings(baseSettings());
     await flush();
     engine.applySettings(baseSettings({ wakeWordPhrases: ['computer'] }));

@@ -30,7 +30,9 @@ console.log('[package] running electron-builder...');
 const builderArgs = ['--config', 'electron-builder.yml'];
 if (process.env.BRO_GH_OWNER && process.env.BRO_GH_REPO) {
   builderArgs.push('--publish', 'always');
-  console.log(`[package] publishing to GitHub Releases (${process.env.BRO_GH_OWNER}/${process.env.BRO_GH_REPO})`);
+  console.log(
+    `[package] publishing to GitHub Releases (${process.env.BRO_GH_OWNER}/${process.env.BRO_GH_REPO})`,
+  );
 } else {
   builderArgs.push('--publish', 'never');
   console.log('[package] BRO_GH_OWNER/BRO_GH_REPO not set - skipping publish');

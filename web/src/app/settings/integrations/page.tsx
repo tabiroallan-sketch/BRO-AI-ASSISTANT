@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { RequireAuth } from '@/components/require-auth';
 import { Button } from '@/components/ui/button';
@@ -145,7 +145,7 @@ function ProviderConfigCard({
   onSaved,
   onDeleted,
 }: ProviderConfigCardProps): React.JSX.Element {
-  const fields = PROVIDER_FIELDS[providerId] ?? [];
+  const fields = useMemo(() => PROVIDER_FIELDS[providerId] ?? [], [providerId]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);

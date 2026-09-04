@@ -72,9 +72,10 @@ export async function checkRedis(): Promise<CheckResult> {
   }
   const start = performance.now();
   try {
-    if (redis.status !== 'ready') {
+    if (redis.status === 'wait' || redis.status === 'end') {
       await withTimeout(redis.connect(), HEALTH_CHECK_TIMEOUT_MS);
     }
+    await waitForReady(redis, HEALTH_CHECK_TIMEOUT_MS);
     const pong = await withTimeout(redis.ping(), HEALTH_CHECK_TIMEOUT_MS);
     return {
       status: pong === 'PONG' ? 'ok' : 'error',
@@ -87,6 +88,29 @@ export async function checkRedis(): Promise<CheckResult> {
       error: messageOf(error),
     };
   }
+}
+
+/**
+ * Waits for an ioredis client to reach the `ready` state. Unlike the plain
+ * `connect()` call, this tolerates a client that is already mid-connect (status
+ * `connecting`/`connect`/`reconnecting`), which would otherwise throw
+ * "Redis is already connecting/connected".
+ */
+async function waitForReady(client: NonNullable<typeof redis>, ms: number): Promise<void> {
+  if (client.status === 'ready') {
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      client.off('ready', onReady);
+      reject(new Error(`Redis is not ready (status: ${client.status})`));
+    }, ms);
+    const onReady = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    client.once('ready', onReady);
+  });
 }
 
 export async function getHealthReport(): Promise<HealthReport> {

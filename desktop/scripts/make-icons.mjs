@@ -99,19 +99,28 @@ function drawB(x, y, size, centre, inner, strokeWidth, bar) {
   if (inStem) {
     return true;
   }
-  const inTopLoop = x >= left - strokeWidth && x <= right && y >= mid - strokeWidth && y <= mid + strokeWidth;
-  const inBottomLoop = x >= left - strokeWidth && x <= right && y >= mid + bar - strokeWidth && y <= mid + bar + strokeWidth;
+  const inTopLoop =
+    x >= left - strokeWidth && x <= right && y >= mid - strokeWidth && y <= mid + strokeWidth;
+  const inBottomLoop =
+    x >= left - strokeWidth &&
+    x <= right &&
+    y >= mid + bar - strokeWidth &&
+    y <= mid + bar + strokeWidth;
   if (inTopLoop || inBottomLoop) {
     return true;
   }
   const inTopRight = x >= right - strokeWidth && x <= right + strokeWidth && y >= top && y <= mid;
-  const inBottomRight = x >= right - strokeWidth && x <= right + strokeWidth && y >= mid + bar && y <= bottom;
+  const inBottomRight =
+    x >= right - strokeWidth && x <= right + strokeWidth && y >= mid + bar && y <= bottom;
   if (inTopRight || inBottomRight) {
     return true;
   }
-  const inTopCap = x >= left - strokeWidth && x <= right && y >= top - strokeWidth && y <= top + strokeWidth;
-  const inMidCap = x >= left - strokeWidth && x <= right && y >= mid - strokeWidth && y <= mid + strokeWidth;
-  const inBottomCap = x >= left - strokeWidth && x <= right && y >= bottom - strokeWidth && y <= bottom + strokeWidth;
+  const inTopCap =
+    x >= left - strokeWidth && x <= right && y >= top - strokeWidth && y <= top + strokeWidth;
+  const inMidCap =
+    x >= left - strokeWidth && x <= right && y >= mid - strokeWidth && y <= mid + strokeWidth;
+  const inBottomCap =
+    x >= left - strokeWidth && x <= right && y >= bottom - strokeWidth && y <= bottom + strokeWidth;
   return inTopCap || inMidCap || inBottomCap;
 }
 

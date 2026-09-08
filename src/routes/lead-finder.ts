@@ -14,6 +14,9 @@ import {
   generateOutreach,
   generateMultiChannelOutreach,
   getProviderStatuses,
+  getLiveProviderStatuses,
+  emitLeadEvent,
+  buildXlsx,
   type LeadEnrichment,
   type LeadSearchParams,
   type LeadSource,
@@ -73,6 +76,12 @@ const outreachSchema = z.object({
 
 const exportSchema = z.object({
   format: z.enum(['csv', 'json', 'xlsx']).default('csv'),
+  ids: z.array(z.string()).optional(),
+  status: z.string().optional(),
+  industry: z.string().optional(),
+  source: z.string().optional(),
+  minScore: z.coerce.number().optional(),
+  searchId: z.string().optional(),
 });
 
 type ScoredLead = {
@@ -89,6 +98,12 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
   // ─── PROVIDER STATUS ──────────────────────────────────────────────
   app.get('/lead-finder/providers', async (_request, reply) => {
     const statuses = getProviderStatuses();
+    return reply.send({ providers: statuses });
+  });
+
+  // ─── PROVIDER LIVE HEALTH STATUS ──────────────────────────────────
+  app.get('/lead-finder/providers/status', async (_request, reply) => {
+    const statuses = await getLiveProviderStatuses();
     return reply.send({ providers: statuses });
   });
 
@@ -188,6 +203,15 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
     const errors = providerResults
       .filter((r) => r.error)
       .map((r) => ({ providerId: r.providerId, message: r.error! }));
+
+    if (scoredLeads.length > 0) {
+      emitLeadEvent({
+        type: 'lead.discovered',
+        userId,
+        searchId,
+        leadCount: scoredLeads.length,
+      });
+    }
 
     await recordAudit({
       actorId: request.user?.id as string | undefined,
@@ -328,6 +352,14 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
+    emitLeadEvent({
+      type: 'lead.saved',
+      userId,
+      leadId: lead.id,
+      companyName: lead.companyName,
+      leadScore: lead.leadScore,
+    });
+
     return reply.status(201).send({ lead });
   });
 
@@ -419,7 +451,79 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
       data: data as never,
     });
 
+    if (body.status) {
+      emitLeadEvent({
+        type: 'lead.status_changed',
+        userId,
+        leadId: id,
+        companyName: existing.companyName,
+        status: body.status,
+      });
+      if (existing.status !== 'QUALIFIED' && body.status === 'QUALIFIED') {
+        emitLeadEvent({
+          type: 'lead.qualified',
+          userId,
+          leadId: id,
+          companyName: existing.companyName,
+        });
+      }
+    }
+
     return reply.send({ lead });
+  });
+
+  // ─── RE-SCORE LEAD ────────────────────────────────────────────────
+  app.post('/lead-finder/leads/:id/score', async (request, reply) => {
+    const userId = requireUserId(request);
+    const { id } = request.params as { id: string };
+
+    const db = getDb();
+    const existing = await db.discoveredLead.findFirst({
+      where: { id, userId },
+    });
+
+    if (!existing) {
+      return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Lead not found' } });
+    }
+
+    const rawLead: RawLead = {
+      companyName: existing.companyName,
+      companyDescription: existing.companyDescription ?? undefined,
+      industry: existing.industry ?? undefined,
+      website: existing.website ?? undefined,
+      email: existing.email ?? undefined,
+      phone: existing.phone ?? undefined,
+      city: existing.city ?? undefined,
+      state: existing.state ?? undefined,
+      country: existing.country ?? undefined,
+      rating: existing.rating ?? undefined,
+      reviewCount: existing.reviewCount ?? undefined,
+      linkedinUrl: existing.linkedinUrl ?? undefined,
+      source: existing.source as LeadSource,
+      hiringSignals: (existing.hiringSignals as string[]) ?? [],
+      intentSignals: (existing.intentSignals as string[]) ?? [],
+      painPoints: (existing.painPoints as string[]) ?? [],
+      automationOpportunities: (existing.automationOpportunities as string[]) ?? [],
+    };
+
+    const breakdown = scoreLead(rawLead);
+    const lead = await db.discoveredLead.update({
+      where: { id },
+      data: {
+        leadScore: breakdown.total,
+        leadScoreReason: breakdown.reasons as never,
+      } as never,
+    });
+
+    await recordAudit({
+      actorId: request.user?.id as string | undefined,
+      actorEmail: (request.user as { email?: string })?.email,
+      action: 'leads.lead.scored' as AuditAction,
+      target: id,
+      detail: `${lead.companyName}: ${breakdown.total}/100`,
+    });
+
+    return reply.send({ lead, score: breakdown });
   });
 
   // ─── DELETE LEAD ──────────────────────────────────────────────────
@@ -577,6 +681,14 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
+    emitLeadEvent({
+      type: 'lead.outreach_generated',
+      userId,
+      leadId: id,
+      companyName: existing.companyName,
+      channels: outreach.map((m) => m.channel),
+    });
+
     return reply.send({ outreach });
   });
 
@@ -586,8 +698,27 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
     const body = exportSchema.parse(request.body);
 
     const db = getDb();
+    const where: Record<string, unknown> = { userId };
+    if (body.ids && body.ids.length > 0) {
+      where.id = { in: body.ids };
+    }
+    if (body.status) {
+      where.status = body.status;
+    }
+    if (body.industry) {
+      where.industry = body.industry;
+    }
+    if (body.source) {
+      where.source = body.source;
+    }
+    if (body.minScore !== undefined) {
+      where.leadScore = { gte: body.minScore };
+    }
+    if (body.searchId) {
+      where.searchId = body.searchId;
+    }
     const leads = await db.discoveredLead.findMany({
-      where: { userId },
+      where,
       orderBy: { leadScore: 'desc' },
     });
 
@@ -617,27 +748,37 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
       'Created At',
     ];
 
-    const csvRows = [headers.join(',')];
-    for (const lead of leads) {
-      const row = [
-        csvEscape(lead.companyName),
-        csvEscape(lead.industry ?? ''),
-        csvEscape(lead.website ?? ''),
-        csvEscape(lead.email ?? ''),
-        csvEscape(lead.phone ?? ''),
-        csvEscape(lead.address ?? ''),
-        csvEscape(lead.city ?? ''),
-        csvEscape(lead.state ?? ''),
-        csvEscape(lead.country ?? ''),
-        String(lead.rating ?? ''),
-        String(lead.reviewCount ?? ''),
-        csvEscape(lead.source),
-        String(lead.leadScore),
-        lead.status,
-        csvEscape(lead.linkedinUrl ?? ''),
-        lead.createdAt.toISOString(),
-      ];
-      csvRows.push(row.join(','));
+    const rows = leads.map((lead) => [
+      lead.companyName,
+      lead.industry ?? '',
+      lead.website ?? '',
+      lead.email ?? '',
+      lead.phone ?? '',
+      lead.address ?? '',
+      lead.city ?? '',
+      lead.state ?? '',
+      lead.country ?? '',
+      lead.rating ?? '',
+      lead.reviewCount ?? '',
+      lead.source,
+      String(lead.leadScore),
+      lead.status,
+      lead.linkedinUrl ?? '',
+      lead.createdAt.toISOString(),
+    ]);
+
+    if (body.format === 'xlsx') {
+      const buffer = buildXlsx([headers, ...rows]);
+      return reply
+        .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .header('Content-Disposition', 'attachment; filename="leads.xlsx"')
+        .header('Content-Length', String(buffer.byteLength))
+        .send(buffer);
+    }
+
+    const csvRows = [headers.map(csvEscape).join(',')];
+    for (const row of rows) {
+      csvRows.push(row.map((cell) => csvEscape(String(cell))).join(','));
     }
 
     return reply

@@ -3,11 +3,14 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  CheckSquare,
   Compass,
   Download,
+  History,
   Linkedin,
   Loader2,
   Mail,
+  RefreshCw,
   Search,
   Sparkles,
   Store,
@@ -23,14 +26,19 @@ import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
   fetchLeadProviders,
+  fetchLeadHistory,
   searchLeads,
   saveLead,
   listSavedLeads,
   enrichSavedLead,
+  rescoreSavedLead,
   generateLeadOutreach,
   deleteSavedLead,
   updateSavedLead,
+  exportLeads,
   type LeadProviderStatus,
+  type LeadSearchHistory,
+  type LeadScoreBreakdown,
   type SavedLead,
   type ScoredLead,
   type LeadSource,
@@ -61,7 +69,7 @@ type Tab = 'search' | 'saved';
 
 type DetailLead = {
   lead: SavedLead;
-  enrichment?: { summary?: string; recommendedApproach?: string };
+  enrichment?: { summary?: string; recommendedApproach?: string; score?: LeadScoreBreakdown };
   outreach?: OutreachMessage[];
   loading?: 'enrich' | 'outreach';
 };
@@ -94,6 +102,38 @@ export default function LeadFinderPage(): React.JSX.Element {
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [detail, setDetail] = React.useState<DetailLead | null>(null);
 
+  const [history, setHistory] = React.useState<LeadSearchHistory[]>([]);
+  const [loadingHistory, setLoadingHistory] = React.useState(false);
+
+  const [statusFilter, setStatusFilter] = React.useState('');
+  const [industryFilter, setIndustryFilter] = React.useState('');
+  const [sourceFilter, setSourceFilter] = React.useState('');
+  const [minScoreFilter, setMinScoreFilter] = React.useState('');
+  const [sort, setSort] = React.useState<'leadScore' | 'createdAt'>('leadScore');
+  const [order, setOrder] = React.useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = React.useState(1);
+  const pageSize = 25;
+
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [exporting, setExporting] = React.useState<'csv' | 'json' | 'xlsx' | null>(null);
+  const [scoringId, setScoringId] = React.useState<string | null>(null);
+
+  const loadHistory = React.useCallback(async (): Promise<void> => {
+    setLoadingHistory(true);
+    try {
+      const list = await fetchLeadHistory();
+      setHistory(list);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        await logout();
+        router.replace('/login');
+        return;
+      }
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [logout, router]);
+
   React.useEffect(() => {
     let disposed = false;
     async function load(): Promise<void> {
@@ -110,15 +150,25 @@ export default function LeadFinderPage(): React.JSX.Element {
       }
     }
     void load();
+    void loadHistory();
     return () => {
       disposed = true;
     };
-  }, [router, logout]);
+  }, [router, logout, loadHistory]);
 
-  async function loadSaved(): Promise<void> {
+  const loadSaved = React.useCallback(async (): Promise<void> => {
     setLoadingSaved(true);
     try {
-      const result = await listSavedLeads({ sort: 'leadScore', order: 'desc', pageSize: 50 });
+      const result = await listSavedLeads({
+        status: statusFilter || undefined,
+        industry: industryFilter || undefined,
+        source: sourceFilter || undefined,
+        minScore: minScoreFilter ? Number(minScoreFilter) : undefined,
+        sort,
+        order,
+        page,
+        pageSize,
+      });
       setSavedLeads(result.leads);
       setTotalSaved(result.total);
     } catch (err) {
@@ -131,11 +181,20 @@ export default function LeadFinderPage(): React.JSX.Element {
     } finally {
       setLoadingSaved(false);
     }
-  }
+  }, [
+    statusFilter,
+    industryFilter,
+    sourceFilter,
+    minScoreFilter,
+    sort,
+    order,
+    page,
+    logout,
+    router,
+  ]);
 
   function openSaved(): void {
     setTab('saved');
-    if (savedLeads.length === 0) void loadSaved();
   }
 
   function toggleSource(source: LeadSource): void {
@@ -144,8 +203,9 @@ export default function LeadFinderPage(): React.JSX.Element {
     );
   }
 
-  async function runSearch(): Promise<void> {
-    if (!query.trim()) {
+  async function runSearch(overrides?: { query?: string; sources?: LeadSource[] }): Promise<void> {
+    const searchQuery = (overrides?.query ?? query).trim();
+    if (!searchQuery) {
       setError('Enter a search query.');
       return;
     }
@@ -156,9 +216,9 @@ export default function LeadFinderPage(): React.JSX.Element {
     setSearchMeta(null);
     try {
       const result = await searchLeads({
-        query: query.trim(),
+        query: searchQuery,
         parseNatural: true,
-        sources: selectedSources,
+        sources: overrides?.sources ?? selectedSources,
         enrich: enrichResults,
         limit: 25,
       });
@@ -169,6 +229,7 @@ export default function LeadFinderPage(): React.JSX.Element {
         durationMs: result.durationMs,
         searchId: result.searchId,
       });
+      void loadHistory();
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         await logout();
@@ -179,6 +240,16 @@ export default function LeadFinderPage(): React.JSX.Element {
     } finally {
       setSearching(false);
     }
+  }
+
+  function runHistorySearch(item: LeadSearchHistory): void {
+    setQuery(item.query);
+    setSelectedSources(SOURCE_ORDER.filter((source) => item.sources.includes(source)));
+    setTab('search');
+    void runSearch({
+      query: item.query,
+      sources: SOURCE_ORDER.filter((source) => item.sources.includes(source)),
+    });
   }
 
   async function handleSave(lead: ScoredLead): Promise<void> {
@@ -290,6 +361,68 @@ export default function LeadFinderPage(): React.JSX.Element {
     }
   }
 
+  async function handleRescore(id: string): Promise<void> {
+    setScoringId(id);
+    setError(null);
+    try {
+      const { lead, score } = await rescoreSavedLead(id);
+      setSavedLeads((previous) => previous.map((l) => (l.id === id ? lead : l)));
+      setDetail((previous) => (previous ? { ...previous, lead, enrichment: { score } } : previous));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to re-score lead.');
+    } finally {
+      setScoringId(null);
+    }
+  }
+
+  function toggleSelect(id: string): void {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAll(): void {
+    setSelectedIds((previous) => {
+      if (previous.size === savedLeads.length && savedLeads.length > 0) {
+        return new Set();
+      }
+      return new Set(savedLeads.map((lead) => lead.id));
+    });
+  }
+
+  async function handleExport(
+    format: 'csv' | 'json' | 'xlsx',
+    scope: 'selected' | 'all',
+  ): Promise<void> {
+    setExporting(format);
+    setError(null);
+    try {
+      const ids = scope === 'selected' ? Array.from(selectedIds) : undefined;
+      await exportLeads(format, {
+        ids: ids && ids.length > 0 ? ids : undefined,
+        status: statusFilter || undefined,
+        industry: industryFilter || undefined,
+        source: sourceFilter || undefined,
+        minScore: minScoreFilter ? Number(minScoreFilter) : undefined,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export failed.');
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  React.useEffect(() => {
+    if (tab !== 'saved') return;
+    void loadSaved();
+  }, [tab, loadSaved]);
+
   if (user === null) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -387,6 +520,20 @@ export default function LeadFinderPage(): React.JSX.Element {
             </CardContent>
           </Card>
 
+          {searching && (
+            <div className="mt-4 rounded-lg border p-3">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Querying providers in parallel…
+                </span>
+                <span>{selectedSources.map(sourceLabel).join(' · ')}</span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-accent">
+                <div className="h-full w-1/2 animate-pulse rounded-full bg-neon-cyan" />
+              </div>
+            </div>
+          )}
+
           {searchMeta && (
             <p className="mt-4 text-xs text-muted-foreground">
               Found {searchMeta.total} leads in {(searchMeta.durationMs / 1000).toFixed(1)}s
@@ -402,6 +549,50 @@ export default function LeadFinderPage(): React.JSX.Element {
                 </p>
               ))}
             </div>
+          )}
+
+          {history.length > 0 && (
+            <Card className="mt-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <History className="h-4 w-4" /> Recent searches
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loadingHistory ? (
+                  <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {history.slice(0, 5).map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{item.query}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {item.resultCount} result(s) ·{' '}
+                            {item.sources.map(sourceLabel).join(' + ')} ·{' '}
+                            {new Date(item.createdAt).toLocaleString()}
+                            {item.errors.length > 0 && ` · ${item.errors.length} warning(s)`}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => runHistorySearch(item)}
+                          disabled={searching}
+                        >
+                          <RefreshCw className="mr-2 h-3.5 w-3.5" /> Re-run
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           <div className="mt-6 space-y-2">
@@ -460,85 +651,299 @@ export default function LeadFinderPage(): React.JSX.Element {
       )}
 
       {tab === 'saved' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Saved leads</CardTitle>
-            <CardDescription>
-              Leads you&apos;ve saved from searches, scored and ready for outreach.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loadingSaved ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Saved leads</CardTitle>
+              <CardDescription>
+                Leads you&apos;ve saved from searches, scored and ready for outreach.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <div className="space-y-1.5">
+                  <Label htmlFor="lf-status">Status</Label>
+                  <select
+                    id="lf-status"
+                    value={statusFilter}
+                    onChange={(event) => {
+                      setPage(1);
+                      setStatusFilter(event.target.value);
+                    }}
+                    className="w-full rounded-md border bg-transparent px-2 py-1.5 text-sm"
+                  >
+                    <option value="">All</option>
+                    {[
+                      'NEW',
+                      'QUALIFIED',
+                      'CONTACTED',
+                      'RESPONDED',
+                      'MEETING',
+                      'PROPOSAL',
+                      'WON',
+                      'LOST',
+                    ].map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lf-source">Source</Label>
+                  <select
+                    id="lf-source"
+                    value={sourceFilter}
+                    onChange={(event) => {
+                      setPage(1);
+                      setSourceFilter(event.target.value);
+                    }}
+                    className="w-full rounded-md border bg-transparent px-2 py-1.5 text-sm"
+                  >
+                    <option value="">All</option>
+                    {SOURCE_ORDER.map((source) => (
+                      <option key={source} value={source}>
+                        {sourceLabel(source)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lf-industry">Industry</Label>
+                  <input
+                    id="lf-industry"
+                    value={industryFilter}
+                    onChange={(event) => {
+                      setPage(1);
+                      setIndustryFilter(event.target.value);
+                    }}
+                    placeholder="e.g. dental"
+                    className="w-full rounded-md border bg-transparent px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lf-minscore">Min score</Label>
+                  <input
+                    id="lf-minscore"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={minScoreFilter}
+                    onChange={(event) => {
+                      setPage(1);
+                      setMinScoreFilter(event.target.value);
+                    }}
+                    placeholder="0–100"
+                    className="w-full rounded-md border bg-transparent px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lf-sort">Sort by</Label>
+                  <select
+                    id="lf-sort"
+                    value={sort}
+                    onChange={(event) => {
+                      setPage(1);
+                      setSort(event.target.value as 'leadScore' | 'createdAt');
+                    }}
+                    className="w-full rounded-md border bg-transparent px-2 py-1.5 text-sm"
+                  >
+                    <option value="leadScore">Score</option>
+                    <option value="createdAt">Created</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lf-order">Order</Label>
+                  <select
+                    id="lf-order"
+                    value={order}
+                    onChange={(event) => {
+                      setPage(1);
+                      setOrder(event.target.value as 'asc' | 'desc');
+                    }}
+                    className="w-full rounded-md border bg-transparent px-2 py-1.5 text-sm"
+                  >
+                    <option value="desc">Descending</option>
+                    <option value="asc">Ascending</option>
+                  </select>
+                </div>
               </div>
-            ) : savedLeads.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                No saved leads yet. Run a search and save a lead.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {savedLeads.map((lead) => (
-                  <div key={lead.id} className="rounded-lg border p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate font-medium">{lead.companyName}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {[lead.city, lead.state, lead.country].filter(Boolean).join(', ') ||
-                            'Location unknown'}
-                          {lead.website ? ` · ${lead.website}` : ''}
-                        </p>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          <Badge variant="secondary">{sourceLabel(lead.source)}</Badge>
-                          <select
-                            value={lead.status}
-                            onChange={(event) =>
-                              void handleStatusChange(lead.id, event.target.value)
-                            }
-                            className="rounded border bg-transparent px-1 py-0.5 text-xs"
+
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setTab('search')}>
+                    <Search className="mr-2 h-4 w-4" /> New search
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={toggleSelectAll}
+                    className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent/60"
+                  >
+                    <CheckSquare className="h-3.5 w-3.5" />
+                    {selectedIds.size === savedLeads.length && savedLeads.length > 0
+                      ? 'Deselect page'
+                      : 'Select page'}
+                  </button>
+                  <span className="text-xs text-muted-foreground">
+                    {totalSaved} total
+                    {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ''}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {(
+                    [
+                      ['csv', 'CSV'],
+                      ['xlsx', 'XLSX'],
+                      ['json', 'JSON'],
+                    ] as const
+                  ).map(([format, label]) => (
+                    <Button
+                      key={format}
+                      size="sm"
+                      variant="outline"
+                      disabled={exporting !== null || (selectedIds.size === 0 && totalSaved === 0)}
+                      onClick={() =>
+                        void handleExport(format, selectedIds.size > 0 ? 'selected' : 'all')
+                      }
+                    >
+                      {exporting === format ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                      Export {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'all'} ·{' '}
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              {loadingSaved ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : savedLeads.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No saved leads match these filters. Run a search and save a lead.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {savedLeads.map((lead) => (
+                    <div key={lead.id} className="rounded-lg border p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(lead.id)}
+                            onChange={() => toggleSelect(lead.id)}
+                            className="mt-1 h-4 w-4 shrink-0 accent-[var(--neon-cyan)]"
+                            aria-label={`Select ${lead.companyName}`}
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{lead.companyName}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {[lead.city, lead.state, lead.country].filter(Boolean).join(', ') ||
+                                'Location unknown'}
+                              {lead.website ? ` · ${lead.website}` : ''}
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <Badge variant="secondary">{sourceLabel(lead.source)}</Badge>
+                              <select
+                                value={lead.status}
+                                onChange={(event) =>
+                                  void handleStatusChange(lead.id, event.target.value)
+                                }
+                                className="rounded border bg-transparent px-1 py-0.5 text-xs"
+                              >
+                                {[
+                                  'NEW',
+                                  'QUALIFIED',
+                                  'CONTACTED',
+                                  'RESPONDED',
+                                  'MEETING',
+                                  'PROPOSAL',
+                                  'WON',
+                                  'LOST',
+                                ].map((status) => (
+                                  <option key={status} value={status}>
+                                    {status}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <Badge variant={scoreVariant(lead.leadScore)}>
+                            Score {lead.leadScore}
+                          </Badge>
+                          <Button size="sm" variant="outline" onClick={() => setDetail({ lead })}>
+                            View
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={scoringId === lead.id}
+                            onClick={() => void handleRescore(lead.id)}
                           >
-                            {[
-                              'NEW',
-                              'QUALIFIED',
-                              'CONTACTED',
-                              'RESPONDED',
-                              'MEETING',
-                              'PROPOSAL',
-                              'WON',
-                              'LOST',
-                            ].map((status) => (
-                              <option key={status} value={status}>
-                                {status}
-                              </option>
-                            ))}
-                          </select>
+                            {scoringId === lead.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-4 w-4" />
+                            )}
+                            Re-score
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={deletingId === lead.id}
+                            onClick={() => void handleDelete(lead.id)}
+                          >
+                            {deletingId === lead.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              'Delete'
+                            )}
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <Badge variant={scoreVariant(lead.leadScore)}>Score {lead.leadScore}</Badge>
-                        <Button size="sm" variant="outline" onClick={() => setDetail({ lead })}>
-                          View
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={deletingId === lead.id}
-                          onClick={() => void handleDelete(lead.id)}
-                        >
-                          {deletingId === lead.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            'Delete'
-                          )}
-                        </Button>
-                      </div>
                     </div>
+                  ))}
+                </div>
+              )}
+
+              {totalSaved > pageSize && (
+                <div className="mt-4 flex items-center justify-between border-t pt-3 text-sm">
+                  <p className="text-xs text-muted-foreground">
+                    Page {page} of {Math.max(1, Math.ceil(totalSaved / pageSize))}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={page <= 1}
+                      onClick={() => setPage((previous) => Math.max(1, previous - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={page >= Math.ceil(totalSaved / pageSize)}
+                      onClick={() => setPage((previous) => previous + 1)}
+                    >
+                      Next
+                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {detail && (
@@ -598,6 +1003,19 @@ export default function LeadFinderPage(): React.JSX.Element {
                 )}
                 Generate outreach
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={scoringId === detail.lead.id}
+                onClick={() => void handleRescore(detail.lead.id)}
+              >
+                {scoringId === detail.lead.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Re-score
+              </Button>
               {detail.lead.linkedinUrl && (
                 <Button size="sm" variant="outline" asChild>
                   <a href={detail.lead.linkedinUrl} target="_blank" rel="noreferrer">
@@ -612,8 +1030,18 @@ export default function LeadFinderPage(): React.JSX.Element {
                   </a>
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={loadSaved}>
-                <Download className="h-4 w-4" /> Export CSV
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={exporting !== null}
+                onClick={() => void handleExport('csv', 'all')}
+              >
+                {exporting === 'csv' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                Export CSV
               </Button>
             </div>
 
@@ -624,6 +1052,18 @@ export default function LeadFinderPage(): React.JSX.Element {
                 <p className="mt-2 text-sm">
                   <strong>Recommended approach:</strong> {detail.enrichment.recommendedApproach}
                 </p>
+                {detail.enrichment.score && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Badge variant={scoreVariant(detail.enrichment.score.total)}>
+                      Score {detail.enrichment.score.total}
+                    </Badge>
+                    {detail.enrichment.score.reasons.slice(0, 4).map((reason, index) => (
+                      <Badge key={index} variant="outline">
+                        {reason}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

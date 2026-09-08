@@ -422,6 +422,60 @@ Providers without credentials show as "Not configured" in Settings and return `5
 if their connect URL is requested. The Notion integration additionally requires the
 integration to be shared with a page in the workspace so its token has access.
 
+## Lead Finder (Milestone 19)
+
+The Lead Finder discovers businesses across Google Maps, LinkedIn, Indeed, Reddit,
+and general web search, then normalizes, dedupes, AI-enriches, and scores each lead.
+Save interesting results and generate personalized outreach from the saved data.
+
+- `GET /api/v1/lead-finder/providers` — static configuration status per provider.
+- `GET /api/v1/lead-finder/providers/status` — **live** health probe of every
+  provider (real API call with a 10s timeout; never blocks on a failing provider).
+- `POST /api/v1/lead-finder/search` — search providers in parallel, dedupe across
+  sources, enrich, and score. Successful (non-empty) results are cached per
+  provider for 10 minutes to control API spend.
+- `GET /api/v1/lead-finder/history` — past searches.
+- `POST /api/v1/lead-finder/leads` — save a lead. `GET` lists saved leads with
+  `status`/`industry`/`source`/`minScore`/`searchId` filters, sorting, and paging.
+- `POST /api/v1/lead-finder/leads/:id/score` — re-score a saved lead.
+- `POST /api/v1/lead-finder/leads/:id/enrich` — AI enrichment and re-scoring.
+- `POST /api/v1/lead-finder/leads/:id/outreach` — generate personalized outreach.
+- `POST /api/v1/lead-finder/export` — export saved leads as CSV/JSON/XLSX, with
+  optional `ids`, `status`, `industry`, `source`, `minScore`, `searchId` filters.
+
+### Provider credentials
+
+Keys can come from environment variables or from the admin credential store
+(**Settings → Integrations**, stored encrypted). Runtime values take precedence and
+are picked up without a restart:
+
+| Provider    | Env var                                  | Credential store              |
+| ----------- | ---------------------------------------- | ----------------------------- |
+| Google Maps | `GOOGLE_MAPS_API_KEY`                    | `google_maps` / `apiKey`      |
+| Reddit      | `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | `reddit` / `clientId`+`clientSecret` |
+| LinkedIn    | `SERPAPI_KEY` (public web data)          | `serpapi` / `apiKey`          |
+| Web         | `SERPAPI_KEY` (or `WEB_SEARCH_API_KEY`)  | `serpapi` / `apiKey`          |
+| Indeed      | optional `SERPAPI_KEY`                   | `serpapi` / `apiKey`          |
+
+Reddit and Indeed work without keys (rate-limited public access).
+
+### Lead lifecycle events (n8n webhook)
+
+Every lead-finder lifecycle event can be forwarded to an external webhook (n8n,
+Zapier, Make) for downstream automation. Set `N8N_LEAD_WEBHOOK_URL` to a webhook URL;
+BRO POSTs:
+
+```json
+{
+  "event": { "type": "lead.saved", "userId": "...", "leadId": "...", ... },
+  "sentAt": "2026-01-01T00:00:00.000Z"
+}
+```
+
+Event types: `lead.discovered`, `lead.saved`, `lead.qualified`,
+`lead.status_changed`, `lead.outreach_generated`. Delivery is fire-and-forget and
+never fails the request that emits the event.
+
 ## n8n Integration
 
 The `n8n_*` tools let the assistant drive workflows in a self-hosted n8n instance via

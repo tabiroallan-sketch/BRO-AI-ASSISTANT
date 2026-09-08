@@ -23,6 +23,16 @@ export {
   type OutreachResult,
 } from './outreach.js';
 export { registerLeadFinderTools } from './tools.js';
+export { getLiveProviderStatuses } from './provider-status.js';
+export { emitLeadEvent, onLeadEvent, clearLeadEventHandlers, type LeadEvent } from './events.js';
+export { buildXlsx } from './xlsx.js';
+export {
+  reloadLeadCredentials,
+  getLeadCredential,
+  getLeadCredentialSync,
+  resolveLeadApiKey,
+  invalidateLeadCredentialCache,
+} from './credentials.js';
 
 import { registerLeadProvider } from './provider-registry.js';
 import { googleMapsProvider } from './providers/google-maps.js';

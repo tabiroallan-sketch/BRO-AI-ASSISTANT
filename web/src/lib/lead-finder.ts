@@ -1,4 +1,4 @@
-import { ApiError, request } from '@/lib/api';
+import { API_BASE_URL, ApiError, request } from '@/lib/api';
 import { getAccessToken } from '@/lib/token-store';
 
 export type LeadSource = 'google_maps' | 'linkedin' | 'indeed' | 'reddit' | 'web';
@@ -9,6 +9,14 @@ export type LeadProviderStatus = {
   description?: string;
   configured: boolean;
   apiKeyRequired: boolean;
+};
+
+export type LeadProviderHealth = {
+  providerId: string;
+  label: string;
+  status: 'connected' | 'not_configured' | 'error' | 'degraded';
+  message?: string;
+  latencyMs?: number;
 };
 
 export type CostEstimate = {
@@ -294,11 +302,63 @@ export async function generateLeadOutreach(
   });
 }
 
-export async function exportLeads(format: 'csv' | 'json'): Promise<string> {
-  const result = await request<unknown>('/lead-finder/export', {
+export async function fetchLeadProviderHealth(): Promise<LeadProviderHealth[]> {
+  const result = await request<{ providers: LeadProviderHealth[] }>(
+    '/lead-finder/providers/status',
+    {
+      token: authToken(),
+    },
+  );
+  return result.providers;
+}
+
+export async function rescoreSavedLead(
+  id: string,
+): Promise<{ lead: SavedLead; score: LeadScoreBreakdown }> {
+  return request<{ lead: SavedLead; score: LeadScoreBreakdown }>(`/lead-finder/leads/${id}/score`, {
     method: 'POST',
     token: authToken(),
-    body: { format },
   });
-  return JSON.stringify(result);
+}
+
+export async function exportLeads(
+  format: 'csv' | 'json' | 'xlsx',
+  options?: {
+    ids?: string[];
+    status?: string;
+    industry?: string;
+    source?: string;
+    minScore?: number;
+    searchId?: string;
+  },
+): Promise<void> {
+  const token = authToken();
+  const response = await fetch(`${API_BASE_URL}/lead-finder/export`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ format, ...options }),
+  });
+
+  if (!response.ok) {
+    const data = (await response.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
+    throw new ApiError(
+      response.status,
+      data?.error?.message ?? `Export failed (${response.status})`,
+    );
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `leads.${format}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

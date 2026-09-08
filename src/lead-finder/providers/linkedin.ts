@@ -1,5 +1,6 @@
 import { fetchJson } from '../../lib/http.js';
 import { config } from '../../config/index.js';
+import { getLeadCredentialSync, resolveLeadApiKey } from '../credentials.js';
 import type { LeadProvider, LeadSearchParams, LeadSource, RawLead } from '../types.js';
 
 const SERP_API_URL = 'https://serpapi.com/search.json';
@@ -34,11 +35,12 @@ export const linkedinProvider: LeadProvider = {
   supportedParams: ['query', 'industry', 'location', 'country', 'limit'],
 
   isConfigured(): boolean {
-    return Boolean(config.serpApiKey);
+    return Boolean(config.serpApiKey || getLeadCredentialSync('linkedin', 'apiKey'));
   },
 
   async search(params: LeadSearchParams): Promise<RawLead[]> {
-    if (!config.serpApiKey) {
+    const apiKey = await resolveLeadApiKey('linkedin', config.serpApiKey);
+    if (!apiKey) {
       throw new Error('LinkedIn search requires SERPAPI_KEY for compliant public data access.');
     }
 
@@ -52,7 +54,7 @@ export const linkedinProvider: LeadProvider = {
     const url = new URL(SERP_API_URL);
     url.searchParams.set('engine', 'google');
     url.searchParams.set('q', siteQuery.trim());
-    url.searchParams.set('api_key', config.serpApiKey);
+    url.searchParams.set('api_key', apiKey);
     url.searchParams.set('num', String(Math.min(params.limit ?? 20, 50)));
 
     const data = await fetchJson<SerpApiLinkedInResponse>(url.toString(), {
@@ -97,7 +99,8 @@ export const linkedinProvider: LeadProvider = {
   },
 
   async healthCheck() {
-    if (!config.serpApiKey) {
+    const apiKey = await resolveLeadApiKey('linkedin', config.serpApiKey);
+    if (!apiKey) {
       return { ok: false, message: 'SERPAPI_KEY required for LinkedIn public search' };
     }
     const start = Date.now();
@@ -105,7 +108,7 @@ export const linkedinProvider: LeadProvider = {
       const url = new URL(SERP_API_URL);
       url.searchParams.set('engine', 'google');
       url.searchParams.set('q', 'site:linkedin.com/company technology');
-      url.searchParams.set('api_key', config.serpApiKey);
+      url.searchParams.set('api_key', apiKey);
       url.searchParams.set('num', '1');
       const data = await fetchJson<{ search_metadata?: { status?: number } }>(url.toString(), {
         timeoutMs: 8000,

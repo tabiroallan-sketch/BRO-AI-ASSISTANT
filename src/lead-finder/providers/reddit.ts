@@ -1,4 +1,5 @@
 import { config } from '../../config/index.js';
+import { getLeadCredential } from '../credentials.js';
 import type { LeadProvider, LeadSearchParams, LeadSource, RawLead } from '../types.js';
 
 const REDDIT_SEARCH_URL = 'https://www.reddit.com/search.json';
@@ -50,13 +51,16 @@ async function getBearerToken(): Promise<string | null> {
     return cachedBearerToken;
   }
 
-  if (!config.redditClientId || !config.redditClientSecret) {
+  const runtimeClientId = await getLeadCredential('reddit', 'clientId');
+  const runtimeClientSecret = await getLeadCredential('reddit', 'clientSecret');
+  const clientId = runtimeClientId ?? config.redditClientId;
+  const clientSecret = runtimeClientSecret ?? config.redditClientSecret;
+
+  if (!clientId || !clientSecret) {
     return null;
   }
 
-  const credentials = Buffer.from(`${config.redditClientId}:${config.redditClientSecret}`).toString(
-    'base64',
-  );
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
   try {
     const response = await fetch('https://www.reddit.com/api/v1/access_token', {

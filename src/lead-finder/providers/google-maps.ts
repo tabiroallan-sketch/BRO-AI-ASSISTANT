@@ -1,5 +1,6 @@
 import { fetchJson } from '../../lib/http.js';
 import { config } from '../../config/index.js';
+import { getLeadCredentialSync, resolveLeadApiKey } from '../credentials.js';
 import type { LeadProvider, LeadSearchParams, LeadSource, RawLead } from '../types.js';
 
 const PLACES_TEXT_SEARCH_URL = 'https://maps.googleapis.com/maps/api/place/textsearch/json';
@@ -82,14 +83,14 @@ export function mapGooglePlace(place: GooglePlace, placeUrl?: string): RawLead |
   };
 }
 
-async function fetchPlaceDetails(placeId: string): Promise<GooglePlace> {
+async function fetchPlaceDetails(placeId: string, apiKey: string): Promise<GooglePlace> {
   const url = new URL(PLACE_DETAILS_URL);
   url.searchParams.set('place_id', placeId);
   url.searchParams.set(
     'fields',
     'place_id,name,formatted_address,geometry,rating,user_ratings_total,types,website,international_phone_number,opening_hours,business_status,address_components,vicinity',
   );
-  url.searchParams.set('key', config.googleMapsApiKey);
+  url.searchParams.set('key', apiKey);
   const data = await fetchJson<PlaceDetailsResponse>(url.toString(), {
     timeoutMs: REQUEST_TIMEOUT_MS,
   });
@@ -112,13 +113,14 @@ export const googleMapsProvider: LeadProvider = {
   ],
 
   isConfigured(): boolean {
-    return Boolean(config.googleMapsApiKey);
+    return Boolean(config.googleMapsApiKey || getLeadCredentialSync('google_maps', 'apiKey'));
   },
 
   async search(params: LeadSearchParams): Promise<RawLead[]> {
-    if (!config.googleMapsApiKey) {
+    const apiKey = await resolveLeadApiKey('google_maps', config.googleMapsApiKey);
+    if (!apiKey) {
       throw new Error(
-        'Google Maps API key is not configured. Add GOOGLE_MAPS_API_KEY to your .env file.',
+        'Google Maps API key is not configured. Add GOOGLE_MAPS_API_KEY or configure it in Settings.',
       );
     }
 
@@ -130,7 +132,7 @@ export const googleMapsProvider: LeadProvider = {
 
     const url = new URL(PLACES_TEXT_SEARCH_URL);
     url.searchParams.set('query', query || 'businesses');
-    url.searchParams.set('key', config.googleMapsApiKey);
+    url.searchParams.set('key', apiKey);
 
     const data = await fetchJson<PlacesTextSearchResponse>(url.toString(), {
       timeoutMs: REQUEST_TIMEOUT_MS,
@@ -153,7 +155,7 @@ export const googleMapsProvider: LeadProvider = {
       let fullPlace = place;
       if (place.place_id) {
         try {
-          fullPlace = await fetchPlaceDetails(place.place_id);
+          fullPlace = await fetchPlaceDetails(place.place_id, apiKey);
         } catch {
           // Best-effort enrichment
         }
@@ -170,14 +172,15 @@ export const googleMapsProvider: LeadProvider = {
   },
 
   async healthCheck() {
-    if (!config.googleMapsApiKey) {
+    const apiKey = await resolveLeadApiKey('google_maps', config.googleMapsApiKey);
+    if (!apiKey) {
       return { ok: false, message: 'GOOGLE_MAPS_API_KEY not configured' };
     }
     const start = Date.now();
     try {
       const url = new URL(PLACES_TEXT_SEARCH_URL);
       url.searchParams.set('query', 'businesses in New York');
-      url.searchParams.set('key', config.googleMapsApiKey);
+      url.searchParams.set('key', apiKey);
       const data = await fetchJson<{ status?: string }>(url.toString(), { timeoutMs: 8000 });
       return {
         ok: data.status === 'OK' || data.status === 'ZERO_RESULTS',

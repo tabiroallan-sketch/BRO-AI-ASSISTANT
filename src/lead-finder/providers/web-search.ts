@@ -1,5 +1,6 @@
 import { fetchJson } from '../../lib/http.js';
 import { config } from '../../config/index.js';
+import { getLeadCredentialSync, resolveLeadApiKey } from '../credentials.js';
 import type { LeadProvider, LeadSearchParams, LeadSource, RawLead } from '../types.js';
 
 const SERP_API_URL = 'https://serpapi.com/search.json';
@@ -120,11 +121,12 @@ export const webSearchProvider: LeadProvider = {
   supportedParams: ['query', 'industry', 'location', 'country', 'city', 'state', 'limit'],
 
   isConfigured(): boolean {
-    return Boolean(config.serpApiKey);
+    return Boolean(config.serpApiKey || getLeadCredentialSync('web', 'apiKey'));
   },
 
   async search(params: LeadSearchParams): Promise<RawLead[]> {
-    if (!config.serpApiKey) {
+    const apiKey = await resolveLeadApiKey('web', config.serpApiKey);
+    if (!apiKey) {
       throw new Error('Web search requires SERPAPI_KEY. Add it to your .env file or Settings.');
     }
 
@@ -139,7 +141,7 @@ export const webSearchProvider: LeadProvider = {
     const url = new URL(SERP_API_URL);
     url.searchParams.set('engine', 'google');
     url.searchParams.set('q', query);
-    url.searchParams.set('api_key', config.serpApiKey);
+    url.searchParams.set('api_key', apiKey);
     url.searchParams.set('num', String(params.limit ?? 20));
 
     const data = await fetchJson<SerpApiWebSearchResponse>(url.toString(), {
@@ -188,7 +190,8 @@ export const webSearchProvider: LeadProvider = {
   },
 
   async healthCheck() {
-    if (!config.serpApiKey) {
+    const apiKey = await resolveLeadApiKey('web', config.serpApiKey);
+    if (!apiKey) {
       return { ok: false, message: 'SERPAPI_KEY not configured' };
     }
     const start = Date.now();
@@ -196,7 +199,7 @@ export const webSearchProvider: LeadProvider = {
       const url = new URL(SERP_API_URL);
       url.searchParams.set('engine', 'google');
       url.searchParams.set('q', 'businesses');
-      url.searchParams.set('api_key', config.serpApiKey);
+      url.searchParams.set('api_key', apiKey);
       url.searchParams.set('num', '1');
       const data = await fetchJson<{ search_metadata?: { status?: number } }>(url.toString(), {
         timeoutMs: 8000,

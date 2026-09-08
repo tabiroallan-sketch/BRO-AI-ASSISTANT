@@ -53,6 +53,7 @@ export type AuditAction =
   | 'leads.search'
   | 'leads.lead.saved'
   | 'leads.lead.enriched'
+  | 'leads.lead.scored'
   | 'leads.lead.outreach_generated';
 
 export type AuditEvent = {

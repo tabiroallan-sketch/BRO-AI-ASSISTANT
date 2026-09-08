@@ -208,4 +208,8 @@ export async function reloadCredentials(): Promise<void> {
       apply(cred as unknown as Record<string, string>);
     }
   }
+
+  // Reload lead-finder provider credentials (google_maps, reddit, serpapi/web/linkedin).
+  const { reloadLeadCredentials } = await import('../lead-finder/credentials.js');
+  await reloadLeadCredentials();
 }

@@ -28,6 +28,7 @@ import {
   Target,
   Wrench,
   Workflow,
+  Satellite,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -60,6 +61,7 @@ const salesItems: Array<{ href: string; label: string; icon: LucideIcon }> = [
   { href: '/dashboard/sales', label: 'Sales', icon: Briefcase },
   { href: '/dashboard/sales/opportunities', label: 'Opportunities', icon: Target },
   { href: '/dashboard/sales/leads', label: 'Lead Finder', icon: Compass },
+  { href: '/dashboard/sales/lead-sources', label: 'Lead Sources', icon: Satellite },
   { href: '/dashboard/sales/discovery', label: 'Discovery', icon: Search },
   { href: '/dashboard/sales/job-search', label: 'Job Search', icon: Search },
   { href: '/dashboard/sales/outreach', label: 'Outreach', icon: Mail },

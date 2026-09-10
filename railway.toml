@@ -1,0 +1,4 @@
+[healthcheck]
+path = "/health"
+timeout = 30
+start = 15

@@ -7,7 +7,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig: NextConfig = {
   ...(process.env.BRO_DESKTOP_BUILD === '1'
     ? { output: 'standalone', outputFileTracingRoot: path.join(dirname, '..') }
-    : { outputFileTracingRoot: path.join(dirname, '..') }),
+    : {}),
   poweredByHeader: false,
   async headers() {
     return [

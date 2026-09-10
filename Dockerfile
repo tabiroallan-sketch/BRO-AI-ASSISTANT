@@ -9,6 +9,7 @@ RUN npm ci
 
 FROM node:22-alpine AS builder
 WORKDIR /app
+COPY package.json package-lock.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY prisma ./prisma/
 RUN npx prisma generate
@@ -40,7 +41,9 @@ COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 # Browser automation (Milestone 11): Chromium + OS dependencies.
 # Chromium is launched with --no-sandbox (BROWSER_NO_SANDBOX=true) so it can
 # run as the unprivileged `node` user inside the container.
-RUN npx playwright install --with-deps chromium
+# Set INSTALL_CHROMIUM=false as a build arg to skip (saves ~400 MB).
+ARG INSTALL_CHROMIUM=true
+RUN if [ "$INSTALL_CHROMIUM" = "true" ]; then npx playwright install --with-deps chromium; fi
 
 # Entrypoint applies pending Prisma migrations, then runs the server.
 COPY scripts/entrypoint.sh ./scripts/entrypoint.sh

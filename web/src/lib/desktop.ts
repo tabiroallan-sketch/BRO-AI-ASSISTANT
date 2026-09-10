@@ -27,7 +27,7 @@ import {
   type ShortcutBindings,
   type ShortcutSetResult,
   type VoiceSettings,
-} from '../../../desktop/src/shared/desktop-api';
+} from './desktop-api';
 
 export {
   DEFAULT_DESKTOP_CONFIG,

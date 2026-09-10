@@ -41,8 +41,10 @@ COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 # Browser automation (Milestone 11): Chromium + OS dependencies.
 # Chromium is launched with --no-sandbox (BROWSER_NO_SANDBOX=true) so it can
 # run as the unprivileged `node` user inside the container.
-# Set INSTALL_CHROMIUM=false as a build arg to skip (saves ~400 MB).
-ARG INSTALL_CHROMIUM=true
+# Chromium needs a Debian/Ubuntu base (playwright --with-deps uses apt-get),
+# but this stage is Alpine. Remove the `node` user, or switch to a bookworm
+# base image, before enabling this. Default false = skipped on Alpine.
+ARG INSTALL_CHROMIUM=false
 RUN if [ "$INSTALL_CHROMIUM" = "true" ]; then npx playwright install --with-deps chromium; fi
 
 # Entrypoint applies pending Prisma migrations, then runs the server.

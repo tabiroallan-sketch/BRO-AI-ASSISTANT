@@ -36,10 +36,10 @@ import { useRouter } from 'next/navigation';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
-  connectUrl,
   deleteAccount,
   disconnectIntegration,
   fetchHub,
+  getIntegrationConnectUrl,
   listAccounts,
   reconnectIntegration,
   refreshIntegration,
@@ -368,6 +368,20 @@ function ProviderCard({
     } catch (err) {
       if (!(await handleAuthFailure(err))) {
         setError(err instanceof ApiError ? err.message : 'Reconnect failed.');
+      }
+      setBusy(null);
+    }
+  }
+
+  async function handleConnect(): Promise<void> {
+    setBusy('connect');
+    setError(null);
+    try {
+      const url = await getIntegrationConnectUrl(provider.id);
+      window.location.href = url;
+    } catch (err) {
+      if (!(await handleAuthFailure(err))) {
+        setError(err instanceof ApiError ? err.message : 'Connect failed.');
       }
       setBusy(null);
     }
@@ -754,11 +768,13 @@ function ProviderCard({
             </>
           )}
           {!connected && provider.type === 'oauth' && provider.configured && (
-            <Button asChild size="sm">
-              <a href={connectUrl(provider.id)}>
+            <Button size="sm" onClick={() => void handleConnect()} disabled={busy !== null}>
+              {busy === 'connect' ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
                 <Plug className="h-4 w-4" />
-                Connect
-              </a>
+              )}
+              Connect
             </Button>
           )}
         </div>

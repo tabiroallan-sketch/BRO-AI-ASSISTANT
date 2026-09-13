@@ -41,7 +41,7 @@ import {
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
-  connectUrl,
+  getIntegrationConnectUrl,
   fetchMarketplace,
   installMarketplaceItem,
   saveIntegration,
@@ -371,7 +371,7 @@ export default function IntegrationsPage(): React.JSX.Element {
         setConfigureTarget(item);
         setDraft({});
       } else if (item.configured) {
-        window.location.href = connectUrl(item.providerIds[0]);
+        void handleConnect(item);
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Install failed.');
@@ -436,8 +436,17 @@ export default function IntegrationsPage(): React.JSX.Element {
     }
   }
 
-  function handleConnect(item: MarketplaceItem): void {
-    window.location.href = connectUrl(item.providerIds[0]);
+  async function handleConnect(item: MarketplaceItem): Promise<void> {
+    setBusy(`connect:${item.id}`);
+    setError(null);
+    setNotice(null);
+    try {
+      const url = await getIntegrationConnectUrl(item.providerIds[0]);
+      window.location.href = url;
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Connect failed.');
+      setBusy(null);
+    }
   }
 
   function handleConfigure(item: MarketplaceItem): void {

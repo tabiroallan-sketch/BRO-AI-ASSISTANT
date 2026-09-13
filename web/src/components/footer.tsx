@@ -6,8 +6,11 @@ export function Footer(): React.JSX.Element {
       <div className="container mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 text-sm text-muted-foreground sm:flex-row">
         <p>&copy; {new Date().getFullYear()} BRO — AI Assistant Platform</p>
         <div className="flex items-center gap-4">
-          <Link href="/dashboard" className="transition-colors hover:text-foreground">
-            Dashboard
+          <Link href="/privacy" className="transition-colors hover:text-foreground">
+            Privacy Policy
+          </Link>
+          <Link href="/terms" className="transition-colors hover:text-foreground">
+            Terms of Service
           </Link>
           <Link href="/settings" className="transition-colors hover:text-foreground">
             Settings
